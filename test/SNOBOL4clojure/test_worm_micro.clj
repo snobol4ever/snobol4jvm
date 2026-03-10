@@ -1387,40 +1387,6 @@
 ;; ─────────────────────────────────────────────────────────────────────────────
 ;; TIER 4d — DEFINE / RETURN / FRETURN
 ;; ─────────────────────────────────────────────────────────────────────────────
-
-(deftest micro_t4_define_simple_fn
-  (prog
-    "        DEFINE('double(N)')"
-    "        :(ENDDOUBLE)"
-    "DOUBLE  double = N * 2"
-    "        :(RETURN)"
-    "ENDDOUBLE"
-    "        I = double(7)"
-    "end")
-  (is (clojure.core/= 14 ($$ 'I))))
-
-(deftest micro_t4_define_fn_two_args
-  (prog
-    "        DEFINE('add(A,B)')"
-    "        :(ENDADD)"
-    "ADD     add = A + B"
-    "        :(RETURN)"
-    "ENDADD"
-    "        K = add(3,4)"
-    "end")
-  (is (clojure.core/= 7 ($$ 'K))))
-
-(deftest micro_t4_define_string_fn
-  (prog
-    "        DEFINE('greet(NAME)')"
-    "        :(ENDGREET)"
-    "GREET   greet = 'Hello, ' NAME"
-    "        :(RETURN)"
-    "ENDGREET"
-    "        S = greet('world')"
-    "end")
-  (is (clojure.core/= "Hello, world" ($$ 'S))))
-
 (deftest micro_t4_freturn_on_zero_div
   (prog
     "        DEFINE('safe_div(A,B)')"

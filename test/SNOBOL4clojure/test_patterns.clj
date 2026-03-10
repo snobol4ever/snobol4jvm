@@ -57,7 +57,7 @@
     (is (not (FULLMATCH "abcx" P)))))
 
 ;; ── LEN ──────────────────────────────────────────────────────────────────────
-(deftest test-len-match
+(deftest test-len-search
   (is      (SEARCH "abcde" (LEN 3)))
   (is (not (FULLMATCH "ab" (LEN 3)))))
 
