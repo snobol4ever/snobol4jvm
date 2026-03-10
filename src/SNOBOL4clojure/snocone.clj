@@ -565,7 +565,7 @@
                             [ops nil j])))))]
               (recur j
                      (if operand
-                       (into output (into [operand] (rseq ops)))
+                       (into output (cons operand (reverse ops)))
                        output)
                      op-stack call-stack))
 
