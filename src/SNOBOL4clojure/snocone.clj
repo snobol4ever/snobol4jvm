@@ -550,27 +550,24 @@
               (recur (inc i) out2 stk2 calls2))
 
             ;; ---- Unary operator ----
+            ;; Strategy: scan forward consuming all chained unary ops + final operand,
+            ;; emit operand first, then unaries in reverse (innermost first).
             (and (sc-unary? tok) (sc-unary-pos? tokens i))
-            ;; Consume the next operand (possibly itself prefixed by more unary ops),
-            ;; emit it, then emit this unary op after it.
-            (loop [j (inc i) nested-unaries []]
-              (if (>= j n)
-                (recur j output op-stack call-stack)
-                (let [t (nth tokens j)]
-                  (cond
-                    (sc-operand? t)
-                    (recur (inc j)
-                           (into output (conj nested-unaries (sc-dotck t)
-                                              (assoc tok :unary? true)))
-                           op-stack call-stack)
-                    (sc-unary? t)
-                    (recur (inc j) (conj nested-unaries (assoc tok :unary? true))
-                           ;; Actually need to recurse properly — use simpler approach:
-                           ;; just prepend current tok as unary and let next iteration handle t
-                           op-stack call-stack)
-                    :else
-                    (recur (inc i) (conj output (assoc tok :unary? true))
-                           op-stack call-stack)))))
+            (let [[ops-collected operand j]
+                  (loop [j (inc i) ops [(assoc tok :unary? true)]]
+                    (if (>= j n)
+                      [ops nil j]
+                      (let [t (sc-dotck (nth tokens j))]
+                        (if (sc-operand? t)
+                          [ops t (inc j)]
+                          (if (sc-unary? t)
+                            (recur (inc j) (conj ops (assoc t :unary? true)))
+                            [ops nil j])))))]
+              (recur j
+                     (if operand
+                       (into output (into [operand] (rseq ops)))
+                       output)
+                     op-stack call-stack))
 
             ;; ---- Binary operator ----
             (sc-binary? tok)
