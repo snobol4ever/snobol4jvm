@@ -23,6 +23,7 @@
     pip     ::= or  | or   <ws* '|'  ws*>  or  (<ws* '|' ws*> or)*
     or      ::= cat | cat  <ws* '||' ws*>  cat (<ws* '||' ws*> cat)*
     cat     ::= cmp | cmp  <ws* '&&' ws*>  cmp (<ws* '&&' ws*> cmp)*
+              | cmp  ws+  cmp  (ws+  cmp)*
     cmp     ::= sum | sum  ws* cmpop ws*   sum
    <cmpop>  ::= ':!=:' | ':>=:' | ':<=:' | ':==:' | ':>:' | ':<:' | '::' | ':!:'
               | '>=' | '<=' | '==' | '!=' | '<' | '>'
