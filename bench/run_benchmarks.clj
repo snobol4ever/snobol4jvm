@@ -24,8 +24,8 @@
 
 ;; ── Benchmark programs ───────────────────────────────────────────────────────
 
-(def BENCH-DIR "corpus/spitbol/")
-(def GIMPEL-DIR "corpus/gimpel/SPITBOL/")
+(def BENCH-DIR "corpus/lon/benchmarks/")
+(def GIMPEL-DIR "corpus/lon/programs/inc/")
 
 (defn slurp-strip
   "Read a .spt file and strip SPITBOL-only preprocessor directives
