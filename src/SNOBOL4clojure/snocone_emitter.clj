@@ -49,7 +49,8 @@
   "Transform a snocone-grammar AST node into a SNOBOL4 source string."
   [ast]
   (insta/transform
-    {;; Terminals
+    {:expr    (fn [x] x)
+     ;; Terminals
      :ident   str
      :integer str
      :real    (fn [s] (if (clojure.string/starts-with? s ".")
@@ -74,21 +75,26 @@
      :cat  (fn
              ([x] x)
              ([l & rest] (reduce #(emit-binary "&&" %1 %2) l rest)))
-     :cmp  (fn
-             ([x] x)
-             ([l op r] (emit-binary op l r)))
-     :sum  (fn
-             ([x] x)
-             ([l op r] (emit-binary op l r)))
-     :mul  (fn
-             ([x] x)
-             ([l op r] (emit-binary op l r)))
-     :xp   (fn
-             ([x] x)
-             ([l r] (emit-binary "^" l r)))
-     :cap  (fn
-             ([x] x)
-             ([l op r] (emit-binary op l r)))
+     :cmp  (fn [& args]
+             (if (= 1 (count args))
+               (first args)
+               (let [[l op r] args] (emit-binary op l r))))
+     :sum  (fn [& args]
+             (if (= 1 (count args))
+               (first args)
+               (let [[l op r] args] (emit-binary op l r))))
+     :mul  (fn [& args]
+             (if (= 1 (count args))
+               (first args)
+               (let [[l op r] args] (emit-binary op l r))))
+     :xp   (fn [& args]
+             (if (= 1 (count args))
+               (first args)
+               (let [[l _ r] args] (emit-binary "^" l r))))
+     :cap  (fn [& args]
+             (if (= 1 (count args))
+               (first args)
+               (let [[l op r] args] (emit-binary op l r))))
 
      ;; Unary operators
      :uop  (fn
@@ -118,4 +124,4 @@
   (let [ast (parse-sc-expr sc-src)]
     (if (insta/failure? ast)
       (throw (ex-info "Snocone parse error" {:failure ast :src sc-src}))
-      (first (emit-expr ast)))))
+      (emit-expr ast))))

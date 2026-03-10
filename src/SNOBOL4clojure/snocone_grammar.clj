@@ -24,21 +24,22 @@
     or      ::= cat | cat  <ws* '||' ws*>  cat (<ws* '||' ws*> cat)*
     cat     ::= cmp | cmp  <ws* '&&' ws*>  cmp (<ws* '&&' ws*> cmp)*
               | cmp  ws+  cmp  (ws+  cmp)*
-    cmp     ::= sum | sum  ws* cmpop ws*   sum
+    cmp     ::= sum | sum  <ws*> cmpop <ws*>   sum
    <cmpop>  ::= ':!=:' | ':>=:' | ':<=:' | ':==:' | ':>:' | ':<:' | '::' | ':!:'
               | '>=' | '<=' | '==' | '!=' | '<' | '>'
-    sum     ::= mul | sum  ws* sumop ws*   mul
+    sum     ::= mul | sum  <ws*> sumop <ws*>   mul
    <sumop>  ::= '+' | '-'
-    mul     ::= xp  | mul  ws* mulop ws*   xp
+    mul     ::= xp  | mul  <ws*> mulop <ws*>   xp
    <mulop>  ::= '*' | '/' | '%'
     xp      ::= cap | cap  <ws*> '^'  <ws*>  xp
     cap     ::= uop | uop  <ws*> capop <ws*>  cap
    <capop>  ::= '.' | '$'
     uop     ::= ndx | unaryop <ws*> uop
-   <unaryop> ::= '+' | '-' | '*' | '&' | '@' | '~' | '?' | '.' | '$'
+   <unaryop> ::= '+' | '-' | '*' | '&' | '@' | '~' | '?' | '$'
+              | #'[.](?![0-9])'
     ndx     ::= atom | ndx <'('> arglist <')'> | ndx <'['> arglist <']'>
     arglist  ::= expr? | expr (<ws* ',' ws*> expr)*
-   <atom>   ::= integer | real | string | ident | <'('> expr <')'>
+   <atom>   ::= real | integer | string | ident | <'('> expr <')'>
     ident   ::= #'[A-Za-z_][A-Za-z0-9_]*'
     integer ::= #'[0-9]+'
     real    ::= #'[0-9]+\\.[0-9]*([eEdD][+-]?[0-9]+)?'
