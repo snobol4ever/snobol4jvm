@@ -102,16 +102,16 @@
              ([op x] (str op x)))
 
      ;; Indexing — f(args) or f[args]
-     ;; ndx children: base, then arglist children interleaved
-     ;; instaparse gives (ndx base arglist) for f(...) and f[...]
-     ;; We need to distinguish ( vs [ — captured via grammar tags
+     ;; arglist → joined string; aref → bracket-wrapped string (marker)
      :ndx  (fn
              ([x] x)
-             ([f & arglists]
-              ;; arglists is a seq of arglist results (comma-joined arg strings)
-              (str f "(" (clojure.string/join "," arglists) ")")))
+             ([f arg]
+              (if (and (string? arg) (clojure.string/starts-with? arg "["))
+                (str f arg)                                     ; array ref: f[i]
+                (str f "(" arg ")"))))                          ; call: f(x)
 
-     :arglist (fn [& args] (clojure.string/join "," (remove nil? args)))}
+     :arglist (fn [& args] (clojure.string/join "," (remove nil? args)))
+     :aref    (fn [& args] (str "[" (clojure.string/join "," (remove nil? args)) "]"))}
     ast))
 
 ;; ---------------------------------------------------------------------------

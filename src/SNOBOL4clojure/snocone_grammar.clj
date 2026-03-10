@@ -23,7 +23,7 @@
     pip     ::= or  | or   <ws* '|'  ws*>  or  (<ws* '|' ws*> or)*
     or      ::= cat | cat  <ws* '||' ws*>  cat (<ws* '||' ws*> cat)*
     cat     ::= cmp | cmp  <ws* '&&' ws*>  cmp (<ws* '&&' ws*> cmp)*
-              | cmp  ws+  cmp  (ws+  cmp)*
+              | cmp  <ws+>  cmp  (<ws+>  cmp)*
     cmp     ::= sum | sum  <ws*> cmpop <ws*>   sum
    <cmpop>  ::= ':!=:' | ':>=:' | ':<=:' | ':==:' | ':>:' | ':<:' | '::' | ':!:'
               | '>=' | '<=' | '==' | '!=' | '<' | '>'
@@ -33,11 +33,12 @@
    <mulop>  ::= '*' | '/' | '%'
     xp      ::= cap | cap  <ws*> '^'  <ws*>  xp
     cap     ::= uop | uop  <ws*> capop <ws*>  cap
-   <capop>  ::= '.' | '$'
+   <capop>  ::= #'[.](?![0-9])' | '$'
     uop     ::= ndx | unaryop <ws*> uop
-   <unaryop> ::= '+' | '-' | '*' | '&' | '@' | '~' | '?' | '$'
+   <unaryop> ::= '+' | '-' | '*' | '&' | '@' | '~' | '$'
               | #'[.](?![0-9])'
-    ndx     ::= atom | ndx <'('> arglist <')'> | ndx <'['> arglist <']'>
+    ndx     ::= atom | ndx <'('> arglist <')'> | ndx <'['> aref <']'>
+    aref     ::= expr? | expr (<ws* ',' ws*> expr)*
     arglist  ::= expr? | expr (<ws* ',' ws*> expr)*
    <atom>   ::= real | integer | string | ident | <'('> expr <')'>
     ident   ::= #'[A-Za-z_][A-Za-z0-9_]*'
