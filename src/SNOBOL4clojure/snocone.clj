@@ -235,7 +235,8 @@
   Returns [kind text end-pos]."
   [^String seg start]
   (let [len (count seg)]
-    (loop [pos start real? (= \. (.charAt seg start))]
+    (let [leading-dot? (= \. (.charAt seg start))]
+    (loop [pos (if leading-dot? (inc start) start) real? leading-dot?]
       ;; Consume integer digits
       (let [pos (loop [p pos]
                   (if (and (< p len) (Character/isDigit (.charAt seg p)))
@@ -267,7 +268,7 @@
               [pos real?])]
         [(if real? KIND-REAL KIND-INTEGER)
          (subs seg start pos)
-         pos]))))
+         pos])))))
 
 ;; ---------------------------------------------------------------------------
 ;; Segment tokenizer
