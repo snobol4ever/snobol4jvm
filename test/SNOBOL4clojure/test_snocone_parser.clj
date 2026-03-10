@@ -1,245 +1,133 @@
 (ns SNOBOL4clojure.test-snocone-parser
-  "Tests for the Snocone expression parser (Step 2) in snocone.clj.
+  "Tests for sc->snobol4 — Snocone expression → SNOBOL4 source text.
 
-  snocone/parse-expression takes a flat token vector from the lexer
-  and returns a postfix (RPN) vector, mirroring Parser.ShuntYardAlgorithm.
-
-  Reduce condition (from the language specification):
-    while existing-op.lp >= incoming-op.rp  → reduce
-
-  Precedence table (lp / rp from the operator table):
-    =    lp=1  rp=2   right-assoc
-    ?    lp=2  rp=2   left
-    |    lp=3  rp=3   left
-    ||   lp=4  rp=4   left
-    &&   lp=5  rp=5   left
-    comparisons lp=6 rp=6 left
-    + -  lp=7  rp=7   left
-    / * % lp=8 rp=8   left
-    ^    lp=9  rp=10  RIGHT-assoc
-    . $  lp=10 rp=10  left"
+  Reference: bconv table in the language specification.
+  Each test verifies that a Snocone expression compiles to the correct
+  SNOBOL4 source string."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.snocone :as sc]))
-
-;; ---------------------------------------------------------------------------
-;; Helpers
-;; ---------------------------------------------------------------------------
-
-(defn- parse [src]
-  (let [tokens (->> (sc/tokenize src)
-                    (remove #(#{:sc/newline :sc/eof} (:kind %))))]
-    (sc/parse-expression tokens)))
-
-(defn- kinds [src]
-  (mapv :kind (parse src)))
+            [SNOBOL4clojure.snocone-emitter :refer [sc->snobol4]]))
 
 ;; ===========================================================================
-;; 1. Single operands — pass through unchanged
+;; 1. Literals pass through unchanged
 ;; ===========================================================================
 
-(deftest test-single-identifier
-  (is (= [:sc/identifier] (kinds "x"))))
+(deftest test-integer-literal
+  (is (= "42" (sc->snobol4 "42"))))
 
-(deftest test-single-integer
-  (is (= [:sc/integer] (kinds "42"))))
+(deftest test-real-literal
+  (is (= "3.14" (sc->snobol4 "3.14"))))
 
-(deftest test-single-string
-  (is (= [:sc/string] (kinds "'hello'"))))
+(deftest test-string-literal
+  (is (= "'hello'" (sc->snobol4 "'hello'"))))
 
-(deftest test-single-real
-  (is (= [:sc/real] (kinds "3.14"))))
-
-;; ===========================================================================
-;; 2. Simple binary — postfix: a b op
-;; ===========================================================================
-
-(deftest test-binary-add
-  (is (= [:sc/identifier :sc/identifier :sc/op-plus] (kinds "a + b"))))
-
-(deftest test-binary-assign
-  (is (= [:sc/identifier :sc/identifier :sc/op-assign] (kinds "x = y"))))
-
-(deftest test-binary-concat
-  (is (= [:sc/identifier :sc/identifier :sc/op-concat] (kinds "a && b"))))
-
-(deftest test-binary-or
-  (is (= [:sc/identifier :sc/identifier :sc/op-or] (kinds "a || b"))))
+(deftest test-identifier-literal
+  (is (= "x" (sc->snobol4 "x"))))
 
 ;; ===========================================================================
-;; 3. Precedence
+;; 2. dotck — leading-dot float gets 0 prepended
 ;; ===========================================================================
 
-(deftest test-precedence-mul-before-add
-  ;; a + b * c  →  a b c * +
-  (is (= [:sc/identifier :sc/identifier :sc/identifier :sc/op-star :sc/op-plus]
-         (kinds "a + b * c"))))
+(deftest test-dotck-leading-dot
+  (is (= "0.5" (sc->snobol4 ".5"))))
 
-(deftest test-precedence-add-before-compare
-  ;; a == b + c  →  a b c + ==
-  (is (= [:sc/identifier :sc/identifier :sc/identifier :sc/op-plus :sc/op-eq]
-         (kinds "a == b + c"))))
-
-(deftest test-precedence-concat-before-or
-  ;; a || b && c  →  a b c && ||
-  (is (= [:sc/identifier :sc/identifier :sc/identifier :sc/op-concat :sc/op-or]
-         (kinds "a || b && c"))))
-
-(deftest test-precedence-dot-higher-than-add
-  ;; a + b . c  →  a b c . +
-  (is (= [:sc/identifier :sc/identifier :sc/identifier :sc/op-period :sc/op-plus]
-         (kinds "a + b . c"))))
-
-(deftest test-precedence-caret-higher-than-mul
-  ;; a * b ^ c  →  a b c ^ *
-  (is (= [:sc/identifier :sc/identifier :sc/identifier :sc/op-caret :sc/op-star]
-         (kinds "a * b ^ c"))))
-
-(deftest test-precedence-compare-before-assign
-  ;; x = a == b  →  x a b == =
-  (is (= [:sc/identifier :sc/identifier :sc/identifier :sc/op-eq :sc/op-assign]
-         (kinds "x = a == b"))))
+(deftest test-dotck-normal-float-unchanged
+  (is (= "3.14" (sc->snobol4 "3.14"))))
 
 ;; ===========================================================================
-;; 4. Associativity
+;; 3. Infix operators — pass through as-is
 ;; ===========================================================================
 
-(deftest test-assoc-add-left
-  ;; a + b + c  →  a b + c +
-  (is (= [:sc/identifier :sc/identifier :sc/op-plus :sc/identifier :sc/op-plus]
-         (kinds "a + b + c"))))
-
-(deftest test-assoc-mul-left
-  (is (= [:sc/identifier :sc/identifier :sc/op-star :sc/identifier :sc/op-star]
-         (kinds "a * b * c"))))
-
-(deftest test-assoc-concat-left
-  (is (= [:sc/identifier :sc/identifier :sc/op-concat :sc/identifier :sc/op-concat]
-         (kinds "a && b && c"))))
-
-(deftest test-assoc-caret-right
-  ;; a ^ b ^ c  →  a b c ^ ^   (lp=9 < rp=10, second ^ does NOT reduce first)
-  (is (= [:sc/identifier :sc/identifier :sc/identifier :sc/op-caret :sc/op-caret]
-         (kinds "a ^ b ^ c"))))
-
-(deftest test-assoc-assign-right
-  ;; a = b = c  →  a b c = =   (lp=1 < rp=2)
-  (is (= [:sc/identifier :sc/identifier :sc/identifier :sc/op-assign :sc/op-assign]
-         (kinds "a = b = c"))))
+(deftest test-assign    (is (= "x = y"   (sc->snobol4 "x = y"))))
+(deftest test-question  (is (= "x ? y"   (sc->snobol4 "x ? y"))))
+(deftest test-pipe      (is (= "x | y"   (sc->snobol4 "x | y"))))
+(deftest test-plus      (is (= "a + b"   (sc->snobol4 "a + b"))))
+(deftest test-minus     (is (= "a - b"   (sc->snobol4 "a - b"))))
+(deftest test-slash     (is (= "a / b"   (sc->snobol4 "a / b"))))
+(deftest test-star      (is (= "a * b"   (sc->snobol4 "a * b"))))
+(deftest test-period    (is (= "a . b"   (sc->snobol4 "a . b"))))
+(deftest test-dollar    (is (= "a $ b"   (sc->snobol4 "a $ b"))))
 
 ;; ===========================================================================
-;; 5. Unary operators — postfix with :unary? true
+;; 4. Function operators — emit as FN(a,b)
 ;; ===========================================================================
 
-(deftest test-unary-minus
-  (let [r (parse "-x")]
-    (is (= 2 (count r)))
-    (is (= :sc/identifier (:kind (first r))))
-    (is (= :sc/op-minus   (:kind (second r))))
-    (is (:unary? (second r)))))
-
-(deftest test-unary-tilde
-  (let [r (parse "~x")]
-    (is (= :sc/op-tilde (:kind (second r))))
-    (is (:unary? (second r)))))
-
-(deftest test-unary-star-unevaluated
-  (let [r (parse "*p")]
-    (is (= :sc/op-star (:kind (second r))))
-    (is (:unary? (second r)))))
-
-(deftest test-unary-binds-tighter-than-binary
-  ;; a + -b  →  a b unary- +
-  (let [r (parse "a + -b")]
-    (is (= 4 (count r)))
-    (is (= :sc/identifier (:kind (nth r 0))))
-    (is (= :sc/identifier (:kind (nth r 1))))
-    (is (= :sc/op-minus   (:kind (nth r 2))))
-    (is (:unary? (nth r 2)))
-    (is (= :sc/op-plus    (:kind (nth r 3))))
-    (is (not (:unary? (nth r 3))))))
+(deftest test-eq        (is (= "EQ(a,b)"     (sc->snobol4 "a == b"))))
+(deftest test-ne        (is (= "NE(a,b)"     (sc->snobol4 "a != b"))))
+(deftest test-lt        (is (= "LT(a,b)"     (sc->snobol4 "a < b"))))
+(deftest test-gt        (is (= "GT(a,b)"     (sc->snobol4 "a > b"))))
+(deftest test-le        (is (= "LE(a,b)"     (sc->snobol4 "a <= b"))))
+(deftest test-ge        (is (= "GE(a,b)"     (sc->snobol4 "a >= b"))))
+(deftest test-ident     (is (= "IDENT(a,b)"  (sc->snobol4 "a :: b"))))
+(deftest test-differ    (is (= "DIFFER(a,b)" (sc->snobol4 "a :!: b"))))
+(deftest test-lgt       (is (= "LGT(a,b)"   (sc->snobol4 "a :>: b"))))
+(deftest test-llt       (is (= "LLT(a,b)"   (sc->snobol4 "a :<: b"))))
+(deftest test-lge       (is (= "LGE(a,b)"   (sc->snobol4 "a :>=: b"))))
+(deftest test-lle       (is (= "LLE(a,b)"   (sc->snobol4 "a :<=: b"))))
+(deftest test-leq       (is (= "LEQ(a,b)"   (sc->snobol4 "a :==: b"))))
+(deftest test-lne       (is (= "LNE(a,b)"   (sc->snobol4 "a :!=: b"))))
+(deftest test-remdr     (is (= "REMDR(a,b)" (sc->snobol4 "a % b"))))
 
 ;; ===========================================================================
-;; 6. Parentheses — override precedence
+;; 5. Special operators
 ;; ===========================================================================
 
-(deftest test-parens-override-precedence
-  ;; (a + b) * c  →  a b + c *
-  (is (= [:sc/identifier :sc/identifier :sc/op-plus :sc/identifier :sc/op-star]
-         (kinds "(a + b) * c"))))
+(deftest test-caret-to-starstar
+  (is (= "a ** b" (sc->snobol4 "a ^ b"))))
 
-(deftest test-parens-nested
-  ;; (a + (b * c))  →  a b c * +
-  (is (= [:sc/identifier :sc/identifier :sc/identifier :sc/op-star :sc/op-plus]
-         (kinds "(a + (b * c))"))))
+(deftest test-or-to-alternation
+  ;; || → pattern alternation (a,b)
+  (is (= "(a,b)" (sc->snobol4 "a || b"))))
+
+(deftest test-concat-to-blank
+  ;; && → blank concatenation
+  (is (= "a b" (sc->snobol4 "a && b"))))
+
+(deftest test-juxtaposition-concat
+  ;; adjacent terms → blank concat
+  (is (= "a b" (sc->snobol4 "a b"))))
+
+;; ===========================================================================
+;; 6. Unary operators
+;; ===========================================================================
+
+(deftest test-unary-minus  (is (= "-x"  (sc->snobol4 "-x"))))
+(deftest test-unary-plus   (is (= "+x"  (sc->snobol4 "+x"))))
+(deftest test-unary-star   (is (= "*p"  (sc->snobol4 "*p"))))
+(deftest test-unary-dot    (is (= ".v"  (sc->snobol4 ".v"))))
+(deftest test-unary-dollar (is (= "$v"  (sc->snobol4 "$v"))))
+(deftest test-unary-tilde  (is (= "~x"  (sc->snobol4 "~x"))))
+(deftest test-unary-at     (is (= "@x"  (sc->snobol4 "@x"))))
 
 ;; ===========================================================================
 ;; 7. Function calls and array refs
 ;; ===========================================================================
 
 (deftest test-call-no-args
-  (let [r (parse "f()")]
-    (is (= :sc/identifier (:kind (nth r 0))))
-    (is (= "f"            (:text (nth r 0))))
-    (is (= :sc/sc-call    (:kind (nth r 1))))
-    (is (= 0              (:arg-count (nth r 1))))))
+  (is (= "f()" (sc->snobol4 "f()"))))
 
 (deftest test-call-one-arg
-  (let [r (parse "f(x)")]
-    (is (= :sc/identifier (:kind (nth r 0))))
-    (is (= :sc/identifier (:kind (nth r 1))))
-    (is (= :sc/sc-call    (:kind (nth r 2))))
-    (is (= 1              (:arg-count (nth r 2))))))
+  (is (= "f(x)" (sc->snobol4 "f(x)"))))
 
 (deftest test-call-two-args
-  (let [r (parse "f(x, y)")]
-    (is (= :sc/identifier (:kind (nth r 0))))
-    (is (= :sc/identifier (:kind (nth r 1))))
-    (is (= :sc/identifier (:kind (nth r 2))))
-    (is (= :sc/sc-call    (:kind (nth r 3))))
-    (is (= 2              (:arg-count (nth r 3))))))
+  (is (= "f(x,y)" (sc->snobol4 "f(x,y)"))))
 
-(deftest test-array-ref-one-index
-  (let [r (parse "arr[i]")]
-    (is (= :sc/identifier  (:kind (nth r 0))))
-    (is (= :sc/identifier  (:kind (nth r 1))))
-    (is (= :sc/sc-array-ref (:kind (nth r 2))))
-    (is (= 1               (:arg-count (nth r 2))))))
+(deftest test-call-expr-arg
+  (is (= "f(EQ(a,b))" (sc->snobol4 "f(a == b)"))))
 
-(deftest test-call-arg-is-expression
-  ;; f(a + b)  →  f a b + CALL(1)
-  (let [r (parse "f(a + b)")]
-    (is (= :sc/identifier (:kind (nth r 0))))
-    (is (= :sc/identifier (:kind (nth r 1))))
-    (is (= :sc/identifier (:kind (nth r 2))))
-    (is (= :sc/op-plus    (:kind (nth r 3))))
-    (is (= :sc/sc-call    (:kind (nth r 4))))
-    (is (= 1              (:arg-count (nth r 4))))))
+(deftest test-array-ref
+  (is (= "arr[i]" (sc->snobol4 "arr[i]"))))
 
 ;; ===========================================================================
-;; 8. String comparison operators (all lp=6 rp=6)
+;; 8. Precedence and associativity preserved in output
 ;; ===========================================================================
 
-(deftest test-str-eq
-  (is (= [:sc/identifier :sc/identifier :sc/op-str-eq] (kinds "a :==: b"))))
+(deftest test-precedence-mul-before-add
+  (is (= "a + b * c" (sc->snobol4 "a + b * c"))))
 
-(deftest test-str-ne
-  (is (= [:sc/identifier :sc/identifier :sc/op-str-ne] (kinds "a :!=: b"))))
+(deftest test-precedence-compare-fn
+  ;; a == b + c → EQ(a,b + c)
+  (is (= "EQ(a,b + c)" (sc->snobol4 "a == b + c"))))
 
-(deftest test-str-same-prec-as-numeric
-  ;; a == b :==: c  →  a b == c :==:  (left-assoc, lp=rp=6)
-  (is (= [:sc/identifier :sc/identifier :sc/op-eq :sc/identifier :sc/op-str-eq]
-         (kinds "a == b :==: c"))))
-
-;; ===========================================================================
-;; 9. dotck — leading-dot float gets "0." prepended
-;; ===========================================================================
-
-(deftest test-dotck-leading-dot-rewritten
-  (let [r (parse ".5")]
-    (is (= 1         (count r)))
-    (is (= :sc/real  (:kind (first r))))
-    (is (= "0.5"     (:text (first r))))))
-
-(deftest test-dotck-normal-float-unchanged
-  (let [r (parse "3.14")]
-    (is (= "3.14" (:text (first r))))))
+(deftest test-caret-right-assoc
+  ;; a ^ b ^ c → a ** b ** c  (right-assoc, no parens needed)
+  (is (= "a ** b ** c" (sc->snobol4 "a ^ b ^ c"))))
