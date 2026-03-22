@@ -430,3 +430,23 @@ both implementations.
 ## License
 
 AGPL-3.0-or-later. See [LICENSE](LICENSE).
+
+---
+
+## Source Volume (G-VOLUME · M-VOL-JVM ✅ · 2026-03-22)
+
+> `wc -l` scan of `src/`. Categories are logical function — comparable across snobol4x, snobol4jvm, snobol4dotnet.
+
+| Category | Files | Lines | Blank-stripped | % total |
+|----------|------:|------:|:--------------:|--------:|
+| Parser / lexer | 5 | 926 | 847 | 12.8% |
+| Code emitter | 3 | 1,402 | 1,236 | 19.4% |
+| Pattern engine | 5 | 921 | 833 | 12.8% |
+| Runtime / builtins | 7 | 2,140 | 1,999 | 29.6% |
+| Driver / CLI | 2 | 234 | 221 | 3.2% |
+| Extensions / plugins | 2 | 29 | 29 | 0.4% |
+| Tests | 55 | 19,352 | 17,159 | — |
+| Benchmarks | 1 | 152 | 133 | — |
+| Docs / Markdown | 2 | 456 | 353 | — |
+| **Total (src)** | **28** | **7,220** | **6,562** | **100%** |
+
