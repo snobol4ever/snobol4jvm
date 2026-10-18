@@ -443,3 +443,20 @@
                    "END\n"))
       (is (= "ONCOTT\nc\na bcde\ncd\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; Concatenating a pattern with a string is a PATTERN. Assignment flattened
+;; every concatenation into a string, so P = LEN(1) 'b' stored "(LEN# 1)b".
+;; Concatenating strings or numbers still gives a STRING. Expected output is
+;; the oracle's: sbl -bf prints these lines.
+(deftest concatenating-a-pattern-gives-a-pattern
+  (let [f (java.io.File/createTempFile "catpat" ".sno")]
+    (try
+      (spit f (str " P = LEN(1) 'b'; OUTPUT = DATATYPE(P)\n"
+                   " 'xabc' P . V; OUTPUT = V\n"
+                   " Q = 'abc' 'def'; OUTPUT = DATATYPE(Q); OUTPUT = Q\n"
+                   " N = 1 2; OUTPUT = DATATYPE(N) ' ' N\n"
+                   " OUTPUT = LEN(1) 'b'\n"
+                   " R = 'a' ANY('xyz') 'c'; 'zzayc' R . W; OUTPUT = W\n"
+                   "END\n"))
+      (is (= "PATTERN\nab\nSTRING\nabcdef\nSTRING 12\nPATTERN\nayc\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

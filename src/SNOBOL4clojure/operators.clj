@@ -133,6 +133,23 @@
 ;; ── INVOKE ────────────────────────────────────────────────────────────────────
 (declare EVAL!)
 
+;; A concatenation evaluates to (SEQ v ...). It is a string when every part is
+;; a string or a number, and otherwise a pattern, which the matcher reads as a
+;; SEQ list and which must not be flattened into text.
+(defn- concat-value [r]
+  (if (and (list? r) (clojure.core/= (first r) 'SEQ))
+    (if (every? #(or (string? %) (number? %)) (rest r))
+      (apply str (map sstr (rest r)))
+      r)
+    r))
+
+;; What OUTPUT writes for a value: a pattern prints as its datatype name,
+;; PATTERN, as SPITBOL prints it; everything else as sstr.
+(defn- output-text [v]
+  (if (and (or (list? v) (vector? v)) (clojure.core/= "PATTERN" (SNOBOL4clojure.env/DATATYPE v)))
+    "PATTERN"
+    (sstr v)))
+
 (defn- program-fn
   "The function a program bound to the name op (a DATA constructor or field),
    or nil. Only names that start with a letter: operators are not looked up."
@@ -226,23 +243,17 @@
                     :else nil))
                 ;; normal variable assignment
                 (clojure.core/contains? #{'OUTPUT 'TERMINAL 'INPUT} N)
-                (let [out-val (if (and (list? r) (clojure.core/= (first r) 'SEQ))
-                                (apply str (map sstr (rest r)))
-                                r)]
-                  (when (clojure.core/= N 'OUTPUT)   (println (sstr out-val)))
-                  (when (clojure.core/= N 'TERMINAL) (binding [*out* *err*] (println (sstr out-val))))
+                (let [out-val (concat-value r)]
+                  (when (clojure.core/= N 'OUTPUT)   (println (output-text out-val)))
+                  (when (clojure.core/= N 'TERMINAL) (binding [*out* *err*] (println (output-text out-val))))
                   out-val)
                 ;; Named output channel: var is registered as :output → write to channel writer
                 (clojure.core/= :output (:type (get @<CHANNELS> N)))
-                (let [out-val (if (and (list? r) (clojure.core/= (first r) 'SEQ))
-                                (apply str (map sstr (rest r)))
-                                r)]
+                (let [out-val (concat-value r)]
                   (write-to-channel! N out-val)
                   out-val)
                 :else
-                (let [v (if (and (list? r) (clojure.core/= (first r) 'SEQ))
-                          (apply str (map sstr (rest r)))
-                          r)]
+                (let [v (concat-value r)]
                   (snobol-set! N v)
                   (fire-value! N v)
                   v))))
