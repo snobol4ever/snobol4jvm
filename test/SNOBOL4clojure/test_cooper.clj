@@ -441,12 +441,16 @@
   (is (= "1234" ($$ 'R2))))
 
 (deftest cooper-break-012
-  "BREAK on empty subject — captures '' (succeeds with empty)"
+  "BREAK on empty subject fails: it finds no break character, so R1 is not assigned"
   (prog
+    "        R1 = 'unset'"
     "        A = BREAK('123456')"
-    "        '' A . R1"
+    "        '' A . R1        :S(Y)F(N)"
+    "Y       RESULT = 'success'   :(END)"
+    "N       RESULT = 'fail'"
     "END")
-  (is (= "" ($$ 'R1))))
+  (is (= "fail"  ($$ 'RESULT)))
+  (is (= "unset" ($$ 'R1))))
 
 ;; ── Pattern/BreakX ────────────────────────────────────────────────────────────
 
@@ -545,12 +549,16 @@
   (is (= "1234" ($$ 'R2))))
 
 (deftest cooper-breakx-012
-  "BREAKX on empty subject succeeds with ''"
+  "BREAKX on empty subject fails: it finds no break character, so R1 is not assigned"
   (prog
+    "        R1 = 'unset'"
     "        A = BREAKX('123456')"
-    "        '' A . R1"
+    "        '' A . R1        :S(Y)F(N)"
+    "Y       RESULT = 'success'   :(END)"
+    "N       RESULT = 'fail'"
     "END")
-  (is (= "" ($$ 'R1))))
+  (is (= "fail"  ($$ 'RESULT)))
+  (is (= "unset" ($$ 'R1))))
 
 (deftest cooper-breakx-014
   "Canonical BreakX_014: POS(0) BREAKX('A') . R2 'AS' on EXCEPTIONS string"
