@@ -170,12 +170,24 @@
 (def preprocess-includes comp/preprocess-includes)
 
 ;; ── -main ─────────────────────────────────────────────────────────────────────
-(defn -main "SNOBOL4/Clojure — run a .sno file." [& args]
-  (if (empty? args)
-    (do (println "Usage: lein run <file.sno>") (System/exit 1))
-    (let [src (slurp (first args))
-          out (vm/run-program! src)]
-      (print out)
+(defn -main
+  "SNOBOL4/Clojure — run a .sno file: [--engine interp|vm] <file.sno>.
+   The default engine is the Stage 1 interpreter, the one the test suite runs.
+   -INCLUDE files resolve against the program's own directory, then the
+   current one. INPUT reads stdin."
+  [& args]
+  (let [[engine file] (if (clojure.core/= "--engine" (first args))
+                        [(second args) (nth args 2 nil)]
+                        ["interp" (first args)])]
+    (when (or (nil? file) (not (#{"interp" "vm"} engine)))
+      (binding [*out* *err*]
+        (println "Usage: lein run [--engine interp|vm] <file.sno>"))
+      (System/exit 1))
+    (let [src (slurp file)
+          dir (or (.getParent (java.io.File. ^String file)) ".")]
+      (case engine
+        "interp" (do (env/GLOBALS) (rt/RUN (comp/CODE src [dir "."])))
+        "vm"     (print (vm/run-program! src)))
       (flush))))
 
 ;; ── Re-export transpiler (Stage 23B) ─────────────────────────────────────────

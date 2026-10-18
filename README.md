@@ -333,14 +333,14 @@ cd snobol4jvm
 **Run a SNOBOL4 program:**
 
 ```bash
-lein run < program.sno
+lein run program.sno < input.txt     # INPUT reads stdin; --engine vm picks the Stage 3 VM
 ```
 
 **Build a standalone jar:**
 
 ```bash
 lein uberjar
-java -jar target/uberjar/SNOBOL4clojure-0.2.0-standalone.jar < program.sno
+java -jar target/uberjar/SNOBOL4clojure-0.2.0-standalone.jar program.sno < input.txt
 ```
 
 **Run the test suite:**

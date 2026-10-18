@@ -153,3 +153,18 @@
   (is (= (DATA "tree(t,v,n,c)")                           ""))
   ;; TODO: custom DATA datatype dispatch once DATA is fully wired:
   #_(is (= (DATATYPE (tree. \+ nil 2 [1 2])) "tree")))
+
+;; The command line runs a program the way the test suite does, through the
+;; interpreter. It used to run the Stage 3 VM, which dropped every statement
+;; after a DEFINE's goto: this program printed only "one".
+(deftest main-runs-every-statement-after-a-define
+  (let [f (java.io.File/createTempFile "main-define" ".sno")]
+    (try
+      (spit f (str "        OUTPUT = 'one'\n"
+                   "        DEFINE('F(X)')         :(F_END)\n"
+                   "F       F = X '!'              :(RETURN)\n"
+                   "F_END\n"
+                   "        OUTPUT = F('two')\n"
+                   "END\n"))
+      (is (= "one\ntwo!\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

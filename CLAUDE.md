@@ -19,7 +19,7 @@ lein uberjar && java -jar target/uberjar/SNOBOL4clojure-0.2.0-standalone.jar pro
 lein run -m SNOBOL4clojure.bench                   # engine × backend benchmark grid
 ```
 
-- **`-main` takes the program as a file argument.** `SNOBOL4clojure.core/-main` slurps its first argument and runs it on the Stage 3 VM (`vm/run-program!`). With no argument it prints usage and exits 1. The README's `lein run < program.sno` therefore does not work.
+- **`-main` takes the program as a file argument:** `[--engine interp|vm] <file.sno>`. The default is the Stage 1 interpreter, the engine the test suite runs. `-INCLUDE` resolves against the program's own directory, then the current one. Before this, `-main` ran the Stage 3 VM, which drops every statement after a `DEFINE`'s goto. With no file it prints usage and exits 1.
 - **The uberjar AOT-compiles only `SNOBOL4clojure.main`,** a launcher that requires no other namespace. At runtime it `require`s `core` from source. This keeps the Greek and symbol names (`Σ+`, `?=` and others) out of AOT. Do not add `:aot` for other namespaces.
 
 ## Architecture
@@ -53,7 +53,7 @@ All four engines read the same IR, and each one evaluates statement bodies with 
 |-------|-----------|-----------|
 | 1 | `runtime.clj` (`RUN`) | Interpreter. A `loop` over the statement store resolves gotos (labels, strings, numbers, and variables that hold labels) and counts `&STCOUNT` against `&STLIMIT`. Every feature is proven here first. |
 | 2 | `transpiler.clj` | Emits a Clojure namespace with one `run!` function, a `loop`/`case` over statement indices. |
-| 3 | `vm.clj` | Flat integer bytecode with 7 opcodes (`HALT`, `EXEC`, `EXEC-S`, `EXEC-F`, `EXEC-SF`, `JUMP`, `SIGNAL`). `-main` uses this engine. |
+| 3 | `vm.clj` | Flat integer bytecode with 7 opcodes (`HALT`, `EXEC`, `EXEC-S`, `EXEC-F`, `EXEC-SF`, `JUMP`, `SIGNAL`). `-main --engine vm` runs it; it drops every statement after a `DEFINE`'s goto. |
 | 4 | `jvm_codegen.clj` | Writes a real `.class` file with `clojure.asm` (Clojure's bundled ASM, not an external dependency) and loads it with `DynamicClassLoader`. Generated code calls back through a static `IFn` field (`EVAL_FN`), so its constant pool never names `operators`. |
 
 Control flow (`RETURN`, `FRETURN`, `NRETURN`, `END`, the step limit) travels as `ExceptionInfo` whose `ex-data` carries `:snobol/signal`. The `snobol-*!` helpers in `env.clj` throw these signals. Every engine and every test helper catches them by that key.
