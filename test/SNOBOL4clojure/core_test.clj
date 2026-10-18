@@ -276,3 +276,25 @@
       (is (= "written\n" (slurp (java.io.File. dir name))))
       (is (not (.exists (java.io.File. name))))
       (finally (doseq [f (reverse (file-seq dir))] (.delete ^java.io.File f))))))
+
+;; Reading INPUT at end of file fails, so `LINE = INPUT :F(DONE)` ends; a blank
+;; line still succeeds with the null string. INPUT returned the null string at
+;; end of file, so every such loop ran forever on empty or exhausted stdin.
+;; Expected output is the oracle's: sbl -bf prints these lines.
+(deftest input-at-end-of-file-fails
+  (let [f (java.io.File/createTempFile "eof" ".sno")
+        ;; bounded: a loop that never sees end of file must fail the test, not hang it
+        run (fn [stdin]
+              (let [fut (future (binding [*in* (java.io.BufferedReader. (java.io.StringReader. stdin))]
+                                  (with-out-str (-main (.getPath f)))))
+                    r   (deref fut 10000 :timeout)]
+                (when (clojure.core/= r :timeout) (future-cancel fut))
+                r))]
+    (try
+      (spit f (str "LOOP\tLINE = INPUT\t:F(DONE)\n"
+                   "\tOUTPUT = 'got ' LINE\t:(LOOP)\n"
+                   "DONE\tOUTPUT = 'eof'\n"
+                   "END\n"))
+      (is (= "got a\ngot \ngot b\neof\n" (run "a\n\nb\n")))
+      (is (= "eof\n" (run "")))
+      (finally (.delete f)))))

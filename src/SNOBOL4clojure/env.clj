@@ -209,7 +209,7 @@
       ;; Plain INPUT variable (no channel): read from *in* (stdin)
       (clojure.core/= sym 'INPUT)
       (let [line (try (read-line) (catch Exception _ nil))]
-        (if (nil? line) ε (str line)))
+        (if (nil? line) nil (str line)))   ; nil = EOF = statement fails, as SPITBOL does
 
       :else
       ;; Scope chain: user <VARS> first, then engine builtins (read-only).
