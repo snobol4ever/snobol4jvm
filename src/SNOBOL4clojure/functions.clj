@@ -463,11 +463,19 @@
     (SNOBOL4clojure.env/array? x) (SNOBOL4clojure.env/array-prototype x)
     :else ""))
 
+(defn- sort-key-compare
+  "SPITBOL's sort order: two numbers compare as numbers, anything else as strings."
+  [a b]
+  (if (and (number? a) (number? b)) (compare a b) (compare (str a) (str b))))
+
 (defn- table->sorted-array
-  "Convert TABLE to Nx2 ARRAY sorted by value (string comparison).
-   SORT sorts ascending, RSORT descending."
-  [t comparator]
-  (let [entries (sort-by #(str (second %)) comparator (seq @t))
+  "Convert TABLE to an Nx2 ARRAY (keys in column 1, values in column 2)
+   sorted on column col (1 by default, the keys). SORT sorts ascending,
+   RSORT descending."
+  [t col descending?]
+  (let [pick    (if (clojure.core/= 2 col) second first)
+        cmp     (if descending? #(sort-key-compare %2 %1) sort-key-compare)
+        entries (sort-by pick cmp (seq @t))
         n       (count entries)
         arr     (ARRAY (str n ",2"))]
     (doseq [[i [k v]] (map-indexed vector entries)]
@@ -475,14 +483,18 @@
       (array-set arr [(inc i) 2] v))
     arr))
 
-(defn SORT  [A]
-  (cond
-    (table? A) (table->sorted-array A compare)
-    (array? A) A   ; ARRAY sort not yet defined — return as-is
-    :else nil))
+(defn SORT
+  ([A] (SORT A 1))
+  ([A col]
+   (cond
+     (table? A) (table->sorted-array A (long (env/num col)) false)
+     (array? A) A   ; ARRAY sort not yet defined — return as-is
+     :else nil)))
 
-(defn RSORT [A]
-  (cond
-    (table? A) (table->sorted-array A #(compare %2 %1))
-    (array? A) A
-    :else nil))
+(defn RSORT
+  ([A] (RSORT A 1))
+  ([A col]
+   (cond
+     (table? A) (table->sorted-array A (long (env/num col)) true)
+     (array? A) A
+     :else nil)))

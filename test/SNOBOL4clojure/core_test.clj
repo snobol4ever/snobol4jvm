@@ -353,3 +353,23 @@
     (is (= code (try (RUN (CODE (str "        X = " stmt "\nEND\n"))) :no-error
                      (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e)))))
         stmt)))
+
+;; SORT and RSORT of a table sort on column 1, the keys, unless a second
+;; argument names column 2; numbers compare as numbers. They sorted on the
+;; values as strings, with no column argument. Expected output is the oracle's:
+;; sbl -bf prints these lines.
+(deftest sort-of-a-table-sorts-on-the-keys-or-the-named-column
+  (let [f (java.io.File/createTempFile "sort" ".sno")
+        row " OUTPUT = S<1,1> S<1,2> ' ' S<2,1> S<2,2> ' ' S<3,1> S<3,2>\n"]
+    (try
+      (spit f (str " T = TABLE(); T<'b'> = 30; T<'a'> = 10; T<'c'> = 20\n"
+                   " S = SORT(T);" row
+                   " S = RSORT(T);" row
+                   " S = SORT(T,2);" row
+                   " S = RSORT(T,2);" row
+                   " N = TABLE(); N<10> = 'x'; N<9> = 'y'; N<100> = 'z'\n"
+                   " S = SORT(N); OUTPUT = S<1,1> ' ' S<2,1> ' ' S<3,1>\n"
+                   "END\n"))
+      (is (= "a10 b30 c20\nc20 b30 a10\na10 c20 b30\nb30 c20 a10\n9 10 100\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
