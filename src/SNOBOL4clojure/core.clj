@@ -169,12 +169,22 @@
 ;; Sprint 25A — -INCLUDE preprocessor
 (def preprocess-includes comp/preprocess-includes)
 
+;; ── -INCLUDE search path ─────────────────────────────────────────────────────
+(defn include-dirs
+  "Where -INCLUDE looks, in order: the program's own directory, then each
+   directory of SNO_LIB (colon-separated, the fleet's include variable), then
+   the current directory."
+  [program-dir sno-lib]
+  (vec (distinct (concat [program-dir]
+                         (remove clojure.string/blank? (clojure.string/split (or sno-lib "") #":"))
+                         ["."]))))
+
 ;; ── -main ─────────────────────────────────────────────────────────────────────
 (defn -main
   "SNOBOL4/Clojure — run a .sno file: [--engine interp|vm] <file.sno>.
    The default engine is the Stage 1 interpreter, the one the test suite runs.
-   -INCLUDE files resolve against the program's own directory, then the
-   current one. INPUT reads stdin."
+   -INCLUDE files resolve against the program's own directory, then SNO_LIB,
+   then the current one. INPUT reads stdin."
   [& args]
   (let [[engine file] (if (clojure.core/= "--engine" (first args))
                         [(second args) (nth args 2 nil)]
@@ -186,7 +196,7 @@
     (let [src (slurp file)
           dir (or (.getParent (java.io.File. ^String file)) ".")]
       (case engine
-        "interp" (do (env/GLOBALS) (rt/RUN (comp/CODE src [dir "."])))
+        "interp" (do (env/GLOBALS) (rt/RUN (comp/CODE src (include-dirs dir (System/getenv "SNO_LIB")))))
         "vm"     (print (vm/run-program! src)))
       (flush))))
 

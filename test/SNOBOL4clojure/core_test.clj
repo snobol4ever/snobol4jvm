@@ -308,3 +308,20 @@
     (is (= 22 (try (RUN (CODE (str "        " stmt "\n        OUTPUT = 'after'\nEND\n"))) :no-error
                    (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e)))))
         stmt)))
+
+;; -INCLUDE searches the program's directory, then SNO_LIB, then the current
+;; directory. SNO_LIB was not read, so a runner's shared include directory was
+;; never searched and the program ran without its included functions.
+(deftest include-search-reads-sno-lib
+  (is (= ["prog" "lib/a" "lib/b" "."] (include-dirs "prog" "lib/a:lib/b")))
+  (is (= ["prog" "."] (include-dirs "prog" nil)))
+  (let [lib  (.toFile (java.nio.file.Files/createTempDirectory "snolib" (make-array java.nio.file.attribute.FileAttribute 0)))
+        prog (.toFile (java.nio.file.Files/createTempDirectory "snoprog" (make-array java.nio.file.attribute.FileAttribute 0)))
+        f    (java.io.File. prog "main.sno")]
+    (try
+      (spit (java.io.File. lib "GREET.INC") "        DEFINE('GREET()') :(GREET_END)\nGREET   OUTPUT = 'hello from lib' :(RETURN)\nGREET_END\n")
+      (spit f "-INCLUDE \"GREET.INC\"\n        GREET()\nEND\n")
+      (GLOBALS)
+      (is (= "hello from lib\n"
+             (with-out-str (RUN (CODE (slurp f) (include-dirs (.getPath prog) (.getPath lib)))))))
+      (finally (doseq [d [lib prog] x (reverse (file-seq d))] (.delete ^java.io.File x))))))
