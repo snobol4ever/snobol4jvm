@@ -19,13 +19,15 @@
     (let [a (INVOKE 'ARRAY 10)]
       (is (array? a))
       (is (= "ARRAY" (DATATYPE a)))
-      (is (= "1:10" (array-prototype a))))))
+      ;; sbl -bf and CSNOBOL4: PROTOTYPE(ARRAY(10)) is 10, the prototype as written
+      (is (= "10" (array-prototype a))))))
 
 (deftest array-002-proto-string
   (testing "array('lo:hi,...') parses dimension specs"
     (let [a (INVOKE 'ARRAY "-5:10,3:5,20")]
       (is (array? a))
-      (is (= "-5:10,3:5,1:20" (array-prototype a))))))
+      ;; sbl -bf and CSNOBOL4 print -5:10,3:5,20, the prototype as written
+      (is (= "-5:10,3:5,20" (array-prototype a))))))
 
 (deftest array-003-datatype
   (testing "DATATYPE of array variable via CODE/RUN"
@@ -109,18 +111,18 @@ end")
 ;; ── PROTOTYPE ────────────────────────────────────────────────────────────────
 
 (deftest array-012-prototype-simple
-  (testing "PROTOTYPE of array(20) returns '1:20'"
+  (testing "PROTOTYPE of array(20) returns '20' (sbl -bf and CSNOBOL4)"
     (run-prog "        A = array(20)
         r1 = prototype(A)
 end")
-    (is (= "1:20" ($$ 'r1)))))
+    (is (= "20" ($$ 'r1)))))
 
 (deftest array-013-prototype-multi-dim
-  (testing "PROTOTYPE of array('-5:10,3:5,20') returns '-5:10,3:5,1:20'"
+  (testing "PROTOTYPE of array('-5:10,3:5,20') returns it as written (sbl -bf and CSNOBOL4)"
     (run-prog "        A = array('-5:10,3:5,20')
         r1 = prototype(A)
 end")
-    (is (= "-5:10,3:5,1:20" ($$ 'r1)))))
+    (is (= "-5:10,3:5,20" ($$ 'r1)))))
 
 ;; ── Overwrite ────────────────────────────────────────────────────────────────
 

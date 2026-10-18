@@ -373,3 +373,19 @@
       (is (= "a10 b30 c20\nc20 b30 a10\na10 c20 b30\nb30 c20 a10\n9 10 100\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; PROTOTYPE returns the prototype as ARRAY was given it, blanks at its ends
+;; trimmed (manual, PROTOTYPE: "identical to the first argument of the
+;; original ARRAY function call"); a table converted to an array gives "N,2".
+;; It rebuilt a normalized lo:hi form ("1:3,1:2"). Expected output is the
+;; oracle's: sbl -bf prints these lines.
+(deftest prototype-returns-the-array-prototype-as-written
+  (let [f (java.io.File/createTempFile "proto" ".sno")]
+    (try
+      (spit f (str " OUTPUT = PROTOTYPE(ARRAY('3,2'))\n OUTPUT = PROTOTYPE(ARRAY('0:3'))\n"
+                   " OUTPUT = PROTOTYPE(ARRAY(5))\n OUTPUT = PROTOTYPE(ARRAY('1:3,1:2'))\n"
+                   " OUTPUT = PROTOTYPE(ARRAY(' 4 '))\n OUTPUT = PROTOTYPE(ARRAY('-2:2'))\n"
+                   " T = TABLE(); T<1> = 2; OUTPUT = PROTOTYPE(CONVERT(T,'ARRAY'))\n"
+                   "END\n"))
+      (is (= "3,2\n0:3\n5\n1:3,1:2\n4\n-2:2\n1,2\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

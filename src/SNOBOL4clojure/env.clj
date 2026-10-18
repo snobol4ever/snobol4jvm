@@ -268,7 +268,8 @@
   ([proto dflt]
    (let [dims (parse-array-proto proto)]
      (when (nil? dims) (throw (ex-info "ARRAY: invalid prototype" {:proto proto})))
-     (->SnobolArray dims dflt (atom {})))))
+     ;; :proto keeps the prototype as written, for PROTOTYPE
+     (assoc (->SnobolArray dims dflt (atom {})) :proto (clojure.string/trim (str proto))))))
 
 (defn TABLE     ([]      (atom {}))
                 ([_n]    (atom {}))
@@ -309,7 +310,8 @@
 (defn array-prototype
   "Return the PROTOTYPE string for a SnobolArray."
   [^SnobolArray arr]
-  (clojure.string/join "," (map (fn [[lo hi]] (str lo ":" hi)) (:dims arr))))
+  (or (:proto arr)
+      (clojure.string/join "," (map (fn [[lo hi]] (str lo ":" hi)) (:dims arr)))))
 
 
 ;; ── SNOBOL4 control-flow signals ────────────────────────────────────────────
