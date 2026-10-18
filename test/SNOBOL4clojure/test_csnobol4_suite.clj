@@ -13,6 +13,17 @@
             [SNOBOL4clojure.test-helpers :refer [prog-timeout run-with-timeout]]))
 
 ;; ── stdin helper ────────────────────────────────────────────────────────────
+(use-fixtures :once
+  ;; The Budne programs that write files (openo, openo2, update) name them
+  ;; relative to the current directory. They run in a scratch directory that
+  ;; is removed afterwards, so lein test leaves the tree as it found it.
+  (fn [t]
+    (let [dir (.toFile (java.nio.file.Files/createTempDirectory
+                         "csnobol4-suite" (make-array java.nio.file.attribute.FileAttribute 0)))]
+      (try
+        (binding [SNOBOL4clojure.env/*file-dir* dir] (t))
+        (finally (doseq [f (reverse (file-seq dir))] (.delete ^java.io.File f)))))))
+
 (defn- run-with-input
   "Run a SNOBOL4 source string with stdin-data fed as *in*.
    Returns the same map as run-with-timeout: {:exit :ok :stdout <str> ...}."

@@ -260,3 +260,19 @@
       (is (= 116 (code "INPUT(.i, 98,, \"|echo hi\")")))
       (is (= 116 (code (str "INPUT(.i, 98,, \"" (.getPath (java.io.File. dir "no_such_file")) "\")"))))
       (finally (doseq [f (reverse (file-seq dir))] (.delete ^java.io.File f))))))
+
+;; A relative file name resolves against env/*file-dir* when that is bound, so
+;; a caller can keep a program's files out of the working directory.
+(deftest a-relative-file-name-resolves-against-file-dir
+  (let [dir (.toFile (java.nio.file.Files/createTempDirectory
+                       "filedir" (make-array java.nio.file.attribute.FileAttribute 0)))
+        name (str "filedir-" (System/nanoTime) ".txt")]
+    (try
+      (binding [SNOBOL4clojure.env/*file-dir* dir]
+        (RUN (CODE (str "        OUTPUT(.O, 9,, '" name "')\n"
+                        "        O = 'written'\n"
+                        "        ENDFILE(9)\n"
+                        "END\n"))))
+      (is (= "written\n" (slurp (java.io.File. dir name))))
+      (is (not (.exists (java.io.File. name))))
+      (finally (doseq [f (reverse (file-seq dir))] (.delete ^java.io.File f))))))

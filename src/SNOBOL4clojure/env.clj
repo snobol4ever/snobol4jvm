@@ -64,6 +64,12 @@
 ;; Cleared by reset-runtime! between test runs.
 (def <CHANNELS> (atom {}))
 
+;; *file-dir*: the directory a relative file name in INPUT()/OUTPUT() resolves
+;; against. nil = the process's working directory. A JVM cannot change its own
+;; working directory, so a caller that must keep a program's files out of the
+;; current one (the test suite) binds this to a scratch directory instead.
+(def ^:dynamic *file-dir* nil)
+
 ;; <OPSYN>: operator/function synonym table (Sprint 25E).
 ;; Maps new-sym → {:target old-sym :arity n}
 ;;   :arity 0 = function synonym (no-op on arity, just alias)

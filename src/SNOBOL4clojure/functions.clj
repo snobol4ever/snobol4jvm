@@ -1,7 +1,7 @@
 (ns SNOBOL4clojure.functions
   ;; Built-in SNOBOL4 functions.
   ;; Stubs are marked clearly; implemented ones are complete.
-  (:require [SNOBOL4clojure.env :refer [ε equal out subtract sstr
+  (:require [SNOBOL4clojure.env :as env :refer [ε equal out subtract sstr
                                         DATATYPE table? array? table-get table-set
                                         ARRAY ->SnobolArray array-get array-set
                                         <CHANNELS>]])
@@ -269,6 +269,15 @@
 ;; ENDFILE(unit)  — signal EOF / close channel
 ;; DETACH(var)    — disassociate var from its channel
 
+(defn- channel-file
+  "The java.io.File a channel's file name names: relative to env/*file-dir*
+   when that is bound, else to the working directory."
+  ^java.io.File [^String file-str]
+  (let [f (java.io.File. file-str)]
+    (if (and env/*file-dir* (not (.isAbsolute f)))
+      (java.io.File. (str env/*file-dir*) file-str)
+      f)))
+
 (defn open-input-channel!
   "Register var-sym as an input channel on unit.
    filename nil or empty → stdin sentinel (reads via read-line, :file stored as nil).
@@ -280,7 +289,7 @@
                    (str filename))
         rdr (if file-str
               (or (when-not (clojure.string/starts-with? file-str "|")
-                    (try (java.io.BufferedReader. (java.io.FileReader. file-str))
+                    (try (java.io.BufferedReader. (java.io.FileReader. (channel-file file-str)))
                          (catch Exception _ nil)))
                   (throw (ex-info "inappropriate file specification for input"
                                   {:snobol/error 116})))
@@ -303,7 +312,7 @@
                    (str filename))
         wtr (if file-str
               (or (when-not (clojure.string/starts-with? file-str "|")
-                    (try (java.io.PrintWriter. (java.io.FileWriter. file-str))
+                    (try (java.io.PrintWriter. (java.io.FileWriter. (channel-file file-str)))
                          (catch Exception _ nil)))
                   (throw (ex-info "inappropriate file specification for output"
                                   {:snobol/error 160})))
