@@ -32,6 +32,20 @@
                   (if (clojure.core/<= pad 0) s-str
                     (str s-str (apply str (repeat pad fill-c)))))))
 (defn SUBSTR  [s i j] (subs (str s) (dec (long i)) (clojure.core/+ (dec (long i)) (long j))))
+(defn- string->real
+  "The real a string denotes, or nil (failure). SNOBOL4's syntax, measured
+   with sbl -bf: blanks at the ends ignored, the null string is 0., then an
+   optional sign, digits with an optional point, and an optional exponent
+   marked e, E, d or D. A value out of range fails."
+  [x]
+  (let [t (clojure.string/trim (str x))]
+    (cond
+      (clojure.core/= t "") 0.0
+      (re-matches #"[+-]?(\d+\.?\d*|\.\d+)([eEdD][+-]?\d+)?" t)
+      (let [d (Double/parseDouble (clojure.string/replace t #"[dD]" "e"))]
+        (when-not (Double/isInfinite d) d))
+      :else nil)))
+
 (defn CONVERT [x t]
   "CONVERT(x, type) — coerce x to the named SNOBOL4 type.
    Returns nil (failure) if the conversion is not defined."
@@ -48,9 +62,7 @@
         v)   ; nil propagates as failure
 
       (and (clojure.core/= from "STRING") (clojure.core/= to "REAL"))
-      (let [v (try (Double/parseDouble (clojure.string/trim (str x)))
-                   (catch Exception _ nil))]
-        v)
+      (string->real x)
 
       (and (clojure.core/= from "STRING") (clojure.core/= to "PATTERN"))
       ;; A string converts to a literal LIT$ pattern node

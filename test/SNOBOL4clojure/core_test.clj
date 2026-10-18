@@ -460,3 +460,15 @@
                    "END\n"))
       (is (= "PATTERN\nab\nSTRING\nabcdef\nSTRING 12\nPATTERN\nayc\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; CONVERT(s,'REAL') accepts SNOBOL4's real syntax only and fails when the value
+;; is out of range. It used Java's parseDouble, which reads 1e9999 as Infinity
+;; and accepts "Infinity", "NaN" and "1f". Expected verdicts are the oracle's:
+;; sbl -bf on each string.
+(deftest convert-to-real-reads-snobol4-real-syntax
+  (doseq [[s expect] [["1e9999" :fail] ["-1e9999" :fail] ["Infinity" :fail] ["NaN" :fail]
+                      ["1f" :fail] ["0x10" :fail] ["abc" :fail]
+                      ["1." 1.0] [".5" 0.5] ["+3" 3.0] [" 3 " 3.0] ["1d3" 1000.0] ["1E3" 1000.0]
+                      ["1.5e+2" 150.0] ["-.5E-1" -0.05] ["" 0.0] ["1e-9999" 0.0]]]
+    (let [v (CONVERT s "REAL")]
+      (is (= expect (if (nil? v) :fail v)) (pr-str s)))))
