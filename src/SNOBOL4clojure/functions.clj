@@ -273,13 +273,17 @@
   "Register var-sym as an input channel on unit.
    filename nil or empty → stdin sentinel (reads via read-line, :file stored as nil).
    filename provided     → open file as BufferedReader.
-   Returns ε on success, nil on error."
+   A pipe spec (\"|cmd\") or a file that cannot be opened is ERROR 116, as
+   SPITBOL raises it. Returns ε on success."
   [var-sym unit filename]
   (let [file-str (when (and filename (not (clojure.string/blank? (str filename))))
                    (str filename))
         rdr (if file-str
-              (try (java.io.BufferedReader. (java.io.FileReader. file-str))
-                   (catch Exception _ nil))
+              (or (when-not (clojure.string/starts-with? file-str "|")
+                    (try (java.io.BufferedReader. (java.io.FileReader. file-str))
+                         (catch Exception _ nil)))
+                  (throw (ex-info "inappropriate file specification for input"
+                                  {:snobol/error 116})))
               ;; stdin: wrap *in* but mark :file nil so close-channel! won't close it
               (java.io.BufferedReader. *in*))]
     (when rdr
@@ -292,13 +296,17 @@
   "Register var-sym as an output channel on unit.
    filename nil or empty → stdout (writes via PrintWriter, :file stored as nil).
    filename provided     → open file as PrintWriter.
-   Returns ε on success, nil on error."
+   A pipe spec (\"|cmd\") or a file that cannot be opened is ERROR 160, as
+   SPITBOL raises it. Returns ε on success."
   [var-sym unit filename]
   (let [file-str (when (and filename (not (clojure.string/blank? (str filename))))
                    (str filename))
         wtr (if file-str
-              (try (java.io.PrintWriter. (java.io.FileWriter. file-str))
-                   (catch Exception _ nil))
+              (or (when-not (clojure.string/starts-with? file-str "|")
+                    (try (java.io.PrintWriter. (java.io.FileWriter. file-str))
+                         (catch Exception _ nil)))
+                  (throw (ex-info "inappropriate file specification for output"
+                                  {:snobol/error 160})))
               ;; stdout: wrap *out* but mark :file nil so close-channel! won't close it
               (java.io.PrintWriter. *out* true))]
     (when wtr

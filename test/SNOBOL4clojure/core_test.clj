@@ -234,3 +234,29 @@
       (is (= "2.\n-0.5\n100.\n0.333333333333333\n1.4142135623731\n0.3\n12345.678\n999999999999999.\n0.123456789012346e+16\n0.1e+21\n0.1e-2\n0.5e-1\n0.15e-9\n0.\nv=3.\nx2.5y\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A file specification the engine cannot open is an error, never a failure and
+;; never a file: ERROR 116 for INPUT, ERROR 160 for OUTPUT. A pipe spec
+;; ("|cat >x") was opened by FileWriter as a file literally named "|cat >x",
+;; and a missing input file or an unwritable output path made the call fail.
+;; The oracle's verdict, measured with sbl -b on each statement alone:
+;;   OUTPUT(.o,99,,"|cat >popen2.dat")  ERROR 160, no file created
+;;   OUTPUT(.o,99,,"/nonexistent/dir/x") ERROR 160
+;;   INPUT(.i,98,,"|echo hi")           ERROR 116
+;;   INPUT(.i,98,,"no_such_file")       ERROR 116
+(deftest an-unopenable-file-specification-is-error-116-or-160
+  (let [dir  (.toFile (java.nio.file.Files/createTempDirectory
+                        "fspec" (make-array java.nio.file.attribute.FileAttribute 0)))
+        pipe (str "|cat >" (.getPath (java.io.File. dir "popen2.dat")))
+        code (fn [stmt]
+               (try (RUN (CODE (str "        " stmt "  :S(END)F(END)\nEND\n")))
+                    :no-error
+                    (catch clojure.lang.ExceptionInfo e
+                      (or (:snobol/error (ex-data e)) (.getMessage e)))))]
+    (try
+      (is (= 160 (code (str "OUTPUT(.o, 99,, \"" pipe "\")"))))
+      (is (= [] (vec (.list dir))))
+      (is (= 160 (code (str "OUTPUT(.o, 99,, \"" (.getPath (java.io.File. dir "no/such/x")) "\")"))))
+      (is (= 116 (code "INPUT(.i, 98,, \"|echo hi\")")))
+      (is (= 116 (code (str "INPUT(.i, 98,, \"" (.getPath (java.io.File. dir "no_such_file")) "\")"))))
+      (finally (doseq [f (reverse (file-seq dir))] (.delete ^java.io.File f))))))
