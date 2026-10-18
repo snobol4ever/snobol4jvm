@@ -428,3 +428,18 @@
                    "END\n"))
       (is (= "3.2\n-2.\n<x>\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; LEN, POS, RPOS, TAB and RTAB take a deferred argument (*N), read when the
+;; match reaches them, as ANY, SPAN and the other charset patterns already do.
+;; They kept the DEFER! thunk as their number. Expected output is the
+;; oracle's: sbl -bf prints these lines.
+(deftest numeric-patterns-take-a-deferred-argument
+  (let [f (java.io.File/createTempFile "defnum" ".sno")]
+    (try
+      (spit f (str " N = 4\n 'COTTON' LEN(*N) . F REM . R\n OUTPUT = R F\n"
+                   " N = 2; 'abcdef' POS(*N) LEN(1) . G; OUTPUT = G\n"
+                   " M = 1; 'abcdef' TAB(*M) . H RTAB(*M) . I; OUTPUT = H ' ' I\n"
+                   " 'abcdef' LEN(2) . J RPOS(*N); OUTPUT = J\n"
+                   "END\n"))
+      (is (= "ONCOTT\nc\na bcde\ncd\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

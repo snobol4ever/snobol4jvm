@@ -19,11 +19,13 @@
 (defn SPAN   [S] (if (deferred? S) (list 'DEFER! (fn [] (SPAN   (str ((second S))))))  (list 'SPAN$   (charset S))))
 
 ;; ── Length / position patterns ────────────────────────────────────────────────
-(defn LEN  [I] (list 'LEN#  I))
-(defn POS  [I] (list 'POS#  I))
-(defn RPOS [I] (list 'RPOS# I))
-(defn RTAB [I] (list 'RTAB# I))
-(defn TAB  [I] (list 'TAB#  I))
+;; A deferred argument (*N) is read when the match reaches the pattern, as for
+;; the charset patterns above.
+(defn LEN  [I] (if (deferred? I) (list 'DEFER! (fn [] (LEN  ((second I))))) (list 'LEN#  I)))
+(defn POS  [I] (if (deferred? I) (list 'DEFER! (fn [] (POS  ((second I))))) (list 'POS#  I)))
+(defn RPOS [I] (if (deferred? I) (list 'DEFER! (fn [] (RPOS ((second I))))) (list 'RPOS# I)))
+(defn RTAB [I] (if (deferred? I) (list 'DEFER! (fn [] (RTAB ((second I))))) (list 'RTAB# I)))
+(defn TAB  [I] (if (deferred? I) (list 'DEFER! (fn [] (TAB  ((second I))))) (list 'TAB#  I)))
 
 ;; ── Zero-width anchor patterns ────────────────────────────────────────────────
 (def BOL (list 'BOL#))    ; beginning of subject (position 0)
