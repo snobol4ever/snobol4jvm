@@ -399,3 +399,16 @@
       (spit f " DATA('POINT(X,Y)')\n P = POINT(1,2)\n OUTPUT = X(P)\n OUTPUT = Y(P)\nEND\n")
       (is (= "1\n2\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; DATATYPE of a program-defined object is its type's name. An instance is a
+;; map, and DATATYPE called every map TABLE. Expected output is the oracle's:
+;; sbl -bf prints these lines.
+(deftest datatype-of-a-data-object-is-its-type-name
+  (let [f (java.io.File/createTempFile "dtype" ".sno")]
+    (try
+      (spit f (str " DATA('POINT(X,Y)'); P = POINT(1,2); OUTPUT = DATATYPE(P)\n"
+                   " DATA('NODE(VAL,NEXT)'); N = NODE('a',P); OUTPUT = DATATYPE(N); OUTPUT = DATATYPE(NEXT(N))\n"
+                   " OUTPUT = DATATYPE(TABLE())\n"
+                   "END\n"))
+      (is (= "POINT\nNODE\nPOINT\nTABLE\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

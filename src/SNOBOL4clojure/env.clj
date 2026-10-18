@@ -334,8 +334,9 @@
 (defmethod DATATYPE "class [LLjava.lang.Object;"                  [_] "ARRAY")
 (defmethod DATATYPE "class SNOBOL4clojure.env.SnobolArray"        [_] "ARRAY")
 (defmethod DATATYPE "class clojure.lang.Atom"                     [_] "TABLE")
-(defmethod DATATYPE "class clojure.lang.PersistentArrayMap"       [_] "TABLE")
-(defmethod DATATYPE "class clojure.lang.PersistentHashMap"        [_] "TABLE")
+;; A program-defined (DATA) object is a map carrying its type name.
+(defmethod DATATYPE "class clojure.lang.PersistentArrayMap"       [X] (get X :__type__ "TABLE"))
+(defmethod DATATYPE "class clojure.lang.PersistentHashMap"        [X] (get X :__type__ "TABLE"))
 (defmethod DATATYPE "class clojure.lang.PersistentVector"         [_] "PATTERN")
 (defmethod DATATYPE "class clojure.lang.Symbol"                   [_] "NAME")
 (defmethod DATATYPE "class clojure.lang.PersistentList"           [X]
