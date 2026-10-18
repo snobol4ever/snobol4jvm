@@ -112,6 +112,34 @@
 (defn  ncvt [x] (list 'num x))
 (defn  scvt [x] (list 'str x))
 
+;; ── SNOBOL4 string conversion ────────────────────────────────────────────────
+(defn real-str
+  "A real as SPITBOL prints it: rounded to 15 significant digits with trailing
+   zeros stripped; fixed point for 0.1 <= |x| < 1e15, with a trailing \".\" when
+   integral (2.0 -> \"2.\"); otherwise 0.<digits>e<sign><exponent> (1e20 ->
+   \"0.1e+21\", 0.001 -> \"0.1e-2\"); zero is \"0.\"."
+  [x]
+  (let [x (double x)]
+    (cond
+      (or (Double/isNaN x) (Double/isInfinite x)) (str x)
+      (zero? x) "0."
+      :else
+      (let [bd (.stripTrailingZeros
+                 (.round (java.math.BigDecimal. x)
+                         (java.math.MathContext. 15 java.math.RoundingMode/HALF_EVEN)))
+            e  (clojure.core/- (.precision bd) (.scale bd))]
+        (if (clojure.core/<= 0 e 15)
+          (let [p (.toPlainString bd)]
+            (if (clojure.string/includes? p ".") p (str p ".")))
+          (str (when (neg? (.signum bd)) "-") "0." (.abs (.unscaledValue bd))
+               "e" (if (neg? e) "-" "+") (Math/abs (long e))))))))
+
+(defn sstr
+  "A SNOBOL4 value as the text it becomes in output and concatenation:
+   nil is the null string, a real is formatted by real-str, anything else is str."
+  [x]
+  (cond (nil? x) "" (double? x) (real-str x) :else (str x)))
+
 ;; ── User variable store — Scope 1: SNOBOL4 program variables ─────────────────
 ;;
 ;; SNOBOL4 has four distinct namespaces:

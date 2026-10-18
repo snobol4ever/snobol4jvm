@@ -5,7 +5,7 @@
   (:require [clojure.tools.trace      :refer :all]
             [SNOBOL4clojure.env       :refer
              [ε η equal not-equal Σ+ subtract multiply divide
-              ncvt scvt num $$ out reference snobol-set!
+              ncvt scvt sstr num $$ out reference snobol-set!
               table? table-get table-set
               array? array-get array-set array-prototype
               snobol-return! snobol-freturn! snobol-nreturn!
@@ -229,21 +229,21 @@
                 ;; normal variable assignment
                 (clojure.core/contains? #{'OUTPUT 'TERMINAL 'INPUT} N)
                 (let [out-val (if (and (list? r) (clojure.core/= (first r) 'SEQ))
-                                (apply str (map #(if (nil? %) "" (str %)) (rest r)))
+                                (apply str (map sstr (rest r)))
                                 r)]
-                  (when (clojure.core/= N 'OUTPUT)   (println out-val))
-                  (when (clojure.core/= N 'TERMINAL) (binding [*out* *err*] (println out-val)))
+                  (when (clojure.core/= N 'OUTPUT)   (println (sstr out-val)))
+                  (when (clojure.core/= N 'TERMINAL) (binding [*out* *err*] (println (sstr out-val))))
                   out-val)
                 ;; Named output channel: var is registered as :output → write to channel writer
                 (clojure.core/= :output (:type (get @<CHANNELS> N)))
                 (let [out-val (if (and (list? r) (clojure.core/= (first r) 'SEQ))
-                                (apply str (map #(if (nil? %) "" (str %)) (rest r)))
+                                (apply str (map sstr (rest r)))
                                 r)]
                   (write-to-channel! N out-val)
                   out-val)
                 :else
                 (let [v (if (and (list? r) (clojure.core/= (first r) 'SEQ))
-                          (apply str (map #(if (nil? %) "" (str %)) (rest r)))
+                          (apply str (map sstr (rest r)))
                           r)]
                   (snobol-set! N v)
                   (fire-value! N v)
@@ -582,7 +582,7 @@
                                                 (var-get vr))
                                               ($$ kw-sym))]
                               (if (instance? clojure.lang.IDeref v) @v v))
-          (equal op 'SEQ)   (apply str (map #(let [v (EVAL! %)] (if (nil? v) "" (str v))) parms))
+          (equal op 'SEQ)   (apply str (map #(sstr (EVAL! %)) parms))
           (equal op 'quote) (first parms)
           ;; Unary * = deferred pattern: do NOT pre-evaluate the arg.
           ;; The thunk must re-read the variable at match time so that

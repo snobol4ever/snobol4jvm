@@ -1,7 +1,7 @@
 (ns SNOBOL4clojure.functions
   ;; Built-in SNOBOL4 functions.
   ;; Stubs are marked clearly; implemented ones are complete.
-  (:require [SNOBOL4clojure.env :refer [ε equal out subtract
+  (:require [SNOBOL4clojure.env :refer [ε equal out subtract sstr
                                         DATATYPE table? array? table-get table-set
                                         ARRAY ->SnobolArray array-get array-set
                                         <CHANNELS>]])
@@ -175,8 +175,8 @@
                (catch Exception _ ε))))
 
 (defn STRING  [x]
-  "Convert any value to its string representation."
-  (str x))
+  "Convert any value to its string representation (a real as SPITBOL prints it)."
+  (sstr x))
 
 ;; ── Program-defined datatype ──────────────────────────────────────────────────
 ;; PDD instances are represented as Clojure maps:
@@ -326,7 +326,7 @@
   (when-let [ch (get @<CHANNELS> var-sym)]
     (when (clojure.core/= :output (:type ch))
       (let [wtr ^java.io.PrintWriter (:writer ch)]
-        (.println wtr (str val))
+        (.println wtr (sstr val))
         (.flush   wtr)
         val))))
 
