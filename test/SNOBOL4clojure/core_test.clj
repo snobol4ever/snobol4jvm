@@ -389,3 +389,13 @@
                    "END\n"))
       (is (= "3,2\n0:3\n5\n1:3,1:2\n4\n-2:2\n1,2\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; DATA writes nothing to stdout. It pretty-printed the Clojure form it built
+;; for the constructor and accessors, so every program using DATA had that code
+;; in its OUTPUT. Expected output is the oracle's: sbl -bf prints these lines.
+(deftest data-prints-nothing-of-its-own
+  (let [f (java.io.File/createTempFile "data" ".sno")]
+    (try
+      (spit f " DATA('POINT(X,Y)')\n P = POINT(1,2)\n OUTPUT = X(P)\n OUTPUT = Y(P)\nEND\n")
+      (is (= "1\n2\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

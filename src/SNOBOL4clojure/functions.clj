@@ -1,7 +1,7 @@
 (ns SNOBOL4clojure.functions
   ;; Built-in SNOBOL4 functions.
   ;; Stubs are marked clearly; implemented ones are complete.
-  (:require [SNOBOL4clojure.env :as env :refer [ε equal out subtract sstr
+  (:require [SNOBOL4clojure.env :as env :refer [ε equal subtract sstr
                                         DATATYPE table? array? table-get table-set
                                         ARRAY ->SnobolArray array-get array-set
                                         <CHANNELS>]])
@@ -274,7 +274,6 @@
 
 (defn DATA [S]
   (when-let [form (DATA! S)]
-    (out form)
     (eval form)
     ε))
 
