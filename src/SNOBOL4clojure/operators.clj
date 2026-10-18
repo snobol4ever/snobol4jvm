@@ -11,7 +11,7 @@
               snobol-return! snobol-freturn! snobol-nreturn!
               <FUNS> <FDEFS> <CHANNELS> <OPSYN>]]
             [SNOBOL4clojure.functions :refer
-             [ASCII CHAR DATE TIME REMDR INTEGER REAL STRING SIZE TRIM DUPL REVERSE LPAD RPAD REPLACE SUBSTR
+             [ASCII CHAR DATE TIME REMDR ATAN CHOP COS EXP LN SIN SQRT TAN INTEGER REAL STRING SIZE TRIM DUPL REVERSE LPAD RPAD REPLACE SUBSTR
               ITEM PROTOTYPE CONVERT COPY FIELD SORT RSORT DATA
               open-input-channel! open-output-channel! close-channel! write-to-channel!]]
             [SNOBOL4clojure.match     :refer [MATCH SEARCH FULLMATCH]]
@@ -129,20 +129,6 @@
 (defn |     ([_x]       η)                       ; unary  — programmable
             ([x y]      (x-2 'ALT x y))          ; binary — alternation
             ([x y & zs] (x-n 'ALT x y zs)))
-
-;; ── Numeric math macros (generate optional math fns on demand) ───────────────
-(defmacro SIN    [] `(defn SIN   [x] (Math/sin  ~(numcvt 'x))))
-(defmacro COS    [] `(defn COS   [x] (Math/cos  ~(numcvt 'x))))
-(defmacro TAN    [] `(defn TAN   [x] (Math/tan  ~(numcvt 'x))))
-(defmacro ASIN   [] `(defn ASIN  [x] (Math/asin ~(numcvt 'x))))
-(defmacro ACOS   [] `(defn ACOS  [x] (Math/acos ~(numcvt 'x))))
-(defmacro ATAN   [] `(defn ATAN  [x] (Math/atan ~(numcvt 'x))))
-(defmacro EXP    [] `(defn EXP   [x] (Math/exp  ~(numcvt 'x))))
-(defmacro LN     [] `(defn LN    [x] (Math/log  ~(numcvt 'x))))
-(defmacro SQRT   [] `(defn SQRT  [x] (Math/sqrt ~(numcvt 'x))))
-(defmacro CHOP   [] `(defn CHOP  [x]
-                       (let [_x ~(numcvt 'x)]
-                         (if (< _x 0.0) (Math/ceil _x) (Math/floor _x)))))
 
 ;; ── INVOKE ────────────────────────────────────────────────────────────────────
 (declare EVAL!)
@@ -373,6 +359,14 @@
     EJECT     ε
     BACKSPACE ε
     SETEXIT   ε
+    ATAN    (ATAN   (first args))
+    CHOP    (CHOP   (first args))
+    COS     (COS    (first args))
+    EXP     (EXP    (first args))
+    LN      (LN     (first args))
+    SIN     (SIN    (first args))
+    SQRT    (SQRT   (first args))
+    TAN     (TAN    (first args))
     INTEGER (INTEGER (first args))
     REAL    (REAL    (first args))
     STRING  (STRING  (first args))

@@ -158,6 +158,46 @@
 (defn CHAR    [n]  (str (char n)))
 (defn REMDR   [x y] (clojure.core/rem (long x) (long y)))
 
+;; ── Real functions (SPITBOL) ─────────────────────────────────────────────────
+;; Each takes an integer, a real or a numeric string and returns a real. The
+;; error codes are SPITBOL's, measured with sbl -bf: a non-numeric argument is
+;; 301 ATAN, 302 CHOP, 303 COS, 304 EXP, 306 LN, 308 SIN, 309 TAN, 313 SQRT;
+;; overflow is 305 EXP, 307 LN (of 0), 310 TAN; 315 is LN of a negative and 314
+;; SQRT of a negative.
+(defn- real-error [code msg] (throw (ex-info msg {:snobol/error code})))
+
+(defn- real-arg
+  "x as a double, or ERROR code when it is not numeric."
+  [x code fname]
+  (let [n (env/num x)]
+    (if (and (double? n) (Double/isNaN ^double n))
+      (real-error code (str fname " argument not numeric"))
+      (double n))))
+
+(defn- finite-or [^double d code msg]
+  (if (Double/isInfinite d) (real-error code msg) d))
+
+(defn ATAN [x] (Math/atan (real-arg x 301 "ATAN")))
+(defn CHOP
+  "The real x truncated toward zero."
+  [x]
+  (let [d (real-arg x 302 "CHOP")]
+    (clojure.core/+ 0.0 (if (neg? d) (Math/ceil d) (Math/floor d)))))
+(defn COS  [x] (Math/cos (real-arg x 303 "COS")))
+(defn EXP  [x] (finite-or (Math/exp (real-arg x 304 "EXP")) 305 "EXP produced real overflow"))
+(defn LN
+  [x]
+  (let [d (real-arg x 306 "LN")]
+    (cond (neg? d)  (real-error 315 "LN argument negative")
+          (zero? d) (real-error 307 "LN produced real overflow")
+          :else     (Math/log d))))
+(defn SIN  [x] (Math/sin (real-arg x 308 "SIN")))
+(defn TAN  [x] (finite-or (Math/tan (real-arg x 309 "TAN")) 310 "TAN produced real overflow"))
+(defn SQRT
+  [x]
+  (let [d (real-arg x 313 "SQRT")]
+    (if (neg? d) (real-error 314 "SQRT argument negative") (Math/sqrt d))))
+
 (defn INTEGER [x]
   "Convert x to integer, or return ε (fail) if not convertible."
   (cond

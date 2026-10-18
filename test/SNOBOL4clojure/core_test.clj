@@ -325,3 +325,31 @@
       (is (= "hello from lib\n"
              (with-out-str (RUN (CODE (slurp f) (include-dirs (.getPath prog) (.getPath lib)))))))
       (finally (doseq [d [lib prog] x (reverse (file-seq d))] (.delete ^java.io.File x))))))
+
+;; The real functions ATAN CHOP COS EXP LN SIN SQRT TAN, which had no INVOKE
+;; entry at all. Each returns a real. Expected output is the oracle's: sbl -bf
+;; prints these lines, and raises these error codes.
+(deftest real-functions-follow-spitbol
+  (let [f (java.io.File/createTempFile "realfns" ".sno")]
+    (try
+      (spit f (str " OUTPUT = ATAN(1); OUTPUT = ATAN(0); OUTPUT = DATATYPE(ATAN(1)); OUTPUT = ATAN('1'); OUTPUT = ATAN(-1.0)\n"
+                   " OUTPUT = CHOP(3.7); OUTPUT = CHOP(-3.7); OUTPUT = CHOP(0.0); OUTPUT = CHOP(7); OUTPUT = DATATYPE(CHOP(7)); OUTPUT = CHOP(-0.5)\n"
+                   " OUTPUT = COS(0); OUTPUT = COS(1); OUTPUT = SIN(0); OUTPUT = SIN(1); OUTPUT = TAN(0); OUTPUT = TAN(1)\n"
+                   " OUTPUT = EXP(0); OUTPUT = EXP(1); OUTPUT = EXP(-1.0); OUTPUT = LN(1); OUTPUT = LN(10); OUTPUT = LN(2.0)\n"
+                   " OUTPUT = SQRT(4); OUTPUT = SQRT(2); OUTPUT = DATATYPE(SQRT(4)); OUTPUT = SQRT('9')\n"
+                   " OUTPUT = SQRT(0)\n"
+                   "END\n"))
+      (is (= (str "0.785398163397448\n0.\nREAL\n0.785398163397448\n-0.785398163397448\n"
+                  "3.\n-3.\n0.\n7.\nREAL\n0.\n"
+                  "1.\n0.54030230586814\n0.\n0.841470984807897\n0.\n1.5574077246549\n"
+                  "1.\n2.71828182845905\n0.367879441171442\n0.\n2.30258509299405\n0.693147180559945\n"
+                  "2.\n1.4142135623731\nREAL\n3.\n"
+                  "0.\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f))))
+  (doseq [[stmt code] [["SQRT(-1)" 314] ["SQRT('abc')" 313] ["LN(0)" 307] ["LN(-1)" 315]
+                       ["EXP(1000)" 305] ["CHOP('x')" 302] ["ATAN('x')" 301] ["COS('x')" 303]
+                       ["EXP('x')" 304] ["LN('x')" 306] ["SIN('x')" 308] ["TAN('x')" 309]]]
+    (is (= code (try (RUN (CODE (str "        X = " stmt "\nEND\n"))) :no-error
+                     (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e)))))
+        stmt)))
