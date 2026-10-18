@@ -404,9 +404,9 @@
 
         ;; ── ABORT! ───────────────────────────────────────────────────────────
         ;; ABORT — immediately terminate the entire match, regardless of context.
-        ;; Returns nil from the engine loop unconditionally.
+        ;; Returns :abort, so the scanner tries no later start position.
         ABORT!
-        nil
+        :abort
 
         ;; ── REM! ─────────────────────────────────────────────────────────────
         ;; REM — matches all remaining characters from the current cursor.
@@ -505,12 +505,18 @@
                 pos0    (ζΔ ζ)
                 chars0  (ζΣ ζ)
                 p-result (engine chars0 pos0 P pos0 full-subject)]
-            (if p-result
+            (cond
+              (clojure.core/= :abort p-result) :abort
+              p-result
               (let [p-end    (second p-result)
                     q-result (engine chars0 pos0 Q pos0 full-subject)]
-                (if q-result                          ; Q must succeed (assertion)
+                (cond
+                  (clojure.core/= :abort q-result) :abort
+                  q-result                                  ; Q must succeed (assertion)
                   (recur :succeed (ζ↑ ζ chars0 p-end) Ω)   ; span = P's span
+                  :else
                   (recur :fail    (ζ↑ ζ (ζΣ ζ) pos0) Ω)))
+              :else
               (recur :fail (ζ↑ ζ (ζΣ ζ) pos0) Ω)))
           (:succeed :fail :recede)
           (recur :recede (🡡 Ω) (🡧 Ω)))
@@ -553,9 +559,10 @@
         (when (<= i n)
           (vswap! *pending-cond* (constantly []))          ; reset for each start pos
           (let [result (engine (drop i chars) i P i S)]
-            (if result
-              (do (commit-pending!) result)
-              (recur (inc i)))))))))
+            (cond
+              (clojure.core/= :abort result) nil      ; ABORT: no later start position
+              result (do (commit-pending!) result)
+              :else  (recur (inc i)))))))))
 
 (defn MATCH
   "Match pattern P against string S anchored at position 0.
@@ -563,7 +570,8 @@
    Equivalent to SEARCH with POS(0) prepended."
   [S P]
   (binding [*pending-cond* (volatile! [])]
-    (let [result (engine (seq S) 0 (list 'SEQ (POS 0) P) 0 S)]
+    (let [result (engine (seq S) 0 (list 'SEQ (POS 0) P) 0 S)
+          result (when-not (clojure.core/= :abort result) result)]
       (when result (commit-pending!))
       result)))
 
@@ -573,7 +581,8 @@
    Equivalent to SEARCH with POS(0) prepended and RPOS(0) appended."
   [S P]
   (binding [*pending-cond* (volatile! [])]
-    (let [result (engine (seq S) 0 (list 'SEQ (POS 0) P (RPOS 0)) 0 S)]
+    (let [result (engine (seq S) 0 (list 'SEQ (POS 0) P (RPOS 0)) 0 S)
+          result (when-not (clojure.core/= :abort result) result)]
       (when result (commit-pending!))
       result)))
 
@@ -596,6 +605,7 @@
         n     (count S)
         bag   (atom [])
         node  (list 'COLLECT! bag P)]
-    (doseq [i (range (inc n))]
-      (engine (drop i chars) i node i S))
+    (loop [i 0]
+      (when (and (<= i n) (not (clojure.core/= :abort (engine (drop i chars) i node i S))))
+        (recur (inc i))))
     @bag))

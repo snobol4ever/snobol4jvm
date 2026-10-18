@@ -510,3 +510,19 @@
       (finally (.delete f))))
   (is (= 238 (try (RUN (CODE "        A = ARRAY(3)\n        V = A<'abc'>\nEND\n")) :no-error
                   (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e)))))))
+
+;; ABORT ends the whole match: the scanner tries no later start position. The
+;; engine returned nil for ABORT, which SEARCH reads as "no match here", so it
+;; moved on and a later position could match. A bare FENCE() backed into ends
+;; only the attempt at its own position, as SPITBOL scans on past it.
+;; The oracle, sbl -bf: F, F and F for the three ABORT matches, S for FENCE().
+(deftest abort-ends-the-scan
+  (let [f (java.io.File/createTempFile "abort" ".sno")]
+    (try
+      (spit f (str " '-1a-b-' (ANY('ab') | '1' ABORT) :S(Y1)\n OUTPUT = '1 F'\n"
+                   "Y1 P = ANY('ab') | '1' ABORT\n '-1a-b-' P :S(Y2)\n OUTPUT = '2 F'\n"
+                   "Y2 'ABC' ('C' | 'A' ABORT | 'A') :S(Y3)\n OUTPUT = '3 F'\n"
+                   "Y3 'ABC' FENCE() 'B' :F(END)\n OUTPUT = '4 S'\n"
+                   "END\n"))
+      (is (= "1 F\n2 F\n3 F\n4 S\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
