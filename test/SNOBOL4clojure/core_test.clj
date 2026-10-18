@@ -412,3 +412,19 @@
                    "END\n"))
       (is (= "POINT\nNODE\nPOINT\nTABLE\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A program's own function or DATA field wins over the engine's extension of
+;; the same name. REAL and STRING are not SPITBOL functions (sbl -bf: ERROR
+;; 022), so DATA('COMPLEX(REAL,IMAG)') and DEFINE('STRING(S)') are legal, and
+;; the engine's own REAL / STRING shadowed them. Expected output is the
+;; oracle's: sbl -bf prints these lines.
+(deftest a-program-function-wins-over-an-engine-extension-of-the-same-name
+  (let [f (java.io.File/createTempFile "prec" ".sno")]
+    (try
+      (spit f (str " DATA('COMPLEX(REAL,IMAG)'); X = COMPLEX(3.2,-2.0); OUTPUT = REAL(X); OUTPUT = IMAG(X)\n"
+                   " DEFINE('STRING(S)') :(SE)\n"
+                   "STRING STRING = '<' S '>' :(RETURN)\n"
+                   "SE OUTPUT = STRING('x')\n"
+                   "END\n"))
+      (is (= "3.2\n-2.\n<x>\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

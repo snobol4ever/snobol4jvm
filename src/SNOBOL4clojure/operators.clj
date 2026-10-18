@@ -133,7 +133,19 @@
 ;; ── INVOKE ────────────────────────────────────────────────────────────────────
 (declare EVAL!)
 
+(defn- program-fn
+  "The function a program bound to the name op (a DATA constructor or field),
+   or nil. Only names that start with a letter: operators are not looked up."
+  [op]
+  (when (and (symbol? op) (Character/isLetter (.charAt (name op) 0)))
+    (let [v (reference op)] (when (fn? v) v))))
+
 (defn INVOKE [op & args]
+  ;; A program's own DATA function wins over the engine's arm of the same
+  ;; name: SPITBOL refuses to redefine its own functions (ERROR 248), so a
+  ;; program can only own a name SPITBOL does not, such as REAL or STRING.
+  (if-let [pf (program-fn op)]
+    (apply pf args)
   (case op
     |       (apply | args)
     $       (apply $ args)
@@ -530,7 +542,7 @@
                 ;; The IR spells a call F(x) and a subscript A<x> alike, so a
                 ;; subscripted non-array reads 022 here where SPITBOL says 235.
                 :else      (throw (ex-info "undefined function called"
-                                           {:snobol/error 22 :function op}))))))
+                                           {:snobol/error 22 :function op})))))))
 
 ;; ── APPLY ─────────────────────────────────────────────────────────────────────
 (defn APPLY
