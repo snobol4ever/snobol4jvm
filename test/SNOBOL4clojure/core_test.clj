@@ -168,3 +168,17 @@
                    "END\n"))
       (is (= "one\ntwo!\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; &ALPHABET is the 256-character string, so REPLACE and SIZE take it like any
+;; other string. It was a vector of chars, and REPLACE(&ALPHABET, ...) threw a
+;; ClassCastException (Gimpel's AGT.INC builds its case table that way).
+;; Expected output is the oracle's: sbl -bf prints 256 and cAB.
+(deftest alphabet-keyword-is-the-256-character-string
+  (let [f (java.io.File/createTempFile "alphabet" ".sno")]
+    (try
+      (spit f (str "        T = REPLACE(&ALPHABET, 'ab', 'AB')\n"
+                   "        OUTPUT = SIZE(&ALPHABET)\n"
+                   "        OUTPUT = REPLACE('cab', &ALPHABET, T)\n"
+                   "END\n"))
+      (is (= "256\ncAB\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

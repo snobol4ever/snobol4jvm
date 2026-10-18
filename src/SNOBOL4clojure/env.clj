@@ -23,7 +23,7 @@
 (def  η          ##NaN)     ; undefined numeric
 
 ;; ── SNOBOL4 keywords (& variables) ───────────────────────────────────────────
-(def  &ALPHABET  (atom (apply vector (map #(char %) (range 256)))))
+(def  &ALPHABET  (atom (apply str (map char (range 256)))))   ; the 256-character string, codes 0..255 in order
 (def  &ANCHOR    (atom 0))
 (def  &DIGITS    "0123456789")
 (def  &DUMP      (atom 0))  ; 1, 2, and 3 levels
