@@ -5,7 +5,7 @@
    Shape B: bounded iteration, budget 2000ms, documented bound.
    All tests use prog string-based runner for full pipeline coverage."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.test-helpers :refer [prog prog-timeout prog-infinite]]))
 
 (GLOBALS *ns*)

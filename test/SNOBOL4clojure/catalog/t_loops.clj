@@ -4,7 +4,7 @@
    Shape A: atomic (single assignment or match), budget 2000ms.
    Shape B: bounded loop, budget 2000ms, documented bound."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.test-helpers :refer [prog prog-timeout prog-infinite prog-steplimit]]))
 
 (GLOBALS *ns*)

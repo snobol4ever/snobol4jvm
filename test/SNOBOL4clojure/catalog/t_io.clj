@@ -4,7 +4,7 @@
    Shape A (atomic): single open + read/write.
    Shape B (bounded): loop with :F(DONE) on EOF — terminates by construction."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.env :as env]
             [SNOBOL4clojure.test-helpers :refer [run-with-timeout]]))
 

@@ -11,7 +11,7 @@
    - Error-expecting tests (Assert.AreNotEqual 0 ErrorCodeHistory) are marked
      with (is (thrown? ...)) or skipped if the error path is not yet implemented."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.test-helpers :refer [prog prog-timeout prog-infinite]]))
 
 ;; ── Pattern/Len ───────────────────────────────────────────────────────────────

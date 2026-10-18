@@ -22,7 +22,7 @@
      DREALS (1.0D2 notation), SETEXIT, &DUMP, TRACE output assertions."
   (:require [clojure.test        :refer :all]
             [clojure.string      :as str]
-            [SNOBOL4clojure.core :refer :all]
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.test-helpers :refer [prog prog-steplimit]]))
 
 (GLOBALS *ns*)

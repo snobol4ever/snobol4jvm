@@ -2,7 +2,7 @@
   "Tests for &STLIMIT / &STCOUNT step accounting and TRACE/STOPTR functionality.
    These are the canonical tests for Sprint 18B features."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.test-helpers :refer [prog prog-timeout prog-infinite
                                                   prog-steplimit set-steplimit!]]))
 

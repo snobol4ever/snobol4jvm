@@ -1,7 +1,7 @@
 (ns SNOBOL4clojure.test-sprint12
   "Sprint 12 tests: CONVERT, DATA/FIELD, SORT/RSORT."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]))
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]))
 
 (use-fixtures :each (fn [f] (GLOBALS *ns*) (f)))
 

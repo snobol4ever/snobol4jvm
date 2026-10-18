@@ -5,7 +5,7 @@
    Budget: 1000ms per test."
   (:require [clojure.test  :refer :all]
             [clojure.java.io :as io]
-            [SNOBOL4clojure.core :refer :all]))
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]))
 
 (use-fixtures :each (fn [f]
                       (GLOBALS (find-ns 'SNOBOL4clojure.catalog.t-io-channels))

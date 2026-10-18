@@ -1,9 +1,8 @@
 (ns SNOBOL4clojure.test-operators
   ;; Tests for SNOBOL4 operators and the EVAL/EVAL!/INVOKE evaluator.
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.operators :refer :all]
-            [SNOBOL4clojure.env       :refer [ε &LCASE &UCASE &DIGITS]])
-  (:refer-clojure :exclude [= + - * / num]))
+            [SNOBOL4clojure.operators :as ops :refer :all :exclude [= + - * / num]]
+            [SNOBOL4clojure.env       :refer [ε &LCASE &UCASE &DIGITS]]))
 
 ;; ── ? (match operator) ───────────────────────────────────────────────────────
 (deftest test-match-op
@@ -84,7 +83,7 @@
 (deftest test-arithmetic-ops
   ;; These produce Clojure list expressions (deferred arithmetic)
   ;; rather than immediately computing — that is by design.
-  (is (list? (+ 1 2)))
-  (is (list? (- 5 3)))
-  (is (list? (* 2 3)))
-  (is (list? (/ 6 2))))
+  (is (list? (ops/+ 1 2)))
+  (is (list? (ops/- 5 3)))
+  (is (list? (ops/* 2 3)))
+  (is (list? (ops// 6 2))))

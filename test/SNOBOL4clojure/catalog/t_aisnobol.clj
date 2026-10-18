@@ -16,7 +16,7 @@
      ENDING.SNO — English word-ending morphology (Winograd 1972 flowchart)
      WANG.SNO   — Wang's algorithm for propositional logic theorem proving"
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.test-helpers :refer [prog prog-steplimit prog-include]]))
 
 (GLOBALS *ns*)

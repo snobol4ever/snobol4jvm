@@ -20,7 +20,7 @@
      A failing test means our impl is wrong.
   "
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.test-helpers :refer [prog prog-timeout prog-infinite]]))
 
 ;; ── Macro ──────────────────────────────────────────────────────────────────────

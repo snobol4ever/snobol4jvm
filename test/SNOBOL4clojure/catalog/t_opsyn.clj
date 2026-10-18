@@ -2,7 +2,7 @@
   "Sprint 25E — OPSYN tests.
    OPSYN(new, old, n): n=0 function synonym, n=1 unary op, n=2 binary op."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.env :as env]
             [SNOBOL4clojure.test-helpers :refer [run-with-timeout]]))
 

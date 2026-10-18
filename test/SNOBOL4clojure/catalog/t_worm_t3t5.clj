@@ -4,7 +4,7 @@
    T4: DEFINE/CALL, FRETURN, locals, chains, call-in-loop.
    T5: recursion (fact/fib/pow/sum), TABLE and ARRAY algorithms."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.env  :refer [table-get array-get]]
             [SNOBOL4clojure.test-helpers :refer [prog prog-steplimit]]))
 

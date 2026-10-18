@@ -1,6 +1,6 @@
 (ns SNOBOL4clojure.test-diag
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.test-helpers :refer [prog]]))
 (GLOBALS *ns*)
 (use-fixtures :each (fn [f] (GLOBALS (find-ns 'SNOBOL4clojure.test-diag)) (f)))

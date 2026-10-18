@@ -3,7 +3,7 @@
    Verifies: snapshot!, run-to-step, probe-at, bisect-divergence,
              probe-test macro, run-with-restart, auto-snapshot on step-limit."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.test-helpers :refer [prog prog-timeout
                                                   run-with-timeout
                                                   run-to-step probe-at

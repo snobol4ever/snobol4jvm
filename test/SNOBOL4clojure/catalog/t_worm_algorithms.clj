@@ -3,7 +3,7 @@
    Bubble sort, GCD, string reversal, palindrome, binary search,
    Sieve of Eratosthenes, CSV tokenizer, Collatz sequence."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.env  :refer [array-get]]
             [SNOBOL4clojure.test-helpers :refer [prog prog-steplimit]]))
 

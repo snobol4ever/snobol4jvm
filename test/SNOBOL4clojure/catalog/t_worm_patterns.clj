@@ -3,7 +3,7 @@
    SPAN/BREAK, NOTANY, TAB/RTAB/POS, pattern variables, capture in loops,
    ARBNO, multi-pattern sequences, expression extraction."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.test-helpers :refer [prog prog-steplimit]]))
 
 (GLOBALS *ns*)

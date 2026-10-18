@@ -4,7 +4,7 @@
    Design rule: ALL language keywords UPPERCASE. No case folding.
    :(RETURN) :(FRETURN) :(NRETURN) :(END) :S(x) :F(x) always uppercase."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]))
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]))
 
 (defmacro prog [& lines]
   `(RUN (CODE ~(clojure.string/join "\n" (map str lines)))))

@@ -9,7 +9,7 @@
    with :expected-fail metadata where snobol4jvm does not yet support the
    underlying syscall — they compile and run but may not match .ref."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.test-helpers :refer [prog-timeout run-with-timeout]]))
 
 ;; ── stdin helper ────────────────────────────────────────────────────────────

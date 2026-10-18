@@ -4,7 +4,7 @@
    factors, terms, then evaluate the parse tree.
    This is the capstone TN program for sprint 18."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.test-helpers :refer [prog prog-steplimit]]))
 
 (GLOBALS *ns*)

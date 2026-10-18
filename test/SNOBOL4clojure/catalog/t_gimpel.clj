@@ -13,7 +13,7 @@
    providing confidence that SNOBOL4clojure faithfully executes the
    original Gimpel code."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all]
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.test-helpers :refer [prog prog-include prog-steplimit]]))
 
 (GLOBALS *ns*)

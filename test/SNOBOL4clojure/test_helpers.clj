@@ -69,7 +69,7 @@
       ((:resume h) 20)           ; run 20 more steps
 
   ### CRITICAL: `=` shadowing hazard
-  Test namespaces using `[SNOBOL4clojure.core :refer :all]` have `=` replaced
+  Test namespaces using `[SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]` have `=` replaced
   by SNOBOL4's IR-building `=` operator.  In predicate lambdas defined in such
   a namespace, `(= v 0)` builds the IR list `(= v 0)` — always truthy!
 
