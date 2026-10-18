@@ -526,3 +526,18 @@
                    "END\n"))
       (is (= "1 F\n2 F\n3 F\n4 S\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; P $ V assigns the whole span P matched. When P is a sequence, its frame's
+;; start moves forward as each element matches, and CAPTURE-IMM read the span
+;; from that frame, so it captured from the start of P's last element, or
+;; nothing. The oracle, sbl -bf: CATyDOG, CATyDOG, DOG and CATD.
+(deftest immediate-capture-takes-the-whole-span-of-a-sequence
+  (let [f (java.io.File/createTempFile "dollar" ".sno")]
+    (try
+      (spit f (str " P = 'CAT' ARB 'DOG'; 'xCATyDOGz' P $ R1; OUTPUT = R1\n"
+                   " 'xCATyDOGz' ('CAT' ARB 'DOG') $ R2; OUTPUT = R2\n"
+                   " Q = 'CAT' ARB 'DOG' | 'DOG' ARB 'CAT'; 'DOGS HATE POLECATS' Q $ R3; OUTPUT = R3\n"
+                   " 'xCATDOGz' ('CAT' LEN(1)) $ R4; OUTPUT = R4\n"
+                   "END\n"))
+      (is (= "CATyDOG\nCATyDOG\nDOGS HATE POLECAT\nCATD\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

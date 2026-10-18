@@ -236,13 +236,18 @@
         ;; IMPORTANT: on :succeed we do NOT pop Ω — any retry frames pushed by
         ;; our child (e.g. BREAKX#) must remain on Ω so backtracking can reach them.
         ;; We pushed our own frame at :proceed; on :recede we pop that frame.
+        ;; The start cursor is baked into the node at :proceed, as COND-ASSIGN!
+        ;; bakes it: a SEQ child moves its frame's Δ forward element by element,
+        ;; so the Δ that comes back on :succeed is not where P began.
         CAPTURE-IMM
         (case action
           :proceed
-          (recur :proceed (ζ↓ ζ) (🡥 Ω ζ))
+          (let [[_ child-P var-sym] (ζΠ ζ)
+                ζ (assoc ζ 4 (list 'CAPTURE-IMM child-P var-sym (ζΔ ζ)))]
+            (recur :proceed (ζ↓ ζ) (🡥 Ω ζ)))
           :succeed
-          (let [[_ _ var-sym] (ζΠ ζ)
-                matched-text  (subs full-subject (ζΔ ζ) (ζδ ζ))]
+          (let [[_ _ var-sym start-pos] (ζΠ ζ)
+                matched-text  (subs full-subject start-pos (ζδ ζ))]
             (snobol-set! var-sym matched-text)   ; assign immediately, unconditionally
             (recur :succeed (ζ↑ ζ) Ω))           ; leave child retry frames on Ω
           (:fail :recede)
