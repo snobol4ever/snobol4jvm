@@ -361,6 +361,18 @@
     array   (apply SNOBOL4clojure.env/ARRAY args)
     ASCII   (ASCII  (first args))
     REMDR   (REMDR  (first args) (second args))
+    ;; TRACE / STOPTR register and remove traces in trace.clj.
+    TRACE   (let [[nm ty lbl f] args] (trace! nm (or ty "VALUE") lbl f) ε)
+    STOPTR  (let [[nm ty] args] (stoptr! nm (or ty "VALUE")) ε)
+    ;; COLLECT returns an integer, the store left, as SPITBOL does (DATATYPE INTEGER).
+    COLLECT (quot (.freeMemory (Runtime/getRuntime)) 8)
+    ;; Not yet implemented: these keep the null result they had before an
+    ;; undefined name became ERROR 022, so no program that calls them regresses.
+    CLEAR     ε
+    DUMP      ε
+    EJECT     ε
+    BACKSPACE ε
+    SETEXIT   ε
     INTEGER (INTEGER (first args))
     REAL    (REAL    (first args))
     STRING  (STRING  (first args))
@@ -520,7 +532,11 @@
                 (table? f) (table-get f (first args))   ; TABLE subscript read
                 (array? f) (array-get f (vec args))     ; ARRAY subscript read
                 (fn? f)    (apply f args)
-                :else      ε))))
+                ;; Nothing callable by this name: ERROR 022, as SPITBOL raises it.
+                ;; The IR spells a call F(x) and a subscript A<x> alike, so a
+                ;; subscripted non-array reads 022 here where SPITBOL says 235.
+                :else      (throw (ex-info "undefined function called"
+                                           {:snobol/error 22 :function op}))))))
 
 ;; ── APPLY ─────────────────────────────────────────────────────────────────────
 (defn APPLY

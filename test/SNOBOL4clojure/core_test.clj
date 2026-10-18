@@ -298,3 +298,13 @@
       (is (= "got a\ngot \ngot b\neof\n" (run "a\n\nb\n")))
       (is (= "eof\n" (run "")))
       (finally (.delete f)))))
+
+;; Calling a function that is not defined is ERROR 022, which stops the program,
+;; as sbl -bf reports it for NOSUCH(1) and for X(1) with X a plain value. It
+;; returned the null string, so the statement succeeded and a program missing a
+;; function (an -INCLUDE that was not found, say) ran on and could loop forever.
+(deftest calling-an-undefined-function-is-error-22
+  (doseq [stmt ["Y = NOSUCH(1)" "Y = NOSUCH()" "X = 5; Y = X(1)"]]
+    (is (= 22 (try (RUN (CODE (str "        " stmt "\n        OUTPUT = 'after'\nEND\n"))) :no-error
+                   (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e)))))
+        stmt)))
