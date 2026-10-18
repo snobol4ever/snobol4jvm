@@ -897,13 +897,13 @@
   (is (= "123" ($$ 'R2))))
 
 (deftest cooper-fence-004
-  "FENCE('B') — 'ABC' starts at A not B, fails"
+  "FENCE('B') — unanchored, the scan moves past A and matches B, succeeds"
   (prog
     "        'ABC'  FENCE('B') :S(Y)F(N)"
     "Y       R1 = 'SUCCESS' :(END)"
     "N       R1 = 'FAILURE'"
     "END")
-  (is (= "FAILURE" ($$ 'R1))))
+  (is (= "SUCCESS" ($$ 'R1))))
 
 ;; ── StringSynthesis/Reverse ───────────────────────────────────────────────────
 
