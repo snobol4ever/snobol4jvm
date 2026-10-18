@@ -91,7 +91,30 @@
             ([x y & zs] (n-n multiply x y zs)))
 (defn %     ([_x]       η)
             ([_x _y]    η))
-(defn pow-fn [x y] (Math/pow (ncvt x) (ncvt y)))
+(defn pow-fn
+  "SNOBOL4 exponentiation (**, and its synonyms ^ and !). Integer ** non-negative
+   integer is an exact integer: 0 ** 0 is error 18 and a result past 64 bits is
+   error 17, as SPITBOL reports them. A negative exponent or a real operand gives
+   a real; 0 ** -n is 0.0, as SPITBOL prints it."
+  [x y]
+  (let [x (num x) y (num y)]
+    (if (and (integer? x) (integer? y) (not (neg? y)))
+      (cond
+        (and (zero? x) (zero? y))
+        (throw (ex-info "exponentiation result is undefined" {:snobol/error 18}))
+        (zero? x) 0
+        (clojure.core/= x 1) 1
+        (clojure.core/= x -1) (if (even? y) 1 -1)
+        (clojure.core/> y 64)
+        (throw (ex-info "exponentiation caused integer overflow" {:snobol/error 17}))
+        :else
+        (let [r (.pow (biginteger x) (int y))]
+          (if (clojure.core/< (.bitLength r) 64)
+            (long r)
+            (throw (ex-info "exponentiation caused integer overflow" {:snobol/error 17})))))
+      (if (and (integer? x) (zero? x) (neg? y))
+        0.0
+        (Math/pow (double x) (double y))))))
 (defn !     ([_x]       η)
             ([x y]      (pow-fn x y)))
 (defn **    ([x y]      (pow-fn x y)))
@@ -173,8 +196,7 @@
                 (if (every? integer? ns)
                   (apply quot ns)
                   (apply clojure.core// ns))))
-    **      (let [[x y] (map num args)]
-              (Math/pow x y))
+    **      (let [[x y] args] (pow-fn x y))
     ?       (let [[s p] args] (SEARCH (str s) p))
     =       (let [[N r] args]
               ;; nil replacement = sub-expression failure → statement fails

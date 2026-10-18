@@ -182,3 +182,25 @@
                    "END\n"))
       (is (= "256\ncAB\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; Exponentiation: ** with ^ and ! as its synonyms. Integer ** integer is an
+;; integer, a negative exponent gives a real, and the operator is
+;; right-associative. It was Math/pow everywhere, so 2 ** 10 printed the real
+;; 1024., and ^ and ! reached INVOKE with no entry and stopped the program.
+;; Expected output is the oracle's: sbl -bf prints these lines.
+(deftest exponentiation-integer-real-and-synonyms
+  (let [f (java.io.File/createTempFile "power" ".sno")]
+    (try
+      (spit f (str "        OUTPUT = 2 ** 10\n"
+                   "        OUTPUT = 2 ^ 10\n"
+                   "        OUTPUT = 2 ! 10\n"
+                   "        OUTPUT = 2 ** 0\n"
+                   "        OUTPUT = 2 ** -1\n"
+                   "        OUTPUT = -2 ** 3\n"
+                   "        OUTPUT = 2 ** 62\n"
+                   "        OUTPUT = '3' ** '2'\n"
+                   "        OUTPUT = 2 ** 3 ** 2\n"
+                   "END\n"))
+      (is (= "1024\n1024\n1024\n1\n0.5\n-8\n4611686018427387904\n9\n512\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

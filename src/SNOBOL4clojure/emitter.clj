@@ -67,7 +67,8 @@
                   ([x y]     (list '% x y)))
      :xp        (fn
                   ([x]       x)
-                  ([x op y]  (list (symbol op) x y)))
+                  ;; ^ and ! are SPITBOL's synonyms for **; one operator reaches INVOKE
+                  ([x op y]  (list (symbol (if (#{"^" "!"} op) "**" op)) x y)))
      :cap       (fn
                   ([x]       x)
                   ([x op y]  (list (symbol op) x y)))
