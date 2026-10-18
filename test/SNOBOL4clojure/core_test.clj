@@ -472,3 +472,19 @@
                       ["1.5e+2" 150.0] ["-.5E-1" -0.05] ["" 0.0] ["1e-9999" 0.0]]]
     (let [v (CONVERT s "REAL")]
       (is (= expect (if (nil? v) :fail v)) (pr-str s)))))
+
+;; A concatenation of strings assigned to an array or table element is a STRING,
+;; as it is when assigned to a variable. The subscript branch stored the raw
+;; (SEQ ...) list, which reads as a PATTERN. The oracle, sbl -bf: STRING qr and
+;; STRING pp, and Gimpel's BSORT sorts the array it is given.
+(deftest concatenation-assigned-to-a-subscript-is-a-string
+  (let [f (java.io.File/createTempFile "catsub" ".sno")]
+    (try
+      (spit f (str " A = ARRAY(3); T = TABLE()\n"
+                   " A<2> = 'q' 'r'; OUTPUT = DATATYPE(A<2>) ' ' A<2>\n"
+                   " T<'k'> = 'p' 'p'; OUTPUT = DATATYPE(T<'k'>) ' ' T<'k'>\n"
+                   " A<1> = 'p'; K = 1\n"
+                   " A<K + 1> = LGT(A<K>,'a') A<K>; OUTPUT = DATATYPE(A<2>) ' ' A<2>\n"
+                   "END\n"))
+      (is (= "STRING qr\nSTRING pp\nSTRING p\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

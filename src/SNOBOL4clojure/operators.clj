@@ -220,6 +220,7 @@
                 ;; subscript assignment: (= (A k...) val) — mutate TABLE, ARRAY, or PDD
                 (and (list? N) (>= (count N) 2))
                 (let [[container-sym & ks] N
+                      r (concat-value r)
                       raw-container ($$ container-sym)
                       ;; NAME indirect reference — dereference to the actual array/table
                       container (if (instance? NAME raw-container)
