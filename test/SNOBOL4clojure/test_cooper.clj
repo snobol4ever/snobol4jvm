@@ -1057,7 +1057,7 @@
     "        ARR<3> = 'mango'"
     "        ARR<4> = 'banana'"
     "        ARR<5> = 'cherry'"
-    "        BSORT(.ARR,1,5)"
+    "        BSORT(ARR,1,5)"
     "        R1 = ARR<1>"
     "        R2 = ARR<2>"
     "        R3 = ARR<3>"
