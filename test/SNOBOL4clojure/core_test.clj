@@ -488,3 +488,25 @@
                    "END\n"))
       (is (= "STRING qr\nSTRING pp\nSTRING p\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; An array subscript converts to an integer as SPITBOL converts it: a numeric
+;; string reads as its number, a real is truncated, and the null string is 0
+;; (out of bounds, so the reference fails). Text that is not a number is ERROR
+;; 238. A string subscript raised "subscript out of bounds" instead, so Gimpel's
+;; BSORT, whose J = J + 1 LT(J,N) leaves a string in J, read nothing.
+;; The oracle, sbl -bf, on A = ARRAY(3) with A<2> = 'x': A<'2'>, A<' 2'>,
+;; A<'+2'>, A<'02'>, A<2.5> and A<'2.0'> read x, A<''> fails, and A<'abc'> is
+;; ERROR 238 -- array subscript is not integer.
+(deftest an-array-subscript-converts-to-an-integer
+  (let [f (java.io.File/createTempFile "arrsub" ".sno")]
+    (try
+      (spit f (str " A = ARRAY(3); A<2> = 'x'\n"
+                   " OUTPUT = A<'2'> A<' 2'> A<'+2'> A<'02'> A<2.5> A<'2.0'>\n"
+                   " A<'3'> = 'y'; OUTPUT = A<3>\n"
+                   " V = A<''> :S(END)\n"
+                   " OUTPUT = 'null fails'\n"
+                   "END\n"))
+      (is (= "xxxxxx\ny\nnull fails\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f))))
+  (is (= 238 (try (RUN (CODE "        A = ARRAY(3)\n        V = A<'abc'>\nEND\n")) :no-error
+                  (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e)))))))

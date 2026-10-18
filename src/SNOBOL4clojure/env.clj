@@ -283,10 +283,23 @@
 
 (defn array?    [x] (instance? SnobolArray x))
 
+(defn- array-subscript
+  "A subscript as the integer SPITBOL converts it to: a numeric string reads as
+   its number, a real is truncated, the null string is 0. Anything else is
+   ERROR 238."
+  [i]
+  (if (integer? i)
+    i
+    (let [n (num i)]
+      (if (and (double? n) (Double/isNaN n))
+        (throw (ex-info "array subscript is not integer" {:snobol/error 238}))
+        (long n)))))
+
 (defn- array-check-bounds
   "Returns nil (failure) if idx-vec is out of bounds, else the normalised key."
   [^SnobolArray arr idx-vec]
-  (let [dims (:dims arr)]
+  (let [dims    (:dims arr)
+        idx-vec (mapv array-subscript idx-vec)]
     (when (clojure.core/= (count idx-vec) (count dims))
       (when (every? true?
                     (map (fn [[lo hi] i]
