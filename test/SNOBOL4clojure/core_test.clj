@@ -606,3 +606,16 @@
                    "END\n"))
       (is (= "STRING\nsame\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; Concatenating the null string leaves a value as it was: P '' and '' P '' are
+;; P itself. A pattern concatenated with the null string became a new sequence,
+;; which DIFFER found different from P. The oracle, sbl -bf: ident, ident2.
+(deftest concatenating-the-null-string-leaves-a-value-as-it-was
+  (let [f (java.io.File/createTempFile "catnull" ".sno")]
+    (try
+      (spit f (str " P = BAL; Q = P ''; NULL = ''\n OUTPUT = IDENT(Q,P) 'ident'\n"
+                   " R = NULL P NULL; OUTPUT = IDENT(R,P) 'ident2'\n"
+                   " DIFFER(BAL NULL,BAL) :S(END)\n DIFFER(NULL BAL,BAL) :S(END)\n"
+                   " OUTPUT = 'same'\nEND\n"))
+      (is (= "ident\nident2\nsame\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
