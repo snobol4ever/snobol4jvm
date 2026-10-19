@@ -14,6 +14,8 @@
    When x==y: DIFFER fails, STARS not assigned, TEST stays ''. (PASS)
    When x!=y: DIFFER succeeds, STARS assigned to TEST. (FAIL)
    Each deftest runs an isolated logical group and asserts ($$ 'TEST) = ''.
+   test2's pattern groups match against TEST = &UCASE and assign STARS to
+   TEST on a wrong turn, so they assert TEST still holds the alphabet.
 
    test3: factorial table — verify first and last output lines via stdout.
    test4: syntactic recogniser — verify <<< NO SYNTACTIC ERROR >>> lines.
@@ -38,6 +40,11 @@
   "Assert that none of the STARS self-checks fired: TEST must be empty string."
   []
   `(is (= "" ($$ 'TEST)) "STARS self-check fired — a DIFFER(x,y) found a mismatch"))
+
+(defmacro subject-ok
+  "Assert that none of test2's self-checks fired: TEST, the subject, is unchanged."
+  []
+  `(is (= "ABCDEFGHIJKLMNOPQRSTUVWXYZ" ($$ 'TEST)) "STARS self-check fired — a pattern took a wrong turn"))
 
 ;; ─────────────────────────────────────────────────────────────────────────────
 ;; testpgms-test1 — Diagnostics Phase One
@@ -449,7 +456,7 @@
     "S05      TEST 'BCD'                  :F(S06) ; TEST = STARS"
     "S06"
     "END")
-  (stars-ok))
+  (subject-ok))
 
 (deftest t2_capture_dollar_dot
   "Pattern capture with $ (immediate) and . (deferred) assignment."
@@ -463,7 +470,7 @@
     "S09      IDENT(VARD,'ABC')            :S(S10) ; TEST = STARS"
     "S10"
     "END")
-  (stars-ok))
+  (subject-ok))
 
 (deftest t2_len
   "LEN: match exactly N characters."
@@ -477,7 +484,7 @@
     "S14      TEST LEN(27)                 :F(S15) ; TEST = STARS"
     "S15"
     "END")
-  (stars-ok))
+  (subject-ok))
 
 (deftest t2_tab
   "TAB: advance cursor to absolute position."
@@ -492,7 +499,7 @@
     "S20      IDENT(VART)                  :S(S21) ; TEST = STARS"
     "S21"
     "END")
-  (stars-ok))
+  (subject-ok))
 
 (deftest t2_arb
   "ARB: match zero or more arbitrary characters."
@@ -503,7 +510,7 @@
     "S22      IDENT(VARA,'AB')             :S(S23) ; TEST = STARS"
     "S23"
     "END")
-  (stars-ok))
+  (subject-ok))
 
 (deftest t2_pos_rpos
   "POS and RPOS: position predicates from left and right."
@@ -523,7 +530,7 @@
     "S41      TEST RPOS(27)                 :F(S42) ; TEST = STARS"
     "S42"
     "END")
-  (stars-ok))
+  (subject-ok))
 
 (deftest t2_rtab
   "RTAB: match up to N characters from right end."
@@ -539,7 +546,7 @@
     "S48      IDENT(VARA,'A')              :S(S49) ; TEST = STARS"
     "S49"
     "END")
-  (stars-ok))
+  (subject-ok))
 
 (deftest t2_break_span
   "BREAK and SPAN: character-set scanning."
@@ -556,7 +563,7 @@
     "S67      TEST SPAN(',')               :F(S68) ; TEST = STARS"
     "S68"
     "END")
-  (stars-ok))
+  (subject-ok))
 
 (deftest t2_any_notany
   "ANY and NOTANY: single-character set membership."
@@ -571,7 +578,7 @@
     "S78      TEST NOTANY(TEST)            :F(S79) ; TEST = STARS"
     "S79"
     "END")
-  (stars-ok))
+  (subject-ok))
 
 (deftest t2_rem
   "REM: match remainder of string."
@@ -584,7 +591,7 @@
     "S82      IDENT(VARA)                  :S(S83) ; TEST = STARS"
     "S83"
     "END")
-  (stars-ok))
+  (subject-ok))
 
 (deftest t2_alternation
   "Pattern alternation with |."
@@ -597,7 +604,7 @@
     "D86      IDENT(VARL,TEST)             :S(D00) ; TEST = STARS"
     "D00"
     "END")
-  (stars-ok))
+  (subject-ok))
 
 (deftest t2_deferred_patterns
   "Deferred pattern arguments (* prefix) for LEN, TAB, POS, RPOS."
@@ -618,7 +625,7 @@
     "D43      IDENT(VARA)                  :S(D49) ; TEST = STARS"
     "D49"
     "END")
-  (stars-ok))
+  (subject-ok))
 
 (deftest t2_deferred_break_span_any_notany
   "Deferred arguments for BREAK, SPAN, ANY, NOTANY."
@@ -635,7 +642,7 @@
     "D77      IDENT(VARA,'I')              :S(D79) ; TEST = STARS"
     "D79"
     "END")
-  (stars-ok))
+  (subject-ok))
 
 ;; ─────────────────────────────────────────────────────────────────────────────
 ;; testpgms-test3 — Factorial table 1..45 (big-number string arithmetic)
