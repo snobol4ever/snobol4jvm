@@ -34,7 +34,7 @@
   (prog
     "        S = '42'"
     "        S SPAN('0123456789') . T"
-    "        N = INTEGER(T)"
+    "        N = CONVERT(T,'INTEGER')"
     "end")
   (is (= 42 ($$ 'N))))
 
@@ -44,12 +44,12 @@
     "        S = '-7'"
     "        NEG = 0"
     "        S '-' :F(POSITIVE)"
-    "        S = SUBSTR(S,2,SIZE(S)-1)"
+    "        S = SUBSTR(S,2,SIZE(S) - 1)"
     "        S SPAN('0123456789') . T"
-    "        NEG = 0 - INTEGER(T)"
+    "        NEG = 0 - CONVERT(T,'INTEGER')"
     "        :(DONE)"
     "POSITIVE S SPAN('0123456789') . T"
-    "        NEG = INTEGER(T)"
+    "        NEG = CONVERT(T,'INTEGER')"
     "DONE    end")
   (is (= -7 ($$ 'NEG))))
 
@@ -59,7 +59,7 @@
   (prog
     "        S = '5+3'"
     "        S SPAN('0123456789') . A LEN(1) SPAN('0123456789') . B"
-    "        R = INTEGER(A) + INTEGER(B)"
+    "        R = CONVERT(A,'INTEGER') + CONVERT(B,'INTEGER')"
     "end")
   (is (= 8 ($$ 'R))))
 
@@ -68,7 +68,7 @@
   (prog
     "        S = '6*7'"
     "        S SPAN('0123456789') . A LEN(1) SPAN('0123456789') . B"
-    "        R = INTEGER(A) * INTEGER(B)"
+    "        R = CONVERT(A,'INTEGER') * CONVERT(B,'INTEGER')"
     "end")
   (is (= 42 ($$ 'R))))
 
@@ -77,7 +77,7 @@
   (prog
     "        S = '10-3'"
     "        S SPAN('0123456789') . A LEN(1) SPAN('0123456789') . B"
-    "        R = INTEGER(A) - INTEGER(B)"
+    "        R = CONVERT(A,'INTEGER') - CONVERT(B,'INTEGER')"
     "end")
   (is (= 7 ($$ 'R))))
 
@@ -86,7 +86,7 @@
   (prog
     "        S = '20/4'"
     "        S SPAN('0123456789') . A LEN(1) SPAN('0123456789') . B"
-    "        R = INTEGER(A) / INTEGER(B)"
+    "        R = CONVERT(A,'INTEGER') / CONVERT(B,'INTEGER')"
     "end")
   (is (= 5 ($$ 'R))))
 
@@ -97,10 +97,10 @@
     "        S = '1,2,3,4,5'"
     "        R = 0"
     "LOOP    S BREAK(',') . T LEN(1)  :F(LAST)"
-    "        R = R + INTEGER(T)"
+    "        R = R + CONVERT(T,'INTEGER')"
     "        S = SUBSTR(S, SIZE(T) + 2, SIZE(S) - SIZE(T) - 1)"
     "        GT(SIZE(S),0) :S(LOOP)"
-    "LAST    R = R + INTEGER(S)"
+    "LAST    R = R + CONVERT(S,'INTEGER')"
     "end")
   (is (= 15 ($$ 'R))))
 
@@ -109,7 +109,7 @@
   "EVAL_ADD(A,B) = A+B; 12+34=46"
   (prog
     "        DEFINE('EVAL_ADD(A,B)') :(EAEND)"
-    "EVAL_ADD EVAL_ADD = INTEGER(A) + INTEGER(B)  :(RETURN)"
+    "EVAL_ADD EVAL_ADD = CONVERT(A,'INTEGER') + CONVERT(B,'INTEGER')  :(RETURN)"
     "EAEND   R = EVAL_ADD('12','34')"
     "end")
   (is (= 46 ($$ 'R))))
@@ -118,7 +118,7 @@
   "EVAL_MUL(A,B) = A*B; 7*8=56"
   (prog
     "        DEFINE('EVAL_MUL(A,B)') :(EMEND)"
-    "EVAL_MUL EVAL_MUL = INTEGER(A) * INTEGER(B)  :(RETURN)"
+    "EVAL_MUL EVAL_MUL = CONVERT(A,'INTEGER') * CONVERT(B,'INTEGER')  :(RETURN)"
     "EMEND   R = EVAL_MUL('7','8')"
     "end")
   (is (= 56 ($$ 'R))))

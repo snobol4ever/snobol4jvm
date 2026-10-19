@@ -203,15 +203,15 @@
   "Numeric string '42' -> integer via CONVERT"
   (prog
     "        S = '42'"
-    "        N = INTEGER(S)"
+    "        N = CONVERT(S,'INTEGER')"
     "end")
   (is (= 42 ($$ 'N))))
 
 (deftest t_parse_and_eval_add
   "Parse and eval '10 + 20' = 30 via SNOBOL arithmetic"
   (prog
-    "        A = INTEGER('10')"
-    "        B = INTEGER('20')"
+    "        A = CONVERT('10','INTEGER')"
+    "        B = CONVERT('20','INTEGER')"
     "        R = A + B"
     "end")
   (is (= 30 ($$ 'R))))
@@ -220,7 +220,7 @@
   "Parse tokens '1','2','3' and sum = 6"
   (prog
     "        DEFINE('TOINT(S)') :(TEND)"
-    "TOINT   TOINT = INTEGER(S)  :(RETURN)"
+    "TOINT   TOINT = CONVERT(S,'INTEGER')  :(RETURN)"
     "TEND"
     "        R = TOINT('1') + TOINT('2') + TOINT('3')"
     "end")

@@ -828,13 +828,13 @@
   (is (= "A"     ($$ 'C))))
 
 (deftest band5-integer-function
-  "INTEGER('42') succeeds and converts; INTEGER('abc') fails"
+  "INTEGER('42') succeeds with the null string, as SPITBOL's predicate does"
   (prog
     "        I = INTEGER('42')  :S(YES)F(NO)"
     "YES     R = I              :(END)"
     "NO      R = 'fail'"
     "END")
-  (is (= 42 ($$ 'R))))
+  (is (= "" ($$ 'R))))
 
 (deftest band5-trim-function
   "TRIM removes trailing spaces"

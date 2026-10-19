@@ -167,36 +167,36 @@
 )
 
 (deftest worm_integer_from_str
-  "INTEGER('42') succeeds => 42"
+  "INTEGER('42') succeeds with the null string, as SPITBOL's predicate does"
   (prog
     "        I = INTEGER('42') :S(YES)F(NO)"
     "YES     R = I             :(END)"
     "NO      R = 'fail'"
     "END"
   )
-    (is (= 42 ($$ (quote R))))
+    (is (= "" ($$ (quote R))))
 )
 
 (deftest worm_integer_from_int
-  "INTEGER(42) succeeds => 42"
+  "INTEGER(42) succeeds with the null string, as SPITBOL's predicate does"
   (prog
     "        I = INTEGER(42) :S(YES)F(NO)"
     "YES     R = I           :(END)"
     "NO      R = 'fail'"
     "END"
   )
-    (is (= 42 ($$ (quote R))))
+    (is (= "" ($$ (quote R))))
 )
 
 (deftest worm_integer_from_real
-  "INTEGER(3.7) truncates => 3"
+  "INTEGER(3.7) fails: a real is not an integer"
   (prog
     "        I = INTEGER(3.7) :S(YES)F(NO)"
     "YES     R = I            :(END)"
     "NO      R = 'fail'"
     "END"
   )
-    (is (= 3 ($$ (quote R))))
+    (is (= "fail" ($$ (quote R))))
 )
 
 (deftest worm_string_from_int

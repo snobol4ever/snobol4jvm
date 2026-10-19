@@ -369,11 +369,11 @@
 
 (deftest micro_t1_integer_from_str
   (prog "        I = INTEGER('42')" "end")
-  (is (clojure.core/= 42 ($$ 'I))))
+  (is (clojure.core/= "" ($$ 'I))))
 
 (deftest micro_t1_integer_from_int
   (prog "        I = INTEGER(7)" "end")
-  (is (clojure.core/= 7 ($$ 'I))))
+  (is (clojure.core/= "" ($$ 'I))))
 
 (deftest micro_t1_string_from_int
   (prog "        S = STRING(42)" "end")
