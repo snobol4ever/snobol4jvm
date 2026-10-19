@@ -169,8 +169,8 @@
   "DEFINE: local variables are private and restored after return."
   (prog-steplimit 5000 2000
     "         DEFINE('LFUNC(A,B,C)D,E,F')        :(LFUNCEND)"
-    "LFUNC    TEST = !(IDENT(A,'A') IDENT(B,'B') IDENT(C,'C')) STARS"
-    "         TEST = !(IDENT(D) IDENT(E) IDENT(F)) STARS"
+    "LFUNC    TEST = ~(IDENT(A,'A') IDENT(B,'B') IDENT(C,'C')) STARS"
+    "         TEST = ~(IDENT(D) IDENT(E) IDENT(F)) STARS"
     "         A = 'AA' ; B = 'BB' ; C = 'CC' ; D = 'DD' ; E = 'EE' ; F = 'FF'"
     "                                 :(RETURN)"
     "LFUNCEND STARS = '  ERROR DETECTED          ***'"
@@ -178,9 +178,9 @@
     "         D = 'D' ; E = 'E' ; F = 'F'"
     "         A = 'X' ; B = 'Y' ; C = 'Z'"
     "         TEST = DIFFER(LFUNC(AA,BB,CC)) STARS"
-    "         TEST = !(IDENT(A,'X') IDENT(B,'Y') IDENT(C,'Z')) STARS"
-    "         TEST = !(IDENT(AA,'A') IDENT(BB,'B') IDENT(CC,'C')) STARS"
-    "         TEST = !(IDENT(D,'D') IDENT(E,'E') IDENT(F,'F')) STARS"
+    "         TEST = ~(IDENT(A,'X') IDENT(B,'Y') IDENT(C,'Z')) STARS"
+    "         TEST = ~(IDENT(AA,'A') IDENT(BB,'B') IDENT(CC,'C')) STARS"
+    "         TEST = ~(IDENT(D,'D') IDENT(E,'E') IDENT(F,'F')) STARS"
     "END")
   (stars-ok))
 
@@ -245,22 +245,22 @@
     "         STARS = '  ERROR DETECTED          ***'"
     "         TEST = LT(5,4) STARS"
     "         TEST = LT(4,4) STARS"
-    "         TEST = !LT(4,5) STARS"
+    "         TEST = ~LT(4,5) STARS"
     "         TEST = LE(5,2) STARS"
-    "         TEST = !LE(4,4) STARS"
-    "         TEST = !LE(4,10) STARS"
+    "         TEST = ~LE(4,4) STARS"
+    "         TEST = ~LE(4,10) STARS"
     "         TEST = EQ(4,5) STARS"
     "         TEST = EQ(5,4) STARS"
-    "         TEST = !EQ(5,5) STARS"
+    "         TEST = ~EQ(5,5) STARS"
     "         TEST = NE(4,4) STARS"
-    "         TEST = !NE(4,6) STARS"
-    "         TEST = !NE(6,4) STARS"
+    "         TEST = ~NE(4,6) STARS"
+    "         TEST = ~NE(6,4) STARS"
     "         TEST = GT(4,6) STARS"
     "         TEST = GT(4,4) STARS"
-    "         TEST = !GT(5,2) STARS"
+    "         TEST = ~GT(5,2) STARS"
     "         TEST = GE(5,7) STARS"
-    "         TEST = !GE(4,4) STARS"
-    "         TEST = !GE(7,5) STARS"
+    "         TEST = ~GE(4,4) STARS"
+    "         TEST = ~GE(7,5) STARS"
     "END")
   (stars-ok))
 
@@ -269,8 +269,8 @@
   (prog
     "         STARS = '  ERROR DETECTED          ***'"
     "         TEST = INTEGER('ABC') STARS"
-    "         TEST = !INTEGER(12) STARS"
-    "         TEST = !INTEGER('12') STARS"
+    "         TEST = ~INTEGER(12) STARS"
+    "         TEST = ~INTEGER('12') STARS"
     "END")
   (stars-ok))
 
@@ -290,9 +290,9 @@
     "         STARS = '  ERROR DETECTED          ***'"
     "         TEST = LGT('ABC','XYZ') STARS"
     "         TEST = LGT('ABC','ABC') STARS"
-    "         TEST = !LGT('XYZ','ABC') STARS"
+    "         TEST = ~LGT('XYZ','ABC') STARS"
     "         TEST = LGT(NULL,'ABC') STARS"
-    "         TEST = !LGT('ABC',NULL) STARS"
+    "         TEST = ~LGT('ABC',NULL) STARS"
     "END")
   (stars-ok))
 
@@ -428,10 +428,10 @@
   (prog
     "         STARS = '  ERROR DETECTED          ***'"
     "         TEST = APPLY(.EQ,1,2) STARS"
-    "         TEST = !APPLY(.EQ,1,1) STARS"
-    "         TEST = !APPLY(.EQ,0) STARS"
-    "         TEST = !APPLY(.EQ,1,1,1) STARS"
-    "         TEST = !IDENT(APPLY(.TRIM,'ABC '),'ABC') STARS"
+    "         TEST = ~APPLY(.EQ,1,1) STARS"
+    "         TEST = ~APPLY(.EQ,0) STARS"
+    "         TEST = ~APPLY(.EQ,1,1,1) STARS"
+    "         TEST = ~IDENT(APPLY(.TRIM,'ABC '),'ABC') STARS"
     "END")
   (stars-ok))
 
