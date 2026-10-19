@@ -652,3 +652,19 @@
                    "END\n"))
       (is (= "ACDF\n[ABC]\n4\n3\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; $X reads and assigns the variable whose name is X's value. EVAL! read every
+;; $ as the binary immediate capture, so $'QQ' built a pattern, and the
+;; assignment $'QQ' = 'X' took ($ "QQ") for a subscripted target and did
+;; nothing. The oracle, sbl -bf: [X] [Y] [] STRING [X] [Z].
+(deftest indirection-reads-and-assigns-the-named-variable
+  (let [f (java.io.File/createTempFile "indirect" ".sno")]
+    (try
+      (spit f (str " $'QQ' = 'X'; OUTPUT = '[' QQ ']'\n"
+                   " N = 'RR'; $N = 'Y'; OUTPUT = '[' RR ']'\n"
+                   " OUTPUT = '[' $'GARBAGE' ']'; OUTPUT = DATATYPE($'GARBAGE')\n"
+                   " OUTPUT = '[' $'QQ' ']'\n"
+                   " $.SS = 'Z'; OUTPUT = '[' SS ']'\n"
+                   "END\n"))
+      (is (= "[X]\n[Y]\n[]\nSTRING\n[X]\n[Z]\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

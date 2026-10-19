@@ -607,7 +607,17 @@
               (NAME. (first parms))
               ;; Binary P . V — CAPTURE-COND (conditional assignment on match success).
               (let [[P N] parms] (INVOKE '. (EVAL! P) N))))
-          (equal op '$)     (let [[P N]   parms] (INVOKE '$ (EVAL! P) N))
+          (equal op '$)     (if (clojure.core/= 1 (count parms))
+                              ;; Unary $X — the variable X's value names (a string or a NAME)
+                              (when-some [v (EVAL! (first parms))]
+                                (EVAL! (symbol (name-string v))))
+                              (let [[P N] parms] (INVOKE '$ (EVAL! P) N)))
+          ;; $X = V — assign the variable X's value names
+          (and (equal op '=) (list? (first parms)) (clojure.core/= 2 (count (first parms)))
+               (equal (first (first parms)) '$))
+          (let [[[_ X] R] parms]
+            (when-some [v (EVAL! X)]
+              (INVOKE '= (symbol (name-string v)) (EVAL! R))))
           (equal op '=)     (let [[N R]   parms
                                   ;; If N is a subscript call (container key...),
                                   ;; evaluate the keys — EXCEPT for PDD field setters
