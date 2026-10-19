@@ -130,6 +130,13 @@
             ([x y]      (x-2 'ALT x y))          ; binary — alternation
             ([x y & zs] (x-n 'ALT x y zs)))
 
+;; OPSYN files an operator's definition under its spelling and arity, so unary
+;; and binary | are separate, and a function synonym under its name alone.
+(defn- opsyn-key [spelling arity] (str spelling "/" arity))
+
+;; The source spelling of an operator the emitter renames.
+(def ^:private op-spelling {'at "@", 'sharp "#", 'tilde "~"})
+
 ;; ── INVOKE ────────────────────────────────────────────────────────────────────
 (declare EVAL!)
 
@@ -361,9 +368,9 @@
                                    (fn [a]   (INVOKE old-sym a))
                                    (fn [a b] (INVOKE old-sym a b)))
                                  (fn [& a] (apply INVOKE old-sym (vec a)))))]
-              (swap! <FUNS> assoc new-name old-fn)
-              (when (and n (pos? n))
-                (swap! <FUNS> assoc (name-string new-arg) old-fn))
+              (if (and n (pos? n))
+                (swap! <FUNS> assoc (opsyn-key (name-string new-arg) n) old-fn)
+                (swap! <FUNS> assoc new-name old-fn))
               ε)
     opsyn   (apply INVOKE 'OPSYN args)
     ;; ── LOAD(fnname, externalname) — stub ─────────────────────────────────────
@@ -604,7 +611,7 @@
           ;; The unused unary operators are ERROR 029 until OPSYN defines one.
           (and (clojure.core/= 1 (count parms))
                (contains? unused-unary-ops op)
-               (nil? (get @<FUNS> (unused-unary-ops op))))
+               (nil? (get @<FUNS> (opsyn-key (unused-unary-ops op) 1))))
           (throw (ex-info "undefined operator referenced" {:snobol/error 29}))
           (equal op '.)
           (let [n (count parms)]
@@ -663,10 +670,9 @@
           (let [sym (first parms)]
             (list 'DEFER! (fn [] (EVAL! sym))))
           true (let [args     (apply vector (map EVAL! parms))
-                     ;; OPSYN: operator symbols ('+' '-' '*' etc.) may be redirected.
-                     ;; <FUNS> stores override under (str op), e.g. "+".
-                     ;; Check before the built-in INVOKE case table.
-                     opsyn-fn (get @<FUNS> (str op))]
+                     ;; OPSYN: an operator may be redefined, under its spelling
+                     ;; and arity (opsyn-key). Check before the built-in INVOKE table.
+                     opsyn-fn (get @<FUNS> (opsyn-key (get op-spelling op (str op)) (count parms)))]
                  (if opsyn-fn
                    (apply opsyn-fn args)
                    (apply INVOKE op args)))))

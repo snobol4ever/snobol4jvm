@@ -684,3 +684,18 @@
                    "END\n"))
       (is (= "[X]\n[X]NAME\n[Y]\n[Z][]\n[v]\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; OPSYN defines an operator by its spelling and arity. The definition was filed
+;; under the operator's spelling alone and looked up under the IR's symbol, so
+;; binary @ (the IR's at) never found OPSYN('@',.DUPL,2), and unary | defined by
+;; OPSYN('|',.SIZE,1) took over binary alternation too. The oracle, sbl -bf:
+;; AAAA, 6, then alternation still matches.
+(deftest opsyn-defines-an-operator-by-spelling-and-arity
+  (let [f (java.io.File/createTempFile "opsynop" ".sno")]
+    (try
+      (spit f (str " OPSYN('@',.DUPL,2)\n OUTPUT = 'A' @ 4\n"
+                   " OPSYN('|',.SIZE,1)\n OUTPUT = |'STRING'\n"
+                   " 'QYZ' ('X' | 'Y') 'Z' :F(END)\n OUTPUT = 'alt ok'\n"
+                   "END\n"))
+      (is (= "AAAA\n6\nalt ok\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
