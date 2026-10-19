@@ -561,3 +561,18 @@
     (is (= code (try (RUN (CODE (str "        " stmt "\nEND\n"))) :no-error
                      (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e)))))
         stmt)))
+
+;; With &ANCHOR non-zero a pattern match tries only the start of the subject.
+;; SEARCH never read &ANCHOR and slid the pattern along every position. The
+;; oracle, sbl -bf: S for 'ABC', F for 'BCD', S for 'BCD' again once &ANCHOR = 0,
+;; and F for the replacement form.
+(deftest anchor-keyword-anchors-the-match
+  (let [f (java.io.File/createTempFile "anchor" ".sno")]
+    (try
+      (spit f (str " &ANCHOR = 1; S = 'ABCD'\n"
+                   " S 'ABC' :F(N1)\n OUTPUT = 'S'\nN1 S 'BCD' :S(Y2)\n OUTPUT = 'F'\n"
+                   "Y2 S 'BCD' = 'x' :S(Y3)\n OUTPUT = 'F ' S\n"
+                   "Y3 &ANCHOR = 0; S 'BCD' :F(END)\n OUTPUT = 'S'\n"
+                   "END\n"))
+      (is (= "S\nF\nF ABCD\nS\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

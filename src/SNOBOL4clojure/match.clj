@@ -20,7 +20,7 @@
   nil means the pattern did not match.
 
   Tracing: bind *trace* to true to enable per-step animation output."
-  (:require [SNOBOL4clojure.env        :refer [ε equal out $$ snobol-set!]]
+  (:require [SNOBOL4clojure.env        :refer [ε equal out $$ snobol-set! &ANCHOR]]
             [SNOBOL4clojure.primitives :refer
              [LIT$ ANY$ NOTANY$ SPAN$ NSPAN$ BREAK$ BREAKX$
               POS# RPOS# LEN# TAB# RTAB# BOL# EOL#
@@ -551,7 +551,8 @@
     (snobol-set! var-sym text)))
 
 (defn SEARCH
-  "Slide pattern P across string S, trying each start position 0..n.
+  "Slide pattern P across string S, trying each start position 0..n, or
+   only position 0 while &ANCHOR is non-zero.
    Returns [start end] for the first match found, nil if none.
    (subs S start end) extracts the matched substring.
    Binds *trace* true when a PATTERN trace is active (via trace.clj)."
@@ -559,7 +560,7 @@
   (binding [*trace*        (or *trace* (pattern-trace-active? S))
             *pending-cond* (volatile! [])]
     (let [chars (seq S)
-          n     (count S)]
+          n     (if (zero? @&ANCHOR) (count S) 0)]
       (loop [i 0]
         (when (<= i n)
           (vswap! *pending-cond* (constantly []))          ; reset for each start pos
