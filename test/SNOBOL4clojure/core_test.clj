@@ -668,3 +668,19 @@
                    "END\n"))
       (is (= "[X]\n[Y]\n[]\nSTRING\n[X]\n[Z]\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; The NAME of an array or table element, .A<2>, names that element: $ reads it
+;; and assigns it. Its subscripts are taken when the name is made. The NAME kept
+;; the unevaluated (A 2), which $ could not read. The oracle, sbl -bf: [X],
+;; [X]NAME, [Y], [Z][], [v].
+(deftest the-name-of-an-element-names-the-element
+  (let [f (java.io.File/createTempFile "elemname" ".sno")]
+    (try
+      (spit f (str " A = ARRAY(3); A<2> = 'X'\n OUTPUT = '[' $.A<2> ']'\n"
+                   " B = .A<2>; OUTPUT = '[' $B ']' DATATYPE(B)\n"
+                   " $B = 'Y'; OUTPUT = '[' A<2> ']'\n"
+                   " K = 3; C = .A<K>; K = 1; $C = 'Z'; OUTPUT = '[' A<3> '][' A<1> ']'\n"
+                   " T = TABLE(); T<'k'> = 'v'; D = .T<'k'>; OUTPUT = '[' $D ']'\n"
+                   "END\n"))
+      (is (= "[X]\n[X]NAME\n[Y]\n[Z][]\n[v]\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

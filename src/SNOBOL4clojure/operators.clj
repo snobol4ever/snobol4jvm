@@ -577,6 +577,13 @@
 (def ^:private unused-unary-ops
   {'! "!", '% "%", '/ "/", 'sharp "#", '= "=", '| "|"})
 
+;; What $v refers to: the element a NAME of an element names, as its subscript
+;; form (A k ...) with k already evaluated, or else the variable v names.
+(defn- indirect-target [v]
+  (if (and (instance? NAME v) (list? (.n ^NAME v)))
+    (.n ^NAME v)
+    (symbol (name-string v))))
+
 (defn EVAL! [E]
   (when E
     (cond
@@ -604,20 +611,24 @@
             (if (clojure.core/= n 1)
               ;; Unary .VAR — NAME reference (indirect). Return a NAME wrapping the symbol.
               ;; Do NOT evaluate the arg — we want the symbol itself, not its current value.
-              (NAME. (first parms))
+              ;; The name of an element, .A<k>, takes its subscripts' values now.
+              (let [x (first parms)]
+                (NAME. (if (and (list? x) (>= (count x) 2))
+                         (apply list (first x) (map EVAL! (rest x)))
+                         x)))
               ;; Binary P . V — CAPTURE-COND (conditional assignment on match success).
               (let [[P N] parms] (INVOKE '. (EVAL! P) N))))
           (equal op '$)     (if (clojure.core/= 1 (count parms))
                               ;; Unary $X — the variable X's value names (a string or a NAME)
                               (when-some [v (EVAL! (first parms))]
-                                (EVAL! (symbol (name-string v))))
+                                (EVAL! (indirect-target v)))
                               (let [[P N] parms] (INVOKE '$ (EVAL! P) N)))
           ;; $X = V — assign the variable X's value names
           (and (equal op '=) (list? (first parms)) (clojure.core/= 2 (count (first parms)))
                (equal (first (first parms)) '$))
           (let [[[_ X] R] parms]
             (when-some [v (EVAL! X)]
-              (INVOKE '= (symbol (name-string v)) (EVAL! R))))
+              (INVOKE '= (indirect-target v) (EVAL! R))))
           (equal op '=)     (let [[N R]   parms
                                   ;; If N is a subscript call (container key...),
                                   ;; evaluate the keys — EXCEPT for PDD field setters
