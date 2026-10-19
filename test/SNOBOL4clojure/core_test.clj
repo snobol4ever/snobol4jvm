@@ -699,3 +699,21 @@
                    "END\n"))
       (is (= "AAAA\n6\nalt ok\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; PROTOTYPE of an array made from a bare count is that count, an INTEGER; a
+;; prototype with bounds or more dimensions is the string as written. It was
+;; always the string, so DIFFER(PROTOTYPE(ARRAY(3)),3) succeeded. The oracle,
+;; sbl -bf: [3] INTEGER for ARRAY(3), ARRAY('3') and ARRAY(' 3');
+;; [2,2] and [1:3] STRING.
+(deftest the-prototype-of-a-counted-array-is-an-integer
+  (let [f (java.io.File/createTempFile "proto" ".sno")]
+    (try
+      (spit f (str " OUTPUT = PROTOTYPE(ARRAY(3)) ' ' DATATYPE(PROTOTYPE(ARRAY(3)))\n"
+                   " OUTPUT = DATATYPE(PROTOTYPE(ARRAY('3'))) ' ' DATATYPE(PROTOTYPE(ARRAY(' 3')))\n"
+                   " OUTPUT = PROTOTYPE(ARRAY('2,2')) ' ' DATATYPE(PROTOTYPE(ARRAY('2,2')))\n"
+                   " OUTPUT = PROTOTYPE(ARRAY('1:3')) ' ' DATATYPE(PROTOTYPE(ARRAY('1:3')))\n"
+                   " DIFFER(PROTOTYPE(ARRAY(3)),3) :S(END)\n OUTPUT = 'same'\n"
+                   "END\n"))
+      (is (= "3 INTEGER\nINTEGER INTEGER\n2,2 STRING\n1:3 STRING\nsame\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

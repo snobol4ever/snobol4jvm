@@ -362,10 +362,14 @@
     v))
 
 (defn array-prototype
-  "Return the PROTOTYPE string for a SnobolArray."
+  "Return the PROTOTYPE of a SnobolArray: the count, an integer, for an array
+   made from a bare count, as SPITBOL returns it; otherwise the prototype string."
   [^SnobolArray arr]
-  (or (:proto arr)
-      (clojure.string/join "," (map (fn [[lo hi]] (str lo ":" hi)) (:dims arr)))))
+  (let [proto (or (:proto arr)
+                  (clojure.string/join "," (map (fn [[lo hi]] (str lo ":" hi)) (:dims arr))))]
+    (if (re-matches #"[+]?[0-9]+" proto)
+      (second (first (:dims arr)))
+      proto)))
 
 
 ;; ── SNOBOL4 control-flow signals ────────────────────────────────────────────
