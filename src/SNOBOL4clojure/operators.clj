@@ -11,7 +11,7 @@
               snobol-return! snobol-freturn! snobol-nreturn!
               <FUNS> <FDEFS> <CHANNELS> <OPSYN>]]
             [SNOBOL4clojure.functions :refer
-             [ASCII CHAR DATE TIME REMDR ATAN CHOP COS EXP LN SIN SQRT TAN INTEGER REAL STRING SIZE TRIM DUPL REVERSE LPAD RPAD REPLACE SUBSTR
+             [ASCII CHAR DATE TIME REMDR ATAN CHOP COS EXP LN SIN SQRT TAN INTEGER integer-predicate REAL STRING SIZE TRIM DUPL REVERSE LPAD RPAD REPLACE SUBSTR
               ITEM PROTOTYPE CONVERT COPY FIELD SORT RSORT DATA
               open-input-channel! open-output-channel! close-channel! write-to-channel!]]
             [SNOBOL4clojure.match     :refer [MATCH SEARCH FULLMATCH]]
@@ -399,7 +399,7 @@
     SIN     (SIN    (first args))
     SQRT    (SQRT   (first args))
     TAN     (TAN    (first args))
-    INTEGER (INTEGER (first args))
+    INTEGER (integer-predicate (first args))
     REAL    (REAL    (first args))
     STRING  (STRING  (first args))
     SIZE    (SIZE   (first args))

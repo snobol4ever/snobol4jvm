@@ -619,3 +619,18 @@
                    " OUTPUT = 'same'\nEND\n"))
       (is (= "ident\nident2\nsame\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; INTEGER(x) succeeds with the null string when x is an integer or a string
+;; that reads as one, and fails otherwise. It returned ε for "fails", which is
+;; success, and took reals and real strings, so INTEGER('ABC') succeeded. The
+;; oracle, sbl -bf: S for 12 '12' ' 12 ' '+12' '-3' and '', F for 'ABC' '1.5'
+;; 1.5 '1e3' '12abc' '+' '1 2', and the value on success is the null string.
+(deftest integer-is-a-predicate
+  (doseq [[arg expect] [["12" "S"] ["'12'" "S"] ["' 12 '" "S"] ["'+12'" "S"] ["'-3'" "S"] ["''" "S"]
+                        ["'ABC'" "F"] ["'1.5'" "F"] ["1.5" "F"] ["'1e3'" "F"] ["'12abc'" "F"]
+                        ["'+'" "F"] ["'1 2'" "F"]]]
+    (let [f (java.io.File/createTempFile "intpred" ".sno")]
+      (try
+        (spit f (str " X = INTEGER(" arg ") :F(N)\n OUTPUT = 'S' X :(END)\nN OUTPUT = 'F'\nEND\n"))
+        (is (= (str expect "\n") (with-out-str (-main (.getPath f)))) arg)
+        (finally (.delete f))))))

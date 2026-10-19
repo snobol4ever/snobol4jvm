@@ -218,6 +218,16 @@
     :else (try (Long/parseLong (clojure.string/trim (str x)))
                (catch Exception _ ε))))
 
+(defn integer-predicate
+  "INTEGER(x) as a program sees it: the null string when x is an integer or a
+   string that reads as one (blanks and a sign allowed; the null string is 0),
+   nil (failure) otherwise."
+  [x]
+  (cond
+    (integer? x) ε
+    (number? x)  nil
+    :else (when (re-matches #"|[+-]?[0-9]+" (clojure.string/trim (str x))) ε)))
+
 (defn REAL    [x]
   "Convert x to real (double), or return ε (fail) if not convertible."
   (cond
