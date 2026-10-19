@@ -576,3 +576,19 @@
                    "END\n"))
       (is (= "S\nF\nF ABCD\nS\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; The unused unary operators ! % / # = | are ERROR 029 until OPSYN gives one a
+;; meaning. snobol4jvm returned NaN or the null string for them, or threw an
+;; ArityException for /. The oracle, sbl -bf: X = !1 (and %1, /1, #1, =1, |1)
+;; is ERROR 029 -- undefined operator referenced; after OPSYN('!','SIZE',1),
+;; !'abc' is 3.
+(deftest an-unused-unary-operator-is-error-29
+  (doseq [op ["!" "%" "/" "#" "=" "|"]]
+    (is (= 29 (try (RUN (CODE (str "        X = " op "1\nEND\n"))) :no-error
+                   (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e)))))
+        op))
+  (let [f (java.io.File/createTempFile "unaryop" ".sno")]
+    (try
+      (spit f " OPSYN('!','SIZE',1)\n OUTPUT = !'abc'\nEND\n")
+      (is (= "3\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

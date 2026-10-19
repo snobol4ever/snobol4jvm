@@ -570,6 +570,11 @@
       (apply f-fn fargs))))
 
 ;; ── EVAL! / EVAL ─────────────────────────────────────────────────────────────
+;; Unary operators SPITBOL leaves unused, each with the name OPSYN files it
+;; under. The emitter spells unary # as sharp.
+(def ^:private unused-unary-ops
+  {'! "!", '% "%", '/ "/", 'sharp "#", '= "=", '| "|"})
+
 (defn EVAL! [E]
   (when E
     (cond
@@ -587,6 +592,11 @@
       (list? E)
       (let [[op & parms] E]
         (cond
+          ;; The unused unary operators are ERROR 029 until OPSYN defines one.
+          (and (clojure.core/= 1 (count parms))
+               (contains? unused-unary-ops op)
+               (nil? (get @<FUNS> (unused-unary-ops op))))
+          (throw (ex-info "undefined operator referenced" {:snobol/error 29}))
           (equal op '.)
           (let [n (count parms)]
             (if (clojure.core/= n 1)
