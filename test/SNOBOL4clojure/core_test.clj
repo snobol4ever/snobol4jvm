@@ -634,3 +634,21 @@
         (spit f (str " X = INTEGER(" arg ") :F(N)\n OUTPUT = 'S' X :(END)\nN OUTPUT = 'F'\nEND\n"))
         (is (= (str expect "\n") (with-out-str (-main (.getPath f)))) arg)
         (finally (.delete f))))))
+
+;; ARG, LOCAL, APPLY and OPSYN take a function's name as a string or as a NAME
+;; (.F). Each turned its argument into text with str, which for a NAME is the
+;; Java object's name, so ARG(.JLAB,1) failed, APPLY(.TRIM,...) failed and
+;; OPSYN(.LENGTH,.SIZE) defined nothing. The oracle, sbl -bf: ACDF, [ABC],
+;; APPLY(.EQ,1,2) fails and APPLY(.EQ,1,1) succeeds, 4, 3.
+(deftest a-function-name-may-be-a-name
+  (let [f (java.io.File/createTempFile "fname" ".sno")]
+    (try
+      (spit f (str "JLAB DEFINE('JLAB(A,B,C)D,E,F')\n"
+                   " OUTPUT = ARG(.JLAB,1) ARG(.JLAB,3) LOCAL(.JLAB,1) LOCAL(.JLAB,3)\n"
+                   " OUTPUT = '[' APPLY(.TRIM,'ABC ') ']'\n"
+                   " APPLY(.EQ,1,2) :S(END)\n APPLY(.EQ,1,1) :F(END)\n"
+                   " OPSYN(.LENGTH,.SIZE)\n OUTPUT = LENGTH('abcd')\n"
+                   " OPSYN('!',.SIZE,1)\n OUTPUT = !'abc'\n"
+                   "END\n"))
+      (is (= "ACDF\n[ABC]\n4\n3\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

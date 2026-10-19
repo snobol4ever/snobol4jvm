@@ -114,6 +114,12 @@
   (n [this]  n)
   (n [this _] (set! n _)))
 
+(defn name-string
+  "The text of a name argument: a NAME (.F) is the name of its variable,
+   anything else its string."
+  [x]
+  (if (instance? NAME x) (str (.n ^NAME x)) (str x)))
+
 ;; ── Numeric conversion ────────────────────────────────────────────────────────
 (defn num [x]
   (cond

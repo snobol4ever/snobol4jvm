@@ -7,7 +7,7 @@
              [ε η equal not-equal Σ+ subtract multiply divide
               ncvt scvt sstr num $$ out reference snobol-set!
               table? table-get table-set
-              array? array-get array-set array-prototype assign-keyword!
+              array? array-get array-set array-prototype assign-keyword! name-string
               snobol-return! snobol-freturn! snobol-nreturn!
               <FUNS> <FDEFS> <CHANNELS> <OPSYN>]]
             [SNOBOL4clojure.functions :refer
@@ -351,9 +351,9 @@
     ;; For operator synonyms (n=1/2), also index under the raw symbol string.
     ;; Always succeeds (even if old is unknown — wraps to no-op fn).
     OPSYN   (let [[new-arg old-arg n-arg] args
-                  new-name (clojure.string/upper-case (str new-arg))
-                  old-name (clojure.string/upper-case (str old-arg))
-                  old-sym  (symbol (str old-arg))
+                  new-name (clojure.string/upper-case (name-string new-arg))
+                  old-name (clojure.string/upper-case (name-string old-arg))
+                  old-sym  (symbol (name-string old-arg))
                   n        (when (and n-arg (not= n-arg ε)) (long n-arg))
                   old-fn   (or (get @<FUNS> old-name)
                                (if (and n (pos? n))
@@ -363,7 +363,7 @@
                                  (fn [& a] (apply INVOKE old-sym (vec a)))))]
               (swap! <FUNS> assoc new-name old-fn)
               (when (and n (pos? n))
-                (swap! <FUNS> assoc (str new-arg) old-fn))
+                (swap! <FUNS> assoc (name-string new-arg) old-fn))
               ε)
     opsyn   (apply INVOKE 'OPSYN args)
     ;; ── LOAD(fnname, externalname) — stub ─────────────────────────────────────
@@ -453,12 +453,12 @@
     lgt       (LGT    (first args) (second args))
     ;; ARG(fname, n) — nth parameter name of function fname (1-based)
     ARG       (let [[fname n] args
-                    meta (get @<FDEFS> (clojure.string/upper-case (str fname)))]
+                    meta (get @<FDEFS> (clojure.string/upper-case (name-string fname)))]
                 (when meta (nth (:params meta) (dec (long n)) nil)))
     arg       (apply INVOKE 'ARG args)
     ;; LOCAL(fname, n) — nth local variable name of function fname (1-based)
     LOCAL     (let [[fname n] args
-                    meta (get @<FDEFS> (clojure.string/upper-case (str fname)))]
+                    meta (get @<FDEFS> (clojure.string/upper-case (name-string fname)))]
                 (when meta (nth (:locals meta) (dec (long n)) nil)))
     local     (apply INVOKE 'LOCAL args)
     ;; ── Named I/O channel registration (Sprint 25D) ──────────────────────────
@@ -566,13 +566,10 @@
 
 ;; ── APPLY ─────────────────────────────────────────────────────────────────────
 (defn APPLY
-  "APPLY(fname, arg1, ...) — call a named function by string."
+  "APPLY(fname, arg1, ...) — call the function fname, a string or a NAME, as a
+   call written in the program calls it: through INVOKE, built-ins included."
   [fname & fargs]
-  (let [raw-f ($$ (symbol (str fname)))
-        f-fn  (if (fn? raw-f) raw-f
-                  (get @<FUNS> (clojure.string/upper-case (str fname))))]
-    (when (fn? f-fn)
-      (apply f-fn fargs))))
+  (apply INVOKE (symbol (clojure.string/upper-case (name-string fname))) fargs))
 
 ;; ── EVAL! / EVAL ─────────────────────────────────────────────────────────────
 ;; Unary operators SPITBOL leaves unused, each with the name OPSYN files it
