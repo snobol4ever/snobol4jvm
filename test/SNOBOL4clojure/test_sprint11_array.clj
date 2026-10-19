@@ -19,8 +19,8 @@
     (let [a (INVOKE 'ARRAY 10)]
       (is (array? a))
       (is (= "ARRAY" (DATATYPE a)))
-      ;; sbl -bf and CSNOBOL4: PROTOTYPE(ARRAY(10)) is 10, the prototype as written
-      (is (= "10" (array-prototype a))))))
+      ;; sbl -bf: PROTOTYPE(ARRAY(10)) is the integer 10 (DATATYPE INTEGER)
+      (is (= 10 (array-prototype a))))))
 
 (deftest array-002-proto-string
   (testing "array('lo:hi,...') parses dimension specs"
@@ -111,11 +111,11 @@ end")
 ;; ── PROTOTYPE ────────────────────────────────────────────────────────────────
 
 (deftest array-012-prototype-simple
-  (testing "PROTOTYPE of array(20) returns '20' (sbl -bf and CSNOBOL4)"
+  (testing "PROTOTYPE of array(20) returns the integer 20 (sbl -bf: 20 INTEGER)"
     (run-prog "        A = array(20)
         r1 = prototype(A)
 end")
-    (is (= "20" ($$ 'r1)))))
+    (is (= 20 ($$ 'r1)))))
 
 (deftest array-013-prototype-multi-dim
   (testing "PROTOTYPE of array('-5:10,3:5,20') returns it as written (sbl -bf and CSNOBOL4)"
