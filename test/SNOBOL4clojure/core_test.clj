@@ -541,3 +541,23 @@
                    "END\n"))
       (is (= "CATyDOG\nCATyDOG\nDOGS HATE POLECAT\nCATD\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; &K = V sets the keyword. The assignment took (& K) for a subscripted target,
+;; found no array, and did nothing, so &ANCHOR, &TRIM, &STLIMIT, &FULLSCAN and
+;; the rest kept their defaults whatever a program assigned. The oracle, sbl -bf:
+;; ANCHOR=0 TRIM=1, then ANCHOR=1, then 2 for '2' and 2.7; &ANCHOR = 'abc' is
+;; ERROR 208, &STCOUNT = 3 is ERROR 209, &FOO = 1 is ERROR 251.
+(deftest assigning-a-keyword-sets-it
+  (let [f (java.io.File/createTempFile "kwassign" ".sno")]
+    (try
+      (spit f (str " &TRIM = 1\n OUTPUT = 'ANCHOR=' &ANCHOR ' TRIM=' &TRIM\n"
+                   " &ANCHOR = 1\n OUTPUT = 'ANCHOR=' &ANCHOR\n"
+                   " &ANCHOR = '2'; OUTPUT = &ANCHOR; &ANCHOR = 2.7; OUTPUT = &ANCHOR\n"
+                   " &FULLSCAN = 1; &ANCHOR = 0\n"
+                   "END\n"))
+      (is (= "ANCHOR=0 TRIM=1\nANCHOR=1\n2\n2\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f))))
+  (doseq [[stmt code] [["&ANCHOR = 'abc'" 208] ["&STCOUNT = 3" 209] ["&FOO = 1" 251]]]
+    (is (= code (try (RUN (CODE (str "        " stmt "\nEND\n"))) :no-error
+                     (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e)))))
+        stmt)))

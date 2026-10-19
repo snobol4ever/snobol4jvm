@@ -33,7 +33,7 @@
 (def  &ERRTEXT   env/&ERRTEXT)
 (def  &ERRTYPE   env/&ERRTYPE)
 (def  &FTRACE    env/&FTRACE)
-(def  &FULLLSCAN env/&FULLLSCAN)
+(def  &FULLSCAN  env/&FULLSCAN)
 (def  &LASTNO    env/&LASTNO)
 (def  &LCASE     env/&LCASE)
 (def  &MAXLNGTH  env/&MAXLNGTH)

@@ -94,7 +94,13 @@
   ([src] (run-with-timeout src 2000))
   ([src budget-ms]
    (letfn [(attempt []
-             (let [result-p (promise)
+             ;; Each program starts with its keywords at their defaults, except
+             ;; &STLIMIT, which prog-steplimit sets before the run; whatever the
+             ;; program assigns to it is undone when the run ends.
+             (let [stlimit  @SNOBOL4clojure.env/&STLIMIT
+                   _        (SNOBOL4clojure.env/reset-keywords!)
+                   _        (reset! SNOBOL4clojure.env/&STLIMIT stlimit)
+                   result-p (promise)
                    f (future
                        (deliver result-p
                          (try
@@ -113,7 +119,9 @@
                                             :vars   (SNOBOL4clojure.env/snapshot!)}
                                {:exit :error :thrown (.getMessage e)}))
                            (catch Exception e
-                             {:exit :error :thrown (.getMessage e)}))))]
+                             {:exit :error :thrown (.getMessage e)})
+                           (finally
+                             (reset! SNOBOL4clojure.env/&STLIMIT stlimit)))))]
                (or (deref result-p budget-ms nil)
                    (do (future-cancel f) {:exit :timeout :stdout nil :stderr nil}))))]
      ;; Retry once on timeout

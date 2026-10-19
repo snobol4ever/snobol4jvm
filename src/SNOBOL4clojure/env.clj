@@ -31,7 +31,7 @@
 (def  &ERRTEXT   (atom ε))
 (def  &ERRTYPE   (atom 0))
 (def  &FTRACE    (atom 0))
-(def  &FULLLSCAN (atom 0))
+(def  &FULLSCAN  (atom 0))
 (def  &LASTNO    (atom 0))
 (def  &LCASE     "abcdefghijklmnopqrstuvwxyz")
 (def  &MAXLNGTH  (atom 4194304))
@@ -45,6 +45,19 @@
 ;;   :sitbol   — INPUT('name', 'device', 'format')   — SITBOL/PDP-10 (no unit number)
 (def  &IOCOMPAT  (atom :catspaw))
 (def  &UCASE     "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+;; The value each settable keyword holds when a program starts. &TRACE is
+;; settable too but is not reset: trace.clj keeps it at the size of the trace
+;; registry, which outlives a program.
+(def ^:private keyword-defaults
+  {#'&ANCHOR 0, #'&DUMP 0, #'&ERRLIMIT 0, #'&FTRACE 0, #'&FULLSCAN 0,
+   #'&MAXLNGTH 4194304, #'&PROFILE 0, #'&TRIM 0,
+   #'&STLIMIT 2147483647, #'&IOCOMPAT :catspaw})
+
+(defn reset-keywords!
+  "Give every settable keyword its starting value, as a fresh program has it."
+  []
+  (doseq [[v dflt] keyword-defaults] (reset! @v dflt)))
 
 ;; ── I/O channel atoms ────────────────────────────────────────────────────────
 (def  INPUT$     (atom ε))
@@ -181,8 +194,30 @@
    (reset! STNO    0)
    (reset! <STNO>  {})
    (reset! <LABL>  {})
-   (reset! <CODE>  {}))
+   (reset! <CODE>  {})
+   (reset-keywords!))
   ([_ns] (GLOBALS)))
+
+;; ── Keyword assignment ───────────────────────────────────────────────────────
+;; &K = V, with SPITBOL's errors: an unknown keyword is 251, a value that is not
+;; an integer is 208, a protected keyword is 209. Assigning &ERRTYPE raises the
+;; error it names.
+(defn assign-keyword! [k v]
+  (let [kw (clojure.string/upper-case (name k))
+        vr (ns-resolve (the-ns 'SNOBOL4clojure.env) (symbol (str "&" kw)))]
+    (when-not vr
+      (throw (ex-info "keyword operand is not name of defined keyword" {:snobol/error 251})))
+    (let [n (if (integer? v) v (num v))]
+      (when (and (double? n) (Double/isNaN n))
+        (throw (ex-info "keyword value assigned is not integer" {:snobol/error 208})))
+      (let [n (long n)]
+        (cond
+          (clojure.core/= kw "ERRTYPE")
+          (throw (ex-info (str "error " n) {:snobol/error n}))
+          (or (contains? keyword-defaults vr) (clojure.core/= vr #'&TRACE))
+          (do (reset! @vr n) n)
+          :else
+          (throw (ex-info "keyword in assignment is protected" {:snobol/error 209})))))))
 
 ;; ── Variable write / read ─────────────────────────────────────────────────────
 (defn snobol-set!

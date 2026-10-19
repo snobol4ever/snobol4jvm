@@ -7,7 +7,7 @@
              [ε η equal not-equal Σ+ subtract multiply divide
               ncvt scvt sstr num $$ out reference snobol-set!
               table? table-get table-set
-              array? array-get array-set array-prototype
+              array? array-get array-set array-prototype assign-keyword!
               snobol-return! snobol-freturn! snobol-nreturn!
               <FUNS> <FDEFS> <CHANNELS> <OPSYN>]]
             [SNOBOL4clojure.functions :refer
@@ -217,6 +217,9 @@
               ;; nil replacement = sub-expression failure → statement fails
               (when-not (nil? r)
               (cond
+                ;; keyword assignment: (= (& K) val)
+                (and (list? N) (clojure.core/= (first N) '&))
+                (assign-keyword! (second N) r)
                 ;; subscript assignment: (= (A k...) val) — mutate TABLE, ARRAY, or PDD
                 (and (list? N) (>= (count N) 2))
                 (let [[container-sym & ks] N
@@ -598,7 +601,8 @@
                                   ;; evaluate the keys — EXCEPT for PDD field setters
                                   ;; where the first key must remain a symbol so
                                   ;; snobol-set! can rebind the instance variable.
-                                  N' (if (and (list? N) (>= (count N) 2))
+                                  N' (if (and (list? N) (>= (count N) 2)
+                                              (not (clojure.core/= (first N) '&)))
                                        (let [container-sym (first N)
                                              container-val  ($$ container-sym)]
                                          (if (fn? container-val)
