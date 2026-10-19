@@ -613,6 +613,9 @@
                (contains? unused-unary-ops op)
                (nil? (get @<FUNS> (opsyn-key (unused-unary-ops op) 1))))
           (throw (ex-info "undefined operator referenced" {:snobol/error 29}))
+          ;; Unary ?X — interrogation: the null string if X succeeds, failure if not
+          (and (equal op '?) (clojure.core/= 1 (count parms)))
+          (when-not (nil? (EVAL! (first parms))) ε)
           (equal op '.)
           (let [n (count parms)]
             (if (clojure.core/= n 1)

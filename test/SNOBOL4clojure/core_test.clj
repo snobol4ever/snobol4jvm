@@ -717,3 +717,18 @@
       (is (= "3 INTEGER\nINTEGER INTEGER\n2,2 STRING\n1:3 STRING\nsame\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; Unary ?, interrogation, is the null string when its operand succeeds and
+;; fails when it fails. EVAL! sent ?X to the binary match, which matched the
+;; operand's text against a nil pattern and succeeded with a pattern value. The
+;; oracle, sbl -bf: 1 S [], 2 F, 3 F, 4 [] STRING, 5 F.
+(deftest interrogation-is-null-or-failure
+  (let [f (java.io.File/createTempFile "interrog" ".sno")]
+    (try
+      (spit f (str " A = ARRAY(3); A<2> = 'v'\n X = ?A<2> :F(N1)\n OUTPUT = '1 S [' X ']'\n"
+                   "N1 ?A<4> :S(END)\n OUTPUT = '2 F'\n ?A<0> :S(END)\n OUTPUT = '3 F'\n"
+                   " X = ?'abc'; OUTPUT = '4 [' X '] ' DATATYPE(X)\n"
+                   " ?LT(2,1) :S(END)\n OUTPUT = '5 F'\n"
+                   "END\n"))
+      (is (= "1 S []\n2 F\n3 F\n4 [] STRING\n5 F\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
