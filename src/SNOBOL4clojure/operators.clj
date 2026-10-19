@@ -588,7 +588,7 @@
                     ;; nil in any SEQ element = sub-expression failed → whole SEQ fails
                     (if (some nil? evaled)
                       nil
-                      (apply list 'SEQ evaled)))
+                      (concat-value (apply list 'SEQ evaled))))
       (list? E)
       (let [[op & parms] E]
         (cond

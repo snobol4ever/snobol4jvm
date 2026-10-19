@@ -592,3 +592,17 @@
       (spit f " OPSYN('!','SIZE',1)\n OUTPUT = !'abc'\nEND\n")
       (is (= "3\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A concatenation of strings and numbers is a STRING wherever it is used, not
+;; only when assigned: as a function argument it stayed the (SEQ ...) list,
+;; which DATATYPE calls PATTERN and DIFFER found different from the string it
+;; spells. The oracle, sbl -bf: STRING, and DIFFER fails for all three.
+(deftest a-concatenation-of-strings-is-a-string-as-an-argument
+  (let [f (java.io.File/createTempFile "catarg" ".sno")]
+    (try
+      (spit f (str " OUTPUT = DATATYPE('A' 'B')\n"
+                   " DIFFER('A' 'B','AB') :S(END)\n DIFFER(1 2,'12') :S(END)\n"
+                   " DIFFER(1 3.4,'13.4') :S(END)\n OUTPUT = 'same'\n"
+                   "END\n"))
+      (is (= "STRING\nsame\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
