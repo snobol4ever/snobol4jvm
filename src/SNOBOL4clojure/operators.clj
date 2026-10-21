@@ -143,14 +143,17 @@
 ;; A concatenation evaluates to (SEQ v ...). It is a string when every part is
 ;; a string, a number or a NAME (text: its variable's name), and otherwise a
 ;; pattern, which the matcher reads as a SEQ list and which must not be
-;; flattened into text. Null parts drop out, and a pattern they leave alone is
-;; the value itself: P '' is P. (A one-part SEQ that had no null parts, as
+;; flattened into text. Null parts drop out, and a part they leave alone is
+;; the value itself: P '' is P, NE(1,2) 5 is the INTEGER 5. (A one-part SEQ that had no null parts, as
 ;; CONVERT(x,'PATTERN') builds it, stays as it is.)
 (defn- concat-value [r]
   (if (and (list? r) (clojure.core/= (first r) 'SEQ))
     (let [parts (remove #(clojure.core/= ε %) (rest r))]
       (cond
-        (every? #(or (string? %) (number? %) (instance? NAME %)) parts) (apply str (map sstr parts))
+        (every? #(or (string? %) (number? %) (instance? NAME %)) parts)
+        (if (and (clojure.core/= 1 (count parts)) (< 1 (count (rest r))))
+          (first parts)                      ; one part left after the nulls: it, as it was
+          (apply str (map sstr parts)))
         (clojure.core/= (count parts) (count (rest r))) r
         (empty? (rest parts))                        (first parts)
         :else                                        (apply list 'SEQ parts)))

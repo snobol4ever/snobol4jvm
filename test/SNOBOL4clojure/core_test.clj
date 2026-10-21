@@ -870,3 +870,39 @@
                   "i: K8=2\nj: 8 T=outer\nk: ABxDEF K9=3\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A concatenation with null parts is the one part left, as it was: NE(1,2) 5 is
+;; the INTEGER 5, NULL 3.5 the REAL 3.5, NULL .Y the NAME Y, and two parts that
+;; are not null still make a string (5 6 is the STRING 56). Every concatenation
+;; with a null part made a STRING of the number, so Gimpel's FLOOR and COMB, which
+;; write EQ(M,0) 1 and NE(X,F) F - 1, returned STRINGs. The oracle, sbl -bf, wrote
+;; exactly this output.
+(deftest concatenating-null-leaves-a-number-a-number
+  (let [f (java.io.File/createTempFile "nullcat" ".sno")]
+    (try
+      (spit f (str " X = NE(1,2) 5\n OUTPUT = 'a: ' DATATYPE(X) ' ' X\n"
+                   " X = 5 ''\n OUTPUT = 'b: ' DATATYPE(X) ' ' X\n"
+                   " X = '' 5\n OUTPUT = 'c: ' DATATYPE(X) ' ' X\n"
+                   " X = NULL 3.5\n OUTPUT = 'd: ' DATATYPE(X) ' ' X\n"
+                   " X = 3.5 NULL\n OUTPUT = 'e: ' DATATYPE(X) ' ' X\n"
+                   " X = 5 6\n OUTPUT = 'f: ' DATATYPE(X) ' ' X\n"
+                   " X = NULL 5 NULL\n OUTPUT = 'g: ' DATATYPE(X) ' ' X\n"
+                   " X = NULL\n OUTPUT = 'h: ' DATATYPE(X) '[' X ']'\n"
+                   " X = 'a' NULL\n OUTPUT = 'i: ' DATATYPE(X) ' ' X\n"
+                   " X = NULL -3\n OUTPUT = 'j: ' DATATYPE(X) ' ' X\n"
+                   " Y = 7\n X = NULL Y\n OUTPUT = 'k: ' DATATYPE(X) ' ' X\n"
+                   " X = NULL .Y\n OUTPUT = 'l: ' DATATYPE(X) ' ' X\n"
+                   " DEFINE('F(Z)')                   :(FEND)\n"
+                   "F F = EQ(Z,1) 1                    :S(RETURN)\n"
+                   " F = 'x'                          :(RETURN)\n"
+                   "FEND OUTPUT = 'm: ' DATATYPE(F(1))\n"
+                   " (IDENT(1,1) IDENT(2,2))          :S(YES)F(NO)\n"
+                   "YES OUTPUT = 'n: two nulls succeed'  :(DONE)\n"
+                   "NO OUTPUT = 'n: two nulls fail'\n"
+                   "DONE\n"
+                   "END\n"))
+      (is (= (str "a: INTEGER 5\nb: INTEGER 5\nc: INTEGER 5\nd: REAL 3.5\ne: REAL 3.5\n"
+                  "f: STRING 56\ng: INTEGER 5\nh: STRING[]\ni: STRING a\nj: INTEGER -3\n"
+                  "k: INTEGER 7\nl: NAME Y\nm: INTEGER\nn: two nulls succeed\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

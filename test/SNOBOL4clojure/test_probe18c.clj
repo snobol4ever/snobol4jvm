@@ -44,10 +44,10 @@
     (is (= 0 (get (:vars r) 'I)))))
 
 (deftest test-run-to-step-step5
-  "Step 5: I='4' (string) after 4 loop iterations."
+  "Step 5: I=4 (an INTEGER, as sbl -bf keeps it) after 4 loop iterations."
   (let [r (run-to-step count-src 5)]
     (is (= :step-limit (:exit r)))
-    (is (= "4" (get (:vars r) 'I)))))
+    (is (= 4 (get (:vars r) 'I)))))
 
 (deftest test-run-to-step-completes
   "Large budget: program completes naturally with I=10."
@@ -60,40 +60,39 @@
 (deftest test-probe-at
   "probe-at returns variable value at step n."
   (is (= 0    (probe-at count-src 1  'I)) "step 1: I=0 (integer, direct assign)")
-  (is (= "2"  (probe-at count-src 3  'I)) "step 3: I='2' (string via SEQ idiom)")
-  (is (= "10" (probe-at count-src 15 'I)) "step 15: program done, I='10'"))
+  (is (= 2    (probe-at count-src 3  'I)) "step 3: I=2 (an INTEGER: a null part leaves the number as it was)")
+  (is (= 10   (probe-at count-src 15 'I)) "step 15: program done, I=10"))
 
 ;; ── 18C.3 bisect-divergence ──────────────────────────────────────────────────
 
 (deftest test-bisect-finds-step
-  "bisect-divergence finds exact step where I string-value first exceeds '5'."
-  ;; I goes: 0(step1,Long) "1"(step2) "2"(step3) ... "6"(step7)
+  "bisect-divergence finds exact step where I first reaches 6."
+  ;; I goes: 0(step1) 1(step2) 2(step3) ... 6(step7), all INTEGERs
   ;; Use clojure.core/= explicitly since = is shadowed by SNOBOL4's = in this ns.
   (let [result (bisect-divergence count-src 1 20 'I
                   (fn [v] (or (nil? v)
-                              (clojure.core/= v 0)
-                              (and (string? v) (neg? (compare v "6"))))))]
+                              (and (number? v) (clojure.core/< v 6)))))]
     (is (some? result)        "divergence should be found")
-    (is (clojure.core/= 7 (:step result)) "I becomes '6' at step 7")))
+    (is (clojure.core/= 7 (:step result)) "I becomes 6 at step 7")))
 
 (deftest test-bisect-no-divergence
   "bisect-divergence returns nil when predicate always holds in range."
   (let [result (bisect-divergence count-src 1 3 'I
                   (fn [v] (or (nil? v)
                               (clojure.core/= v 0)
-                              (clojure.core/= v "1")
-                              (clojure.core/= v "2"))))]
+                              (clojure.core/= v 1)
+                              (clojure.core/= v 2))))]
     (is (nil? result) "no divergence in steps 1-3")))
 
 ;; ── 18C.5 probe-test macro ───────────────────────────────────────────────────
 
 (deftest test-probe-test-macro
-  "probe-test asserts I at specific steps. After step 1 (I=0 int), I is string."
+  "probe-test asserts I at specific steps; I stays an INTEGER throughout."
   (probe-test
     {1  {'I 0}
-     3  {'I "2"}
-     6  {'I "5"}
-     11 {'I "10"}}
+     3  {'I 2}
+     6  {'I 5}
+     11 {'I 10}}
     "        I = 0"
     "LOOP    I = I + 1  LT(I,10) :S(LOOP)F(DONE)"
     "DONE"
@@ -107,7 +106,7 @@
   (let [r (run-with-timeout count-src 2000)]
     (is (= :step-limit (:exit r))   "should hit step limit")
     (is (map? (:vars r))            ":vars key present")
-    (is (= "3" (get (:vars r) 'I))  "I='3' (string) at step 4")))
+    (is (= 3 (get (:vars r) 'I))    "I=3 at step 4")))
 
 ;; ── 18C.6 run-with-restart ───────────────────────────────────────────────────
 
@@ -116,5 +115,5 @@
   (let [h (run-with-restart count-src 4)]
     (is (= :step-limit (:exit h))   "stopped at step limit")
     (is (= 4 (:steps h))            "4 steps taken")
-    (is (= "3" (get (:vars h) 'I))  "I='3' (string) at step 4")
+    (is (= 3 (get (:vars h) 'I))    "I=3 at step 4")
     (is (fn? (:resume h))           ":resume is a function")))

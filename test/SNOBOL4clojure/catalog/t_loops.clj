@@ -23,8 +23,7 @@
     "        LE(I,1) :S(LOOP)"
     "end"
   )
-    (is (= "1" ($$ (quote S))))
-)
+    (is (= 1 ($$ (quote S)))))   ; '' concatenated with 1 is the INTEGER 1 (sbl -bf)
 
 (deftest worm_loop_count_2
   "Count loop 1..2 concatenated = "12""
