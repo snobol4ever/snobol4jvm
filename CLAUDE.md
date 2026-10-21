@@ -19,8 +19,9 @@ lein uberjar && java -jar target/uberjar/SNOBOL4clojure-0.2.0-standalone.jar pro
 lein run -m SNOBOL4clojure.bench                   # engine × backend benchmark grid
 ```
 
-- **`-main` takes the program as a file argument:** `[--engine interp|vm] <file.sno>`. The default is the Stage 1 interpreter, the engine the test suite runs. `-INCLUDE` resolves against the program's own directory, then the current one. Before this, `-main` ran the Stage 3 VM, which drops every statement after a `DEFINE`'s goto. With no file it prints usage and exits 1.
-- **The uberjar AOT-compiles only `SNOBOL4clojure.main`,** a launcher that requires no other namespace. At runtime it `require`s `core` from source. This keeps the Greek and symbol names (`Σ+`, `?=` and others) out of AOT. Do not add `:aot` for other namespaces.
+- `lein test` output holds control bytes from the CSNOBOL4 suite, so `grep` calls it binary and prints nothing. Read it with `grep -a` (in a shell where `grep` is a wrapper that adds `-I`, use `command grep -a`).
+- **`-main` takes the program as a file argument:** `[--engine interp|vm] <file.sno>`. The default is the Stage 1 interpreter, the engine the test suite runs; `--engine vm` runs the Stage 3 VM, which drops every statement after a `DEFINE`'s goto. `-INCLUDE` resolves against the program's own directory, then `$SNO_LIB`, then the current one. With no file it prints usage and exits 1.
+- **The `:uberjar` profile AOT-compiles `SNOBOL4clojure.main` and `core`,** and so every namespace `core` requires. A run then starts in about 1.4 s instead of 4–9 s. `project.clj` notes that no two generated classes differ only in case (`Σ`/`σ` and the like), so the build is safe on a case-insensitive filesystem. `main.clj` is still a thin launcher that `require`s `core` at run time, and its docstring (Greek-symbol namespaces stay out of AOT) is out of date.
 
 ## Architecture
 
@@ -58,6 +59,8 @@ All four engines read the same IR, and each one evaluates statement bodies with 
 
 Control flow (`RETURN`, `FRETURN`, `NRETURN`, `END`, the step limit) travels as `ExceptionInfo` whose `ex-data` carries `:snobol/signal`. The `snobol-*!` helpers in `env.clj` throw these signals. Every engine and every test helper catches them by that key.
 
+Errors travel the same way, as `ex-info` with `{:snobol/error N}`. `N` is SPITBOL's own error number (`22` undefined function, `29` undefined operator, `238` bad array subscript, and so on), so a divergence from the oracle's `ERROR nnn` is fixed by raising the same number. `core_test.clj` asserts on it.
+
 ### Evaluator and pattern engine
 
 - **`operators.clj`** is the live evaluator. `EVAL!` walks the IR, and `INVOKE` is the single dispatch point from operator or function name to its implementation (both cases are registered). It shadows `clojure.core` operators (`= ? | $ . + - * / % !`), so inside this file, comparison must be written `clojure.core/=`.
@@ -70,7 +73,7 @@ Control flow (`RETURN`, `FRETURN`, `NRETURN`, `END`, the step limit) travels as 
 ### Other namespaces
 
 - **Snocone front end:** `snocone.clj` (lexer), `snocone_grammar.clj` (expression grammar) and `snocone_emitter.clj` (emits SNOBOL4 source text, not IR).
-- **`harness.clj`** shells out to SPITBOL and CSNOBOL4 and diffs their output against this engine's. The binaries default to `/usr/local/bin/spitbol` and `/usr/local/bin/snobol4` through `^:dynamic` vars (`*spitbol-bin*`, `*csnobol4-bin*`); rebind them to point at a real oracle.
+- **`harness.clj`** shells out to SPITBOL and CSNOBOL4 and diffs their output against this engine's. The binaries default to `/usr/local/bin/spitbol` and `/usr/local/bin/snobol4` through `^:dynamic` vars (`*spitbol-bin*`, `*csnobol4-bin*`); rebind them to point at a real oracle. On the fleet machines `/usr/local/bin/snobol4` is absent and `/usr/local/bin/spitbol` is not the graded oracle, so rebind both; the correctness oracle there is `/home/resources/x64/bin/sbl -bf prog.sno` (`-b` drops the signon, `-f` leaves source case alone, which is what this engine does and what the corpus refs were cut with). Where the oracle and this engine disagree, the oracle wins unless Lon rules otherwise.
 - **`generator.clj`** is the "worm" program generator. Its `rand-*` functions are probabilistic and its `gen-*` functions are exhaustive lazy sequences.
 - **`bench.clj`** and `bench/run_benchmarks.clj` drive the benchmarks through the harness.
 
@@ -83,12 +86,10 @@ These come from the README's "Design Laws", plus traps found in the code.
 - **`INVOKE` receives arguments already evaluated.** Never call `EVAL!` on them inside `INVOKE`.
 - **`match.clj` stays a single `loop`/`case`.** Do not split the engine.
 - **`TABLE` and `ARRAY` are mutable through atoms;** everything else is immutable.
-- **`(is (= expected actual))` cannot fail in 35 of the 56 test namespaces, so a green `lein test` does not yet mean the suite passes.**
-  - **Why:** `(:require [SNOBOL4clojure.core :refer :all])` without `:exclude` replaces `clojure.core/=` by SNOBOL4's IR builder. 34 namespaces do this, and `lein test` prints a `WARNING: = already refers to …` line for each. `test_operators` does the same silently: it refers `SNOBOL4clojure.operators :all` behind `:refer-clojure :exclude`. There, `(= a b)` returns the list `(= a b)`. That list is always truthy, so `is` reports a pass whatever the values are. Measured: `(is (= 1 2))` returns `(= 1 2)` with no FAIL.
-  - **The check:** build each test file's `ns` form under a new name, add `(deftest m (is (= 1 2)))`, and run it. Every such mutant must fail, and today 21 of 56 do. The script is the DONE-WHEN of the fleet row `jvm-every-test-namespace-fails-a-false-equality-written-the-way-the-suite-writes-it`.
-  - **How many (measured 2026-10-17 at `407cc01`):** `lein test` reads 2,022 tests, 0 failures. Rewriting the 1,654 `(is (= …))` lines in 31 files to `clojure.core/=` turns that into 366 failures in 285 tests. The largest groups are `test_csnobol4_suite` (101), `test_sprint12` (40), `test_cooper` (28), `catalog/t_spitbol` (28), `test_worm1000` (20), `catalog/t_gimpel` (16) and `catalog/t_aisnobol` (12).
-  - **Which tests really compare:** files that write `clojure.core/=` (`test_worm_micro`, `catalog/t_patterns_ext`), files that refer core with `:exclude [= + - * / num]` (`core_test`), and files that don't refer core at all.
-  - **For any test you write or fix:** use `clojure.core/=`, or exclude the operators the way `core_test.clj` does. `+`, `-`, `*` and `/` are shadowed in the same way.
+- **A test namespace that refers `SNOBOL4clojure.core` or `operators` must exclude the shadowed operators:** `[SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]`, as `core_test.clj` and every such namespace now does.
+  - **Why:** without `:exclude`, `=` is SNOBOL4's IR builder, so `(= a b)` returns the list `(= a b)`. That list is always truthy, so `(is (= 1 2))` reports a pass. Until `1fe23d8` 35 of the 56 test namespaces were written that way, and `lein test` read 0 failures over a suite that really had about 366. The `WARNING: = already refers to …` line in `lein test` output is the sign of it. `test_operators` refers `operators :all` behind `:refer-clojure :exclude`, so it gave no warning.
+  - **Predicates:** a lambda or predicate passed to a helper such as `bisect-divergence` follows the same rule; `test_helpers.clj`'s docstring has the example.
+  - **`lein test` is red, and its reds are real.** The count is in the LIVE CURSOR of `.github/GOAL-HQ-JVM.md` (188 failures in 2,056 tests at `72da52d`, measured 2026-10-21; 98 of them in `test_csnobol4_suite`, 30 in `catalog/t_aisnobol`, 19 in `catalog/t_gimpel`), and it moves with every cure. Fix the engine, or set an expectation to what SPITBOL prints; never weaken a test to pass. `csnobol4-match4` flips between red and green across full runs, a shared-state flake (see the next bullet).
 - **Runtime state is global and is not reset between tests by default.** `run-with-timeout` and `prog` do not call `GLOBALS`. Namespaces that need a clean slate do it themselves with `(use-fixtures :each (fn [t] (GLOBALS) (t)))`, or reset `STNO`, `<STNO>`, `<LABL>` and `<CODE>` the way `run-to-step` does. Because of this shared state, tests cannot run in parallel.
 
 ## Tests
@@ -102,7 +103,7 @@ These come from the README's "Design Laws", plus traps found in the code.
 - `prog-include`: resolves `-INCLUDE`;
 - `run-with-timeout`: returns `{:exit :ok|:error|:timeout|:step-limit :stdout :stderr}`.
 
-A timeout is retried once. Programs run in a `future`, so `binding [*in* …]` reaches them; this is how stdin tests feed data, as in `test_csnobol4_suite.clj`. For debugging, `run-to-step`, `probe-at`, `bisect-divergence`, `probe-test` and `run-with-restart` stop a program after N statements and snapshot its variables.
+A timeout is retried once. Programs run in a `future`, so `binding [*in* …]` reaches them; this is how stdin tests feed data, as in `test_csnobol4_suite.clj`. A relative file name in `INPUT()`/`OUTPUT()` resolves against `env/*file-dir*` when it is bound, and against the process's working directory when it is `nil` (a JVM cannot change its own). `test_csnobol4_suite` binds it to a temp directory, so `lein test` writes nothing into the tree. For debugging, `run-to-step`, `probe-at`, `bisect-divergence`, `probe-test` and `run-with-restart` stop a program after N statements and snapshot its variables.
 
 Test groups:
 
@@ -117,4 +118,4 @@ The `:expected-fail` metadata that `test_csnobol4_suite`'s docstring mentions is
 
 - **`corpus/lon` is a git submodule** (SNOBOL4-plus/SNOBOL4-corpus) and is uninitialised in a fresh clone. `corpus/gimpel`, `corpus/aisnobol`, `corpus/spitbol` and `corpus/beauty` are tracked directly.
 - **Leftovers, not live code:** `src/probe` and `src/t4probe` are scratch probes. `t4probe/main.clj` declares `(ns t4probe)`, which does not match its path. `probe/main.clj` requires `test-helpers` from `test/`. Also leftover are `misc/` (editor syntax files and scratch), `src/SNOBOL4clojure/generator.clj.bak`, `CHANGELOG.md` and `doc/intro.md` (both still the Leiningen template).
-- **The README's numbers are stale.** It claims "1,896 tests / 4,120 assertions". A full run at `407cc01` reads 2,022 tests and 4,246 assertions in about 70 s, but see the `=` trap above. The benchmark tables are likewise claims, not measurements.
+- **The README's numbers are stale.** Its badge and text claim "1,896 tests / 0 failures" and "4,120 assertions", which match no current run (see the `lein test` bullet above for the count). A full run takes about 70 s. The benchmark tables are likewise claims, not measurements.
