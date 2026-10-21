@@ -902,14 +902,14 @@
 )
 
 (deftest worm_notany_abc_on_abcdef
-  "NOTANY('abc') on 'abcdef' fails"
+  "NOTANY('abc') on 'abcdef' succeeds: the unanchored scan reaches d"
   (prog
     "        'abcdef' NOTANY('abc') :S(YES)F(NO)"
     "YES     R = 'yes'   :(END)"
     "NO      R = 'no'"
     "END"
   )
-    (is (= "no" ($$ (quote R))))
+    (is (= "yes" ($$ (quote R))))
 )
 
 (deftest worm_span_abc_on_abcdef
