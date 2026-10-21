@@ -747,3 +747,21 @@
         (spit f (str " X = " lit "\n OUTPUT = DATATYPE(X) ' ' X\nEND\n"))
         (is (= (str expect "\n") (with-out-str (-main (.getPath f)))) lit)
         (finally (.delete f))))))
+
+;; IDENT and DIFFER compare NAMEs by the variable they name. A NAME was a fresh
+;; object each time .A was evaluated and compared as one, so IDENT(.A,.A) failed
+;; and DIFFER(.A,.A) succeeded. A NAME is not its text: IDENT(.A,'A') fails. An
+;; element's NAME is the element: .T<'k'> is .T<'k'> and not .T<'j'>. The
+;; oracle, sbl -bf: same, differ-yes, elem-same.
+(deftest names-compare-by-the-variable-they-name
+  (let [f (java.io.File/createTempFile "namecmp" ".sno")]
+    (try
+      (spit f (str " OUTPUT = IDENT(.A,.A) 'same'\n OUTPUT = IDENT(.A,.B) 'different-yes'\n"
+                   " OUTPUT = IDENT(.A,'A') 'str-yes'\n OUTPUT = DIFFER(.A,.B) 'differ-yes'\n"
+                   " OUTPUT = DIFFER(.A,.A) 'differ-same-yes'\n"
+                   " T = TABLE(); T<'k'> = 'v'\n"
+                   " OUTPUT = IDENT(.T<'k'>,.T<'k'>) 'elem-same'\n"
+                   " OUTPUT = IDENT(.T<'k'>,.T<'j'>) 'elem-diff-yes'\n"
+                   "END\n"))
+      (is (= "same\ndiffer-yes\nelem-same\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
