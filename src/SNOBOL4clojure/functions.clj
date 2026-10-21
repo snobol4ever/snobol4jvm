@@ -90,12 +90,12 @@
       (str x)
 
       (and (clojure.core/= from "REAL") (clojure.core/= to "INTEGER"))
-      ;; Fails if value doesn't fit in a long
-      (let [v (try (let [lv (long x)]
-                     (when (clojure.core/<= (double Long/MIN_VALUE) x (double Long/MAX_VALUE))
-                       lv))
-                   (catch Exception _ nil))]
-        v)
+      ;; Truncates toward zero. A real outside the integer range is the least
+      ;; integer, as sbl -bf gives it (the x86-64 conversion), not a failure.
+      (let [lo (double Long/MIN_VALUE)]
+        (if (and (clojure.core/<= lo x) (clojure.core/< x (clojure.core/- lo)))
+          (long x)
+          Long/MIN_VALUE))
 
       (and (clojure.core/= from "REAL") (clojure.core/= to "PATTERN"))
       (list 'SEQ (list 'LIT$ (str x)))

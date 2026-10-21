@@ -89,9 +89,13 @@
   (run12 " A = 9.9\n B = CONVERT(A,'INTEGER')\n")
   (is (= 9 ($$ 'B))))
 
+;; A real outside the integer range converts to the least integer rather than
+;; failing, as sbl -bf does (CEO-1861). The test expected failure; its A was
+;; never a real before the grammar read an exponent, so it passed for another reason.
 (deftest convert-real-integer-overflow
   (run12 " D = 'failure'\n A = 3.14E200\n B = CONVERT(A,'INTEGER') :F(DONE)\n D = 'success'\nDONE\n")
-  (is (= "failure" ($$ 'D))))
+  (is (= "success" ($$ 'D)))
+  (is (= Long/MIN_VALUE ($$ 'B))))
 
 (deftest convert-real-real
   (run12 " A = 2.5\n B = CONVERT(A,'REAL')\n")

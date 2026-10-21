@@ -802,3 +802,21 @@
                   "BF\n[bval]\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; CONVERT(real,'INTEGER') truncates toward zero, and a real outside the integer
+;; range is the least integer, -9223372036854775808, not a failure (CEO-1861: do
+;; what sbl -bf does). It failed for 3.14E200 and 1.0E19, took 9.223372036854775808E18
+;; to the greatest integer, and failed for 9.2E18, which is in range. The oracle:
+(deftest convert-a-real-to-integer-follows-sbl
+  (doseq [[lit expect] [["3.14E200" "-9223372036854775808"] ["-3.14E200" "-9223372036854775808"]
+                        ["1.0E19" "-9223372036854775808"] ["-1.0E19" "-9223372036854775808"]
+                        ["9.223372036854775808E18" "-9223372036854775808"]
+                        ["9.2E18" "9200000000000000000"] ["-9.2E18" "-9200000000000000000"]
+                        ["-9.223372036854775808E18" "-9223372036854775808"]
+                        ["9.9" "9"] ["-9.9" "-9"] ["0.5" "0"] ["-0.5" "0"]
+                        ["2.5E3" "2500"] ["1E3" "1000"]]]
+    (let [f (java.io.File/createTempFile "realint" ".sno")]
+      (try
+        (spit f (str " OUTPUT = CONVERT(" lit ",'INTEGER')\nEND\n"))
+        (is (= (str expect "\n") (with-out-str (-main (.getPath f)))) lit)
+        (finally (.delete f))))))
