@@ -1,6 +1,7 @@
 (ns SNOBOL4clojure.emitter
   ;; Transform an instaparse AST into Clojure data (the SNOBOL4 IR).
   (:require [clojure.edn :as edn]
+            [clojure.string]
             [SNOBOL4clojure.env      :refer [subtract]]
             [SNOBOL4clojure.grammar  :refer [parse-expression]]
             [instaparse.core         :as insta]))
@@ -92,7 +93,7 @@
      :N         (fn [n]      (symbol n))
      :S         (fn [s]      (subs s 1 (subtract (count s) 1)))
      :I         edn/read-string
-     :R         (fn [s] (Double/parseDouble s))}
+     :R         (fn [s] (Double/parseDouble (clojure.string/replace s #"[dD]" "e")))}
     ast))
 
 (defn parse+emit

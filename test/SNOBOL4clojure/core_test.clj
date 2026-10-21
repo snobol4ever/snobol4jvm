@@ -732,3 +732,18 @@
                    "END\n"))
       (is (= "1 S []\n2 F\n3 F\n4 [] STRING\n5 F\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A real literal may carry an exponent: 1E3, 1.E3, 1.5E+3, 1.5e3, 1.5D3. The
+;; grammar's real was digits, a point and digits, so X = 2.5E3 did not parse and
+;; the statement was dropped: X stayed unset, a null STRING. The oracle, sbl -bf,
+;; prints each as a REAL, formatted as SPITBOL formats a real.
+(deftest a-real-literal-may-carry-an-exponent
+  (doseq [[lit expect] [["1E3" "REAL 1000."] ["1.E3" "REAL 1000."] ["1.5E3" "REAL 1500."]
+                        ["1.5E+3" "REAL 1500."] ["1.5E-3" "REAL 0.15e-2"] ["1.5e3" "REAL 1500."]
+                        ["1.5D3" "REAL 1500."] ["25E-1" "REAL 2.5"] ["3.14E200" "REAL 0.314e+201"]
+                        ["9.2E18" "REAL 0.92e+19"] ["1.0E19" "REAL 0.1e+20"]]]
+    (let [f (java.io.File/createTempFile "reallit" ".sno")]
+      (try
+        (spit f (str " X = " lit "\n OUTPUT = DATATYPE(X) ' ' X\nEND\n"))
+        (is (= (str expect "\n") (with-out-str (-main (.getPath f)))) lit)
+        (finally (.delete f))))))
