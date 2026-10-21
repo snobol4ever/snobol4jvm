@@ -1502,7 +1502,7 @@
 (deftest worm_capture_dot_cap_from_hello_wo
   "Capture with . : world on 'hello world'"
   (prog
-    "        'hello world' world . C"
+    "        'hello world' 'world' . C"
     "end"
   )
     (is (= "world" ($$ (quote C))))
