@@ -453,20 +453,22 @@
     (when (fn? f-fn)
       (apply f-fn fargs))))
 (defn ARG
-  "ARG(fname, n) — return the name of the nth parameter of function fname (1-based).
+  "ARG(fname, n) — return the nth parameter of function fname (1-based) as a NAME.
    Returns nil (statement failure) if fname unknown or n out of range."
   [fname n]
   (when-let [meta (get @SNOBOL4clojure.env/<FDEFS>
                        (clojure.string/upper-case (str fname)))]
-    (nth (:params meta) (dec (long n)) nil)))
+    (when-some [p (nth (:params meta) (dec (long n)) nil)]
+      (SNOBOL4clojure.env.NAME. (symbol p)))))
 
 (defn LOCAL
-  "LOCAL(fname, n) — return the name of the nth local variable of function fname (1-based).
+  "LOCAL(fname, n) — return the nth local variable of function fname (1-based) as a NAME.
    Returns nil (statement failure) if fname unknown or n out of range."
   [fname n]
   (when-let [meta (get @SNOBOL4clojure.env/<FDEFS>
                        (clojure.string/upper-case (str fname)))]
-    (nth (:locals meta) (dec (long n)) nil)))
+    (when-some [p (nth (:locals meta) (dec (long n)) nil)]
+      (SNOBOL4clojure.env.NAME. (symbol p)))))
 
 ;; ── Table / array functions ───────────────────────────────────────────────────
 (defn ITEM

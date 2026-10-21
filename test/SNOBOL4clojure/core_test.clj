@@ -778,3 +778,27 @@
                    "END\n"))
       (is (= "A\nAB\nx A\n13\nleq-yes\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; ARG(F,n) and LOCAL(F,n) return a NAME, as SPITBOL returns one, not the string
+;; the manual and CSNOBOL4 describe (CEO-1861: one oracle, sbl -bf). A program
+;; compares the result with .A, not with 'A'; as text it is still A; $ reads the
+;; variable it names; an index outside the parameters fails. The oracle:
+;; NAME NAME, the three name matches, BF, [bval].
+(deftest arg-and-local-return-a-name
+  (let [f (java.io.File/createTempFile "argname" ".sno")]
+    (try
+      (spit f (str "JLAB DEFINE('JLAB(A,B,C)D,E,F')\n"
+                   " OUTPUT = DATATYPE(ARG(.JLAB,1)) ' ' DATATYPE(LOCAL(.JLAB,1))\n"
+                   " OUTPUT = IDENT(ARG(.JLAB,1),.A) 'arg1-is-the-name-A'\n"
+                   " OUTPUT = IDENT(ARG(.JLAB,1),'A') 'arg1-is-the-string-A'\n"
+                   " OUTPUT = IDENT(ARG(.JLAB,3),.C) 'arg3-is-the-name-C'\n"
+                   " OUTPUT = IDENT(LOCAL(.JLAB,2),.E) 'local2-is-the-name-E'\n"
+                   " OUTPUT = ARG(.JLAB,0) 'arg0'\n OUTPUT = ARG(.JLAB,4) 'arg4'\n"
+                   " OUTPUT = LOCAL(.JLAB,0) 'local0'\n OUTPUT = LOCAL(.JLAB,4) 'local4'\n"
+                   " OUTPUT = ARG('JLAB',2) LOCAL('JLAB',3)\n"
+                   " B = 'bval'\n OUTPUT = '[' $ARG(.JLAB,2) ']'\n"
+                   "END\n"))
+      (is (= (str "NAME NAME\narg1-is-the-name-A\narg3-is-the-name-C\nlocal2-is-the-name-E\n"
+                  "BF\n[bval]\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

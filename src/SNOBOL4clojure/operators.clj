@@ -459,15 +459,18 @@
     lge       (LGE    (first args) (second args))
     LGT       (LGT    (first args) (second args))
     lgt       (LGT    (first args) (second args))
-    ;; ARG(fname, n) — nth parameter name of function fname (1-based)
+    ;; ARG(fname, n) — nth parameter name of function fname (1-based), as a NAME
+    ;; (CEO-1861: sbl -bf returns one; the manual's string is not followed)
     ARG       (let [[fname n] args
                     meta (get @<FDEFS> (clojure.string/upper-case (name-string fname)))]
-                (when meta (nth (:params meta) (dec (long n)) nil)))
+                (when-some [p (when meta (nth (:params meta) (dec (long n)) nil))]
+                  (NAME. (symbol p))))
     arg       (apply INVOKE 'ARG args)
-    ;; LOCAL(fname, n) — nth local variable name of function fname (1-based)
+    ;; LOCAL(fname, n) — nth local variable name of function fname (1-based), as a NAME
     LOCAL     (let [[fname n] args
                     meta (get @<FDEFS> (clojure.string/upper-case (name-string fname)))]
-                (when meta (nth (:locals meta) (dec (long n)) nil)))
+                (when-some [p (when meta (nth (:locals meta) (dec (long n)) nil))]
+                  (NAME. (symbol p))))
     local     (apply INVOKE 'LOCAL args)
     ;; ── Named I/O channel registration (Sprint 25D) ──────────────────────────
     ;; Argument conventions across SNOBOL4 implementations (researched 2026-03-08):

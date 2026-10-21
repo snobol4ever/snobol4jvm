@@ -408,16 +408,18 @@
   (stars-ok))
 
 (deftest t1_arg_local
-  "ARG and LOCAL: introspect function parameter and local variable names."
+  "ARG and LOCAL: introspect function parameter and local variable names.
+   They return NAMEs, as sbl -bf returns them (CEO-1861), so the deck's
+   comparison with the string 'A' is a comparison with .A."
   (prog
     "JLAB     DEFINE('JLAB(A,B,C)D,E,F')"
     "         STARS = '  ERROR DETECTED          ***'"
-    "         TEST = DIFFER(ARG(.JLAB,1),'A') STARS"
-    "         TEST = DIFFER(ARG(.JLAB,3),'C') STARS"
+    "         TEST = DIFFER(ARG(.JLAB,1),.A) STARS"
+    "         TEST = DIFFER(ARG(.JLAB,3),.C) STARS"
     "         TEST = ARG(.JLAB,0) STARS"
     "         TEST = ARG(.JLAB,4) STARS"
-    "         TEST = DIFFER(LOCAL(.JLAB,1),'D') STARS"
-    "         TEST = DIFFER(LOCAL(.JLAB,3),'F') STARS"
+    "         TEST = DIFFER(LOCAL(.JLAB,1),.D) STARS"
+    "         TEST = DIFFER(LOCAL(.JLAB,3),.F) STARS"
     "         TEST = LOCAL(.JLAB,0) STARS"
     "         TEST = LOCAL(.JLAB,4) STARS"
     "END")
