@@ -1041,14 +1041,14 @@
 )
 
 (deftest worm_break_xyz_on_empty
-  "BREAK('xyz') on '' captures ''"
+  "BREAK('xyz') on '' fails and captures nothing"
   (prog
     "        '' BREAK('xyz') . C :S(YES)F(NO)"
     "YES     R = 'yes'   :(END)"
     "NO      R = 'no'"
     "END"
   )
-    (is (= "yes" ($$ (quote R))))
+    (is (= "no" ($$ (quote R))))
     (is (= "" ($$ (quote C))))
 )
 
