@@ -46,6 +46,16 @@
         (when-not (Double/isInfinite d) d))
       :else nil)))
 
+(defn- real->integer
+  "The integer a real becomes: truncated toward zero. A real outside the
+   integer range is the least integer, as sbl -bf gives it (the x86-64
+   conversion), not a failure."
+  [x]
+  (let [lo (double Long/MIN_VALUE)]
+    (if (and (clojure.core/<= lo x) (clojure.core/< x (clojure.core/- lo)))
+      (long x)
+      Long/MIN_VALUE)))
+
 (defn CONVERT [x t]
   "CONVERT(x, type) — coerce x to the named SNOBOL4 type.
    Returns nil (failure) if the conversion is not defined."
@@ -56,10 +66,13 @@
       (clojure.core/= from to) x
 
       ;; STRING conversions
+      ;; Integer syntax is an integer (out of range fails); anything else is read
+      ;; as a real and converted as one. nil propagates as failure.
       (and (clojure.core/= from "STRING") (clojure.core/= to "INTEGER"))
-      (let [v (try (Long/parseLong (clojure.string/trim (str x)))
-                   (catch Exception _ nil))]
-        v)   ; nil propagates as failure
+      (let [t (clojure.string/trim (str x))]
+        (if (re-matches #"[+-]?\d+" t)
+          (try (Long/parseLong t) (catch NumberFormatException _ nil))
+          (when-some [d (string->real t)] (real->integer d))))
 
       (and (clojure.core/= from "STRING") (clojure.core/= to "REAL"))
       (string->real x)
@@ -90,12 +103,7 @@
       (str x)
 
       (and (clojure.core/= from "REAL") (clojure.core/= to "INTEGER"))
-      ;; Truncates toward zero. A real outside the integer range is the least
-      ;; integer, as sbl -bf gives it (the x86-64 conversion), not a failure.
-      (let [lo (double Long/MIN_VALUE)]
-        (if (and (clojure.core/<= lo x) (clojure.core/< x (clojure.core/- lo)))
-          (long x)
-          Long/MIN_VALUE))
+      (real->integer x)
 
       (and (clojure.core/= from "REAL") (clojure.core/= to "PATTERN"))
       (list 'SEQ (list 'LIT$ (str x)))

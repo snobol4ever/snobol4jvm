@@ -820,3 +820,23 @@
         (spit f (str " OUTPUT = CONVERT(" lit ",'INTEGER')\nEND\n"))
         (is (= (str expect "\n") (with-out-str (-main (.getPath f)))) lit)
         (finally (.delete f))))))
+
+;; CONVERT(string,'INTEGER') reads the string as SPITBOL reads a number: the
+;; null string is 0, blanks at the ends and a sign are allowed, and a string with
+;; a point or an exponent is a real, truncated as CONVERT truncates a real. Only
+;; integer syntax was read, so '9.9' and '1e3' failed. An integer string out of
+;; range fails and a real string out of range is the least integer. The oracle,
+;; sbl -bf; "" in the expectation is a failed conversion, no output.
+(deftest convert-a-string-to-integer-follows-sbl
+  (doseq [[s expect] [["" "0"] [" 12 " "12"] ["+12" "12"] ["1e3" "1000"] ["1." "1"] [".5" "0"]
+                      ["-9.9" "-9"] ["1D3" "1000"] ["1E19" "-9223372036854775808"]
+                      ["3.14E200" "-9223372036854775808"]
+                      ["9223372036854775807" "9223372036854775807"]
+                      ["-9223372036854775808" "-9223372036854775808"]
+                      ["ABC" ""] ["12abc" ""] ["12 34" ""] ["0x10" ""]
+                      ["9223372036854775808" ""] ["-9223372036854775809" ""]]]
+    (let [f (java.io.File/createTempFile "strint" ".sno")]
+      (try
+        (spit f (str " OUTPUT = CONVERT('" s "','INTEGER')\nEND\n"))
+        (is (= (if (= expect "") "" (str expect "\n")) (with-out-str (-main (.getPath f)))) (pr-str s))
+        (finally (.delete f))))))
