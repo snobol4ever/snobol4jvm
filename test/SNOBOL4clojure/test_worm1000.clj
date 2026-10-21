@@ -1860,10 +1860,10 @@
 )
 
 (deftest worm_define_square_4
-  "SQ(N) with arg 4 => 16"
+  "SQUARE(N) with arg4 => 16"
   (prog
-    "        DEFINE('SQ(N)') :(SQUARE_END)"
-    "SQUARE   SQ = N * N   :(RETURN)"
+    "        DEFINE('SQUARE(N)') :(SQUARE_END)"
+    "SQUARE   SQUARE = N * N   :(RETURN)"
     "SQUARE_END"
     "        R = SQUARE(4)"
     "end"
@@ -1872,10 +1872,10 @@
 )
 
 (deftest worm_define_square_3
-  "SQ(N) with arg 3 => 9"
+  "SQUARE(N) with arg3 => 9"
   (prog
-    "        DEFINE('SQ(N)') :(SQUARE_END)"
-    "SQUARE   SQ = N * N   :(RETURN)"
+    "        DEFINE('SQUARE(N)') :(SQUARE_END)"
+    "SQUARE   SQUARE = N * N   :(RETURN)"
     "SQUARE_END"
     "        R = SQUARE(3)"
     "end"
@@ -1884,10 +1884,10 @@
 )
 
 (deftest worm_define_square_0
-  "SQ(N) with arg 0 => 0"
+  "SQUARE(N) with arg0 => 0"
   (prog
-    "        DEFINE('SQ(N)') :(SQUARE_END)"
-    "SQUARE   SQ = N * N   :(RETURN)"
+    "        DEFINE('SQUARE(N)') :(SQUARE_END)"
+    "SQUARE   SQUARE = N * N   :(RETURN)"
     "SQUARE_END"
     "        R = SQUARE(0)"
     "end"
@@ -1896,10 +1896,10 @@
 )
 
 (deftest worm_define_negate_5
-  "NEG(N) with arg 5 => -5"
+  "NEGATE(N) with arg5 => -5"
   (prog
-    "        DEFINE('NEG(N)') :(NEGATE_END)"
-    "NEGATE   NEG = 0 - N   :(RETURN)"
+    "        DEFINE('NEGATE(N)') :(NEGATE_END)"
+    "NEGATE   NEGATE = 0 - N   :(RETURN)"
     "NEGATE_END"
     "        R = NEGATE(5)"
     "end"
@@ -1908,10 +1908,10 @@
 )
 
 (deftest worm_define_negate_neg_3
-  "NEG(N) with arg -3 => 3"
+  "NEGATE(N) with arg-3 => 3"
   (prog
-    "        DEFINE('NEG(N)') :(NEGATE_END)"
-    "NEGATE   NEG = 0 - N   :(RETURN)"
+    "        DEFINE('NEGATE(N)') :(NEGATE_END)"
+    "NEGATE   NEGATE = 0 - N   :(RETURN)"
     "NEGATE_END"
     "        R = NEGATE(-3)"
     "end"
@@ -1920,10 +1920,10 @@
 )
 
 (deftest worm_define_addone_0
-  "INC(N) with arg 0 => 1"
+  "ADDONE(N) with arg0 => 1"
   (prog
-    "        DEFINE('INC(N)') :(ADDONE_END)"
-    "ADDONE   INC = N + 1   :(RETURN)"
+    "        DEFINE('ADDONE(N)') :(ADDONE_END)"
+    "ADDONE   ADDONE = N + 1   :(RETURN)"
     "ADDONE_END"
     "        R = ADDONE(0)"
     "end"
@@ -1932,10 +1932,10 @@
 )
 
 (deftest worm_define_addone_9
-  "INC(N) with arg 9 => 10"
+  "ADDONE(N) with arg9 => 10"
   (prog
-    "        DEFINE('INC(N)') :(ADDONE_END)"
-    "ADDONE   INC = N + 1   :(RETURN)"
+    "        DEFINE('ADDONE(N)') :(ADDONE_END)"
+    "ADDONE   ADDONE = N + 1   :(RETURN)"
     "ADDONE_END"
     "        R = ADDONE(9)"
     "end"
@@ -1944,10 +1944,10 @@
 )
 
 (deftest worm_define_addone_99
-  "INC(N) with arg 99 => 100"
+  "ADDONE(N) with arg99 => 100"
   (prog
-    "        DEFINE('INC(N)') :(ADDONE_END)"
-    "ADDONE   INC = N + 1   :(RETURN)"
+    "        DEFINE('ADDONE(N)') :(ADDONE_END)"
+    "ADDONE   ADDONE = N + 1   :(RETURN)"
     "ADDONE_END"
     "        R = ADDONE(99)"
     "end"
