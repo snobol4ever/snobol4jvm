@@ -2562,12 +2562,12 @@
 )
 
 (deftest worm_arb_a_arb_a_in_abba
-  "'a' ARB . C 'a' in 'abba' captures ''"
+  "'a' ARB . C 'a' in 'abba' captures 'bb'"
   (prog
     "        'abba' 'a' ARB . C 'a'"
     "end"
   )
-    (is (= "" ($$ (quote C))))
+    (is (= "bb" ($$ (quote C))))
 )
 
 (deftest worm_arb_he_arb_o_in_hello
