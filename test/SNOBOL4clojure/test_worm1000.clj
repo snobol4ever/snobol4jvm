@@ -2458,7 +2458,7 @@
     "        R = A<1> A<4> A<5>"
     "end"
   )
-    (is (= "1165" ($$ (quote R))))
+    (is (= "11625" ($$ (quote R))))
 )
 
 (deftest worm_alt_hello
