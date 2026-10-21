@@ -387,12 +387,12 @@
   (is (= 3 ($$ 'I))))
 
 (deftest worm_ltr_2p3m4
-  "I = 2 + 3 * 4 => 20 (left-to-right, no precedence)"
+  "I = 2 + 3 * 4 => 14 (* binds tighter than +)"
   (prog
     "        I = 2 + 3 * 4"
     "end"
   )
-    (is (= 20 ($$ (quote I))))
+    (is (= 14 ($$ (quote I))))
 )
 
 (deftest worm_ltr_10m2p3
