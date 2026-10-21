@@ -632,6 +632,10 @@
                          x)))
               ;; Binary P . V — CAPTURE-COND (conditional assignment on match success).
               (let [[P N] parms] (INVOKE '. (EVAL! P) N))))
+          ;; Unary @V — cursor assignment. The matcher assigns the cursor to V by
+          ;; name, so the operand is passed as written and not read as a value.
+          (and (equal op 'at) (clojure.core/= 1 (count parms)))
+          (list 'CURSOR-IMM! (first parms))
           (equal op '$)     (if (clojure.core/= 1 (count parms))
                               ;; Unary $X — the variable X's value names (a string or a NAME)
                               (when-some [v (EVAL! (first parms))]

@@ -840,3 +840,33 @@
         (spit f (str " OUTPUT = CONVERT('" s "','INTEGER')\nEND\n"))
         (is (= (if (= expect "") "" (str expect "\n")) (with-out-str (-main (.getPath f)))) (pr-str s))
         (finally (.delete f))))))
+
+;; Unary @V assigns the cursor to V. The argument was evaluated to V's value
+;; before the pattern engine saw it, so the engine had no name to assign and V
+;; stayed null (Gimpel's BASE10 read NaN and DECOMB read 0). The assignment is
+;; immediate: it stands when a later part of the pattern fails (f), and a retry
+;; reassigns it (h, i). A function's local is the one assigned (j), and the
+;; replaced statement keeps its cursor (k). The oracle, sbl -bf, wrote exactly
+;; this output.
+(deftest cursor-assignment-assigns-the-named-variable
+  (let [f (java.io.File/createTempFile "cursor" ".sno")]
+    (try
+      (spit f (str " ALPHA = '0123456789ABCDEF'\n"
+                   " ALPHA '3' @K\n OUTPUT = 'a: K=' K\n"
+                   " ALPHA @K2 '3'\n OUTPUT = 'b: K2=' K2\n"
+                   " P = '5' @K3\n ALPHA P\n OUTPUT = 'c: K3=' K3\n"
+                   " ALPHA 'F' @K5 'Z'                 :S(OK)\n"
+                   " OUTPUT = 'f: failed, K5=' K5\n"
+                   "OK ALPHA ('A' | 'B') @K6\n OUTPUT = 'g: K6=' K6\n"
+                   " ALPHA ARB @K7 'D'\n OUTPUT = 'h: K7=' K7\n"
+                   " ALPHA ('1' @K8 'Q') | '2'\n OUTPUT = 'i: K8=' K8\n"
+                   " DEFINE('FN(Q)T')                 :(FNEND)\n"
+                   "FN ALPHA Q @T                       :F(FRETURN)\n"
+                   " FN = T                           :(RETURN)\n"
+                   "FNEND T = 'outer'\n OUTPUT = 'j: ' FN('7') ' T=' T\n"
+                   " S = 'ABCDEF'\n S 'C' @K9 = 'x'\n OUTPUT = 'k: ' S ' K9=' K9\n"
+                   "END\n"))
+      (is (= (str "a: K=4\nb: K2=3\nc: K3=6\nf: failed, K5=16\ng: K6=11\nh: K7=13\n"
+                  "i: K8=2\nj: 8 T=outer\nk: ABxDEF K9=3\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
