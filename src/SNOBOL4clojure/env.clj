@@ -111,13 +111,16 @@
 ;; ── NAME type: mutable named reference (SNOBOL4 . operator) ──────────────────
 (definterface &NAME (n []) (n [_]))
 ;; Two NAMEs are equal when they name the same variable or element, as IDENT
-;; and DIFFER read them: .A is .A and is not .B or the string "A".
+;; and DIFFER read them: .A is .A and is not .B or the string "A". As text a
+;; NAME is the name of its variable, which is what OUTPUT, SIZE and a
+;; concatenation read.
 (deftype NAME [^:unsynchronized-mutable n] &NAME
   (n [this]  n)
   (n [this _] (set! n _))
   Object
   (equals   [this o] (and (instance? &NAME o) (clojure.core/= n (.n ^&NAME o))))
-  (hashCode [this]   (hash n)))
+  (hashCode [this]   (hash n))
+  (toString [this]   (str n)))
 
 (defn name-string
   "The text of a name argument: a NAME (.F) is the name of its variable,

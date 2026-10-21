@@ -765,3 +765,16 @@
                    "END\n"))
       (is (= "same\ndiffer-yes\nelem-same\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A NAME used as text is the name of its variable. OUTPUT wrote the Java
+;; object's name, SIZE counted it, and a concatenation of a string and a NAME
+;; was taken for a pattern and printed as PATTERN. The oracle, sbl -bf: A, AB,
+;; 13 (the sizes of .A and .ABC), and LEQ(.A,'A') succeeds.
+(deftest a-name-reads-as-its-variable-name-in-text
+  (let [f (java.io.File/createTempFile "nametext" ".sno")]
+    (try
+      (spit f (str " OUTPUT = .A\n OUTPUT = .A .B\n OUTPUT = 'x ' .A\n"
+                   " OUTPUT = SIZE(.A) SIZE(.ABC)\n OUTPUT = LEQ(.A,'A') 'leq-yes'\n"
+                   "END\n"))
+      (is (= "A\nAB\nx A\n13\nleq-yes\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
