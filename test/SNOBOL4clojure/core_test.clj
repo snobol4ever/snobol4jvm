@@ -2894,3 +2894,29 @@
       (is (= "one two\nv 3\n235 subscripted operand is not table or array\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A field function serves every DATA type that has a field of its name, and applied to an object without that field, or to anything that is no DATA object, it is
+;; "41 FIELD function argument is wrong datatype" (SPITBOL manual Appendix D): DATA('NODE(VAL,LSON,RSON)') and DATA('CLUNK(VALUE,LSON)') share LSON. The second DATA
+;; replaced LSON with one that knew only CLUNK, and a field of the wrong type failed quietly (TPgm test1). The oracle, sbl -bf, wrote exactly this output.
+(deftest a-field-function-serves-every-type-with-the-field-and-is-error-41-otherwise
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 10\n"
+                   "        DATA('NODE(VAL,LSON,RSON)')\n"
+                   "        B = NODE('x','y','z')\n"
+                   "        DATA('CLUNK(VALUE,LSON)')\n"
+                   "        C = CLUNK('a','b')\n"
+                   "        OUTPUT = LSON(B) ' ' LSON(C) ' ' VALUE(C) ' ' RSON(B)\n"
+                   "        LSON(C) = 'bb'\n"
+                   "        LSON(B) = 'yy'\n"
+                   "        OUTPUT = LSON(B) ' ' LSON(C)\n"
+                   "        X = RSON(C)\n"
+                   "        OUTPUT = 'rson of clunk: ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = VAL('str')\n"
+                   "        OUTPUT = 'val of a string: ' &ERRTYPE\n"
+                   "        RSON(C) = 1\n"
+                   "        OUTPUT = 'rson(clunk) = : ' &ERRTYPE\n"
+                   "END\n"))
+      (is (= "y b a z\nyy bb\nrson of clunk: 41 field function argument is wrong datatype\nval of a string: 41\nrson(clunk) = : 41\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

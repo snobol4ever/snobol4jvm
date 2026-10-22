@@ -323,38 +323,42 @@
                                (clojure.string/split fields-str #",")))]
         [type-name fields]))))
 
+(defn- field-slot
+  "Where field f lives in inst: its index in inst's type. A field function applied to an object whose type has no such field, or to anything that is no DATA object,
+   is \"41 FIELD function argument is wrong datatype\" (manual, Appendix D), as sbl -bf raises it."
+  [f inst]
+  (or (when (instance? SNOBOL4clojure.env.DataObj inst)
+        (let [fields (.field-names ^SNOBOL4clojure.env.DataObj inst) i (.indexOf ^java.util.List (vec fields) f)]
+          (when (>= i 0) i)))
+      (throw (ex-info "field function argument is wrong datatype" {:snobol/error 41}))))
+
+(defn field-fn
+  "The field function named f: (F inst) reads the field and (F inst v) assigns it in place. One function serves every DATA type that has a field named f, as in
+   SPITBOL (DATA('NODE(VAL,LSON)') and DATA('CLUNK(VALUE,LSON)') share LSON)."
+  [f]
+  (fn
+    ([inst]   (let [i (int (field-slot f inst))] (aget ^objects (.fields ^SNOBOL4clojure.env.DataObj inst) i)))
+    ([inst v] (let [i (int (field-slot f inst))] (aset ^objects (.fields ^SNOBOL4clojure.env.DataObj inst) i v) v))))
+
 (defn DATA!
-  "Parse and register a DATA type definition.
-   Returns a do-form that installs constructor + accessor fns in the active ns."
+  "Parse and register a DATA type definition, and return a form that installs its creation function and field functions."
   [S]
   (when-let [[type-name fields] (parse-data-spec S)]
     ;; The names are kept as written: sbl -bf folds none, so DATA('node(val,next)') defines node, val and next.
     (let [tname  type-name
           fnames fields]
-      ;; Register in the global registry
       (swap! data-type-registry assoc tname fnames)
-      ;; Build the constructor: (TYPE f1 f2 ...) is a new DataObj, a field not given being the null string.
-      ;; Build the accessors: (F inst) reads the field and (F inst new-val) assigns it in place; an instance of another type is a failure.
-      ;; We emit a form suitable for eval in the user namespace.
-      (let [constructor-body
-              `(fn [& args#]
-                 (SNOBOL4clojure.env/->DataObj ~tname ~fnames (object-array (map-indexed (fn [i# _#] (nth args# i# ε)) ~fnames)) (SNOBOL4clojure.env/next-serial!)))
-            accessor-forms
-              (for [[i f] (map-indexed vector fnames)]
-                [f
-                 `(fn
-                    ([inst#]      (when (and (instance? SNOBOL4clojure.env.DataObj inst#) (clojure.core/= ~tname (.type-name ^SNOBOL4clojure.env.DataObj inst#)))
-                                    (aget ^"[Ljava.lang.Object;" (.fields ^SNOBOL4clojure.env.DataObj inst#) ~i)))
-                    ([inst# val#] (when (and (instance? SNOBOL4clojure.env.DataObj inst#) (clojure.core/= ~tname (.type-name ^SNOBOL4clojure.env.DataObj inst#)))
-                                    (aset ^"[Ljava.lang.Object;" (.fields ^SNOBOL4clojure.env.DataObj inst#) ~i val#)
-                                    val#)))])]
-        ;; "The DATA function implicitly defines a creation function and n new field reference functions" (manual ch. 19, DATA): they are functions, kept with the
-        ;; DEFINEd ones in <FUNS> and marked :data, not values of variables, so a variable or a parameter of the same name (DEFINE('INSERT(LIST,CARD)') beside
-        ;; DATA('CARD(NUM,NEXT)')) leaves them alone
-        `(do
-           (swap! SNOBOL4clojure.env/<FUNS> assoc ~tname (with-meta ~constructor-body {:data true}))
-           ~@(for [[f form] accessor-forms]
-               `(swap! SNOBOL4clojure.env/<FUNS> assoc ~f (with-meta ~form {:data true}))))))))
+      ;; "The DATA function implicitly defines a creation function and n new field reference functions" (manual ch. 19, DATA): they are functions, kept with the
+      ;; DEFINEd ones in <FUNS> and marked :data, not values of variables, so a variable or a parameter of the same name (DEFINE('INSERT(LIST,CARD)') beside
+      ;; DATA('CARD(NUM,NEXT)')) leaves them alone. The creation function makes a new DataObj, a field not given being the null string.
+      `(do
+         (swap! SNOBOL4clojure.env/<FUNS> assoc ~tname
+                (with-meta (fn [& args#]
+                             (SNOBOL4clojure.env/->DataObj ~tname ~fnames (object-array (map-indexed (fn [i# _#] (nth args# i# ε)) ~fnames))
+                                                           (SNOBOL4clojure.env/next-serial!)))
+                           {:data true}))
+         ~@(for [f fnames]
+             `(swap! SNOBOL4clojure.env/<FUNS> assoc ~f (with-meta (field-fn ~f) {:data true})))))))
 
 (defn DATA [S]
   (when-let [form (DATA! S)]
