@@ -3350,18 +3350,18 @@ Unprotected keywords
 " (:stdout r)))))
 
 (deftest csnobol4-err
-  "Budne suite: err.sno"
-  (let [r (run-with-timeout "	&errlimit = 2
+  "Budne suite: err.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [r (run-with-timeout "	&ERRLIMIT = 2
 	a[1] =
-	output = &errtype
-	output = &errtext
+	OUTPUT = &ERRTYPE
+	OUTPUT = &ERRTEXT
 * should be the same as before if &errtext reference ok
-	output = &errtype
-end
+	OUTPUT = &ERRTYPE
+END
 " 2000)]
-    (is (= "3
-Erroneous array or table reference
-3
+    (is (same-output? "235
+subscripted operand is not table or array
+235
 " (:stdout r)))))
 
 (deftest csnobol4-fact
