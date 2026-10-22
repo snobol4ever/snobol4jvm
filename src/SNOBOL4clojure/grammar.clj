@@ -9,7 +9,8 @@
   body      ::=  <_> (invoking | matching | replacing | assigning)
   goto      ::=  <_ ':' __> (jmp  |  sjmp (<__> fjmp)?  |  fjmp (<__> sjmp)?)
   invoking  ::=  subject
-  matching  ::=  subject <_> pattern
+  matching  ::=  subject <_> pattern qmatch*
+  qmatch    ::=  <_ '?' _> and
   replacing ::=  subject <_> pattern <_ '='> replace
   assigning ::=  subject <_ '='> replace
  <subject>  ::=  uop
@@ -26,7 +27,7 @@
   eol       ::=  '\\n'
  <expr>     ::=  <__> asn <__>
   asn       ::=  mch | mch  <_  '='  _>  asn
-  mch       ::=  and | and  <_  '?'  _>  and (<_ '=' _> and)?
+  mch       ::=  and | mch  <_  '?'  _>  and (<_ '=' _> and)?
   and       ::=  alt | and  <_  '&'  _>  alt
   alt       ::=  cat | cat (<_  '|'  _>  cat)+
   cat       ::=  at  | at  (<_>          at)+

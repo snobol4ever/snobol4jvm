@@ -16,7 +16,9 @@
                                        (keyword L) (str L))})
      :body      (fn [B]      {:body B})
      :invoking  (fn [S]      S)
-     :matching  (fn [S P]    (list '? S P))
+     ;; "It is left associative" (manual, Appendix, SPITBOL extensions): S ? P1 ? P2 matches P2 against the text P1 matched
+     :matching  (fn [S P & qs] (reduce (fn [m q] (list '? m q)) (list '? S P) qs))
+     :qmatch    (fn [P]      P)
      :replacing (fn
                   ([S P]     (list '?= S P 'epsilon))
                   ([S P R]   (list '?= S P R)))

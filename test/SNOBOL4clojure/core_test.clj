@@ -4324,3 +4324,25 @@
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
 
+
+;; "The question mark symbol (?) is defined to be an explicit binary pattern-matching operator. It is left associative ... 'ABCD' ? LEN(3) $ OUTPUT ? LEN(1)
+;; REM $ OUTPUT causes printing of ABC followed by BC" (manual, Appendix, SPITBOL extensions), in a statement or an expression, as sbl -bf runs it. The grammar
+;; let one ? into an expression and none after a statement's pattern, so the chain parsed into nothing.
+(deftest binary-query-is-left-associative
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        'ABCD' ? LEN(3) $ OUTPUT ? LEN(1) REM $ OUTPUT\n"
+                   "        X = 'abcd' ? 'bc' ? 'c'\n"
+                   "        OUTPUT = '1 ' X\n"
+                   "        Y = 'abcd' ? ('bc' ? 'c')\n"
+                   "        OUTPUT = '2 [' Y ']'\n"
+                   "        Z = 'xyz' ? 'y' 'z' ? 'z'\n"
+                   "        OUTPUT = '3 ' Z\n"
+                   "END\n"))
+      (is (= (str "ABC\n"
+                   "BC\n"
+                   "1 c\n"
+                   "2 [c]\n"
+                   "3 z\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
