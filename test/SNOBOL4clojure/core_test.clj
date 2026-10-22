@@ -3875,3 +3875,28 @@
                    "i 318 backspace file does not permit backspace\n")
              (binding [SNOBOL4clojure.env/*file-dir* (.getPath dir)] (with-out-str (-main (.getPath f))))))
       (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))
+
+
+;; "(SUBJECT ? PATTERN) performs pattern matching and returns the substring matched, or failure as its value" (manual ch. 9, Binary operator extensions); "It
+;; returns as its value the substring matched from its left argument (a string) by its right argument (a pattern)" (Appendix, SPITBOL extensions). sbl -bf: V =
+;; 'ab' ? 'a' gives V the STRING a, a null match the null string, and ? binds looser than concatenation. The engine gave the match's [start end], a PATTERN (CEO-1915: hq_dotnet's fuzz witness
+;; the_value_of_a_binary_query_match_is_the_matched_text).
+(deftest the-value-of-a-binary-query-match-is-the-matched-text
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        V = 'ab' ? 'a'\n"
+                   "        OUTPUT = DATATYPE(V) ' [' V ']'\n"
+                   "        V = 'xaby' ? ('a' 'b')\n"
+                   "        OUTPUT = DATATYPE(V) ' [' V ']'\n"
+                   "        V = 'ab' ? 'q'                              :S(Y1)\n"
+                   "        OUTPUT = 'failed'\n"
+                   "Y1\n"
+                   "        V = 'ab' ? ''\n"
+                   "        OUTPUT = DATATYPE(V) ' [' V ']'\n"
+                   "        V = ('x' 'ab' ? 'b') 'c'\n"
+                   "        OUTPUT = V\n"
+                   "END\n"))
+      (is (= "STRING [a]\nSTRING [ab]\nfailed\nSTRING []\nbc\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+

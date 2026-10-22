@@ -64,7 +64,7 @@
 (defn =     ([_x]       η)                         ; unary  — programmable
             ([n x]      (list '= n x)))             ; binary — assignment
 (defn ?     ([x]        (annihilate x))             ; unary  — interrogation
-            ([s p]      (SEARCH (str s) p))         ; binary — match, returns [start end] or nil
+            ([s p]      (let [s (str s)] (when-let [[a b] (SEARCH s p)] (subs s a b))))   ; binary — match, returns the text matched or nil
             ([n s p]    (match-replace n s p)))     ; ternary — match+replace
 (defn ?=    ([n s p]    (match-replace n s p)))
 (defn &     ([_n]       nil)                     ; unary  — keyword
@@ -270,7 +270,8 @@
                 (zero? (double b)) (throw (ex-info "division caused real overflow" {:snobol/error 262}))
                 :else (clojure.core// (double a) (double b))))
     **      (let [[x y] args] (pow-fn x y))
-    ?       (let [[s p] args] (SEARCH (str s) p))
+    ;; "(SUBJECT ? PATTERN) performs pattern matching and returns the substring matched, or failure as its value" (manual ch. 9, Binary operator extensions)
+    ?       (let [[s p] args s (str s)] (when-let [[a b] (SEARCH s p)] (subs s a b)))
     =       (let [[N r] args]
               ;; nil replacement = sub-expression failure → statement fails
               (when-not (nil? r)
