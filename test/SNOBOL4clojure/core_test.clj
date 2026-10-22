@@ -3671,3 +3671,40 @@
       (is (= "F called [a] [b]\n1 [ab]\n2 failed\n3 failed\n4 unary succeeded []\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; "Name2 is the optional name of a program-defined function that will be called when a trace occurs. It is called with two arguments: the name of the item being
+;; traced, and argument s2" (manual ch. 19, TRACE); "When a program-defined trace function is invoked, keywords &TRACE and &FTRACE are temporarily set to zero.
+;; Their values are restored when the trace function returns" (ch. 10). sbl -bf calls it in place of the trace line, for a value, call, return and label trace,
+;; at one function level below the traced statement, and charges 1 of &TRACE. The engine kept the function and wrote its own line (AIS TEST.sno's LTRACE).
+(deftest a-trace-calls-the-function-trace-names
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DEFINE('TF(N,T)')                               :(TF.END)\n"
+                   "TF      OUTPUT = '  TF [' N '] ' DATATYPE(N) ' [' T '] tr=' &TRACE ' ft=' &FTRACE ' fl=' &FNCLEVEL\n"
+                   "        OUTPUT = '  TF value [' $N ']'                  :(RETURN)\n"
+                   "TF.END\n"
+                   "        DEFINE('F(A)L')                                 :(F.END)\n"
+                   "F       L = 'loc'\n"
+                   "        F = A A                                         :(RETURN)\n"
+                   "F.END\n"
+                   "        &TRACE = 10\n"
+                   "        TRACE(.X, 'VALUE', 'tagx', .TF)\n"
+                   "        X = 'one'\n"
+                   "        OUTPUT = 'after X tr=' &TRACE\n"
+                   "        TRACE('F', 'CALL', 'tagc', 'TF')\n"
+                   "        TRACE('F', 'RETURN', , .TF)\n"
+                   "        Y = F('z')\n"
+                   "        OUTPUT = 'after F [' Y '] tr=' &TRACE\n"
+                   "        TRACE('LAB', 'LABEL', 'tagl', .TF)\n"
+                   "        :(LAB)\n"
+                   "LAB     OUTPUT = 'at LAB tr=' &TRACE\n"
+                   "        &TRACE = 0\n"
+                   "        X = 'two'\n"
+                   "        OUTPUT = 'off'\n"
+                   "END\n"))
+      (is (= "  TF [X] NAME [tagx] tr=0 ft=0 fl=1\n  TF value [one]\nafter X tr=9\n  TF [F] NAME [tagc] tr=0 ft=0 fl=1\n  TF value []\n  TF [F] NAME [] tr=0 ft=0 fl=1\n  TF value [zz]\nafter F [zz] tr=7\n  TF [LAB] NAME [tagl] tr=0 ft=0 fl=1\n  TF value []\nat LAB tr=6\noff\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
+

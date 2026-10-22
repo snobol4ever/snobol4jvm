@@ -22,7 +22,7 @@
 
   Other trace types keep the form they had until they are measured against the oracle.
   "
-  (:require [SNOBOL4clojure.env :refer [&TRACE &FTRACE &STNO &FNCLEVEL $$ real-str <TRACES>]])
+  (:require [SNOBOL4clojure.env :refer [&TRACE &FTRACE &STNO &FNCLEVEL $$ real-str <TRACES> <FUNS>]])
   (:import  [SNOBOL4clojure.env NAME]))
 
 ;; ── Registry ───────────────────────────────────────────�
@@ -121,6 +121,22 @@
     (swap! &TRACE dec)
     (trace-println (star-field) "  " text)))
 
+;; "Name2 is the optional name of a program-defined function that will be called when a trace occurs. It is called with two arguments: the name of the item being
+;; traced, and argument s2" (manual ch. 19, TRACE); "When a program-defined trace function is invoked, keywords &TRACE and &FTRACE are temporarily set to zero.
+;; Their values are restored when the trace function returns" (ch. 10, Debugging). As sbl -bf has it: the function is called in place of the trace line and costs 1
+;; of &TRACE as a line does; the item's name is a NAME. A function name that names no defined function leaves the line.
+(defn- trace-fn [entry]
+  (when-some [f (:fn entry)]
+    (get @<FUNS> (if (instance? NAME f) (str (.n ^NAME f)) (str f)))))
+
+(defn- call-trace-fn! [f item-name entry]
+  (swap! &TRACE dec)
+  (let [tr @&TRACE ft @&FTRACE]
+    (reset! &TRACE 0)
+    (reset! &FTRACE 0)
+    (try (f (NAME. (symbol (str item-name))) (:label entry))
+         (finally (reset! &TRACE tr) (reset! &FTRACE ft)))))
+
 ;; ── Fire helpers — called from runtime / operators / functions ────────────────
 
 (defn fire-value!
@@ -128,15 +144,19 @@
    Called from operators.clj INVOKE '= after the assignment."
   [sym new-val]
   (when-let [entry (@registry (reg-key sym :value))]
-    (emit-line! (str sym " = " (trace-val new-val)))
+    (if-let [f (and (pos? @&TRACE) (trace-fn entry))]
+      (call-trace-fn! f sym entry)
+      (emit-line! (str sym " = " (trace-val new-val))))
     (:label entry)))
 
 (defn fire-keyword!
   "Fire KEYWORD trace for `kw-sym` (&VAR) being set to `new-val`."
   [kw-sym new-val]
   (when (pos? @&TRACE)
-    (when (@registry (reg-key kw-sym :keyword))
-      (trace-println "*** &" kw-sym " = " (pr-str new-val)))))
+    (when-let [entry (@registry (reg-key kw-sym :keyword))]
+      (if-let [f (trace-fn entry)]
+        (call-trace-fn! f kw-sym entry)
+        (trace-println "*** &" kw-sym " = " (pr-str new-val))))))
 
 (defn fire-label!
   "Fire LABEL trace when execution reaches `label-key`.
@@ -145,18 +165,21 @@
   [label-key]
   (when (pos? @&TRACE)
     (let [lname (if (keyword? label-key) (name label-key) (str label-key))]
-      (when (@registry (reg-key lname :label))
-        (trace-println "*** " lname)))))
+      (when-let [entry (@registry (reg-key lname :label))]
+        (if-let [f (trace-fn entry)]
+          (call-trace-fn! f lname entry)
+          (trace-println "*** " lname))))))
 
 (defn- function-line!
   "A call or return line of the function `fname`. It is written when the function is registered for `kind` and &TRACE is above 0 (and costs 1 of &TRACE),
    or else when &FTRACE is above 0 (and costs 1 of &FTRACE). Four asterisks and the statement number, a blank, one i for each function level the caller is
    inside, a blank, then the text."
   [fname kind text]
-  (let [line #(trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " " text)]
+  (let [line  #(trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " " text)
+        entry (@registry (reg-key fname kind))]
     (cond
-      (and (@registry (reg-key fname kind)) (pos? @&TRACE)) (do (swap! &TRACE dec) (line))
-      (pos? @&FTRACE)                                       (do (swap! &FTRACE dec) (line)))))
+      (and entry (pos? @&TRACE)) (if-let [f (trace-fn entry)] (call-trace-fn! f fname entry) (do (swap! &TRACE dec) (line)))
+      (pos? @&FTRACE)            (do (swap! &FTRACE dec) (line)))))
 
 (defn fire-call!
   "Fire the call trace of user function `fname`, whose parameters hold `args`. Called from the DEFINE wrapper before the body runs, at the caller's
