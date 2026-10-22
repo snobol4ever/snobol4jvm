@@ -5,7 +5,7 @@
   (:require [clojure.tools.trace      :refer :all]
             [SNOBOL4clojure.env       :refer
              [ε η equal not-equal Σ+ subtract multiply divide
-              ncvt scvt sstr num $$ out reference snobol-set!
+              ncvt scvt sstr num $$ $$fn out reference snobol-set!
               table? table-get table-set
               array? array-get array-set array-prototype assign-keyword! name-string
               snobol-return! snobol-freturn! snobol-nreturn!
@@ -608,7 +608,7 @@
                     (throw (ex-info (.getMessage e) {:snobol/signal :error})))))
     code      (apply INVOKE 'CODE args)
     quote   ($$ (second op))
-            (let [raw-f (if (symbol? op) ($$ op) op)   ; op is the container itself when it came from a subscript
+            (let [raw-f (if (symbol? op) ($$fn op) op)   ; op is the container itself when it came from a subscript
                   ;; NAME indirect reference — dereference to actual array/table
                   f (if (instance? NAME raw-f)
                       ($$ (symbol (str (.n raw-f))))

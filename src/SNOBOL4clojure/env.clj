@@ -322,6 +322,15 @@
           (if (neg? r) (when (pos? k) (String. buf 0 k)) (recur (clojure.core/+ k r))))
         (String. buf 0 k)))))
 
+;; What a name calls: the program's own variable or, failing that, the engine's built-in of that name (a function among them). INVOKE resolves a call with it.
+(declare $$)
+(defn $$fn [N]
+  (let [sym (symbol (name N))]
+    (if-let [v (find @<VARS> sym)]
+      (val v)
+      (let [resolved (ns-resolve (find-ns 'SNOBOL4clojure.core) sym)]
+        (if (instance? clojure.lang.Var resolved) (var-get resolved) ($$ N))))))
+
 (defn $$ [N]
   (let [sym (symbol (name N))]
     (cond
@@ -347,10 +356,11 @@
       ;; correct SNOBOL4 semantics.  Engine builtins are never written here.
       (if-let [v (find @<VARS> sym)]
         (val v)
-        (let [resolved (ns-resolve (find-ns 'SNOBOL4clojure.core) sym)]
-          (if (instance? clojure.lang.Var resolved)
-            (var-get resolved)
-            ε))))))
+        ;; a built-in function's name is no variable: an unset TRIM is the null string. The variables that hold a value of their own are the primitive patterns
+        ;; ("These variables contain the primitive patterns of the same name", manual ch. 18: ABORT, ARB, BAL, FAIL, FENCE, REM, SUCCEED)
+        (let [resolved (ns-resolve (find-ns 'SNOBOL4clojure.core) sym)
+              v        (when (instance? clojure.lang.Var resolved) (var-get resolved))]
+          (if (or (nil? v) (and (fn? v) (not= sym 'FENCE))) ε v))))))
 
 ;; ── Variable snapshot ────────────────────────────────────────────────────────
 (defn snapshot!

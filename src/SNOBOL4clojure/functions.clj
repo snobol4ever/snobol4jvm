@@ -535,7 +535,7 @@
   "APPLY(fname, arg1, ...) — call a named function by string/symbol."
   [fname & fargs]
   (let [f-sym (symbol (str fname))
-        f-fn  (SNOBOL4clojure.env/$$ f-sym)]
+        f-fn  (SNOBOL4clojure.env/$$fn f-sym)]
     (when (fn? f-fn)
       (apply f-fn fargs))))
 (defn ARG

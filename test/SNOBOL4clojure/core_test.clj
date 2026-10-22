@@ -2422,3 +2422,19 @@
       (is (= "T1 ERR 239\nT2 ERR 239\nT3 ERR 239\nT4 ERR 239\nT5 ERR 239\nT6 ERR 239\nT7 ok ZERO\nT8 realname=realname\nEND errlimit=994\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A built-in function's name is no variable: an unset TRIM, SIZE, DUPL or ARRAY is the null string, and the name can hold a value of the program's own while the
+;; function stays callable. The variables that come with a value are the primitive patterns ("These variables contain the primitive patterns of the same name", SPITBOL
+;; manual ch. 18). The engine read an unset TRIM as the TRIM function, which printed as PATTERN (SnoRungs code_eval_trim_replace_1). The oracle, sbl -bf, wrote exactly
+;; this output.
+(deftest a-function-name-is-no-variable
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        OUTPUT = 'TRIM=[' TRIM '] SIZE=[' SIZE '] DUPL=[' DUPL '] ARRAY=[' ARRAY ']'\n"
+                   "        OUTPUT = DATATYPE(ARB) ' ' DATATYPE(BAL) ' ' DATATYPE(REM) ' ' DATATYPE(FAIL) ' ' DATATYPE(FENCE) ' ' DATATYPE(ABORT) ' ' DATATYPE(SUCCEED)\n"
+                   "        TRIM = 'mine'\n"
+                   "        OUTPUT = 'TRIM=[' TRIM '] ' TRIM('ab  ') '|'\n"
+                   "END\n"))
+      (is (= "TRIM=[] SIZE=[] DUPL=[] ARRAY=[]\nPATTERN PATTERN PATTERN PATTERN PATTERN PATTERN PATTERN\nTRIM=[mine] ab|\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
