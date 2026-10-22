@@ -271,6 +271,9 @@
         vr (ns-resolve (the-ns 'SNOBOL4clojure.env) (symbol (str "&" kw)))]
     (when-not vr
       (throw (ex-info "keyword operand is not name of defined keyword" {:snobol/error 251})))
+    ;; &ERRTEXT is the one keyword that takes a string (manual ch. 14, Replacement field; ch. 16): what is assigned is kept as a string
+    (if (clojure.core/= kw "ERRTEXT")
+      (reset! &ERRTEXT (sstr v))
     (let [n (if (integer? v) v (num v))]
       (when (and (double? n) (Double/isNaN n))
         (throw (ex-info "keyword value assigned is not integer" {:snobol/error 208})))
@@ -281,7 +284,7 @@
           (or (contains? keyword-defaults vr) (clojure.core/= vr #'&TRACE))
           (do (reset! @vr n) n)
           :else
-          (throw (ex-info "keyword in assignment is protected" {:snobol/error 209})))))))
+          (throw (ex-info "keyword in assignment is protected" {:snobol/error 209}))))))))
 
 ;; ── Variable write / read ─────────────────────────────────────────────────────
 (defn snobol-set!

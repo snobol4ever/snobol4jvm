@@ -2093,3 +2093,22 @@
       (is (= "open1 alpha\nopen2 alpha\nunopened 174\ndone\n"
              (binding [SNOBOL4clojure.env/*file-dir* dir] (with-out-str (-main (.getPath f))))))
       (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))
+
+;; &ERRTEXT takes a string: "If the subject is an unprotected keyword, the replacement field must evaluate to an integer value (except for &ERRTEXT, which will accept a
+;; string)" (SPITBOL manual ch. 14, Replacement field), and what is assigned is kept as a STRING. The engine raised ERROR 208. The oracle, sbl -bf, wrote exactly this output.
+(deftest errtext-takes-a-string
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRTEXT = 'my own text'\n"
+                   "        OUTPUT = '[' &ERRTEXT ']'\n"
+                   "        &ERRTEXT = 42\n"
+                   "        OUTPUT = '[' &ERRTEXT '] ' DATATYPE(&ERRTEXT)\n"
+                   "        &ERRTEXT =\n"
+                   "        OUTPUT = '[' &ERRTEXT ']'\n"
+                   "        &ERRLIMIT = 1\n"
+                   "        A<1> = 'x'\n"
+                   "        OUTPUT = '[' &ERRTEXT ']'\n"
+                   "END\n"))
+      (is (= "[my own text]\n[42] STRING\n[]\n[subscripted operand is not table or array]\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
