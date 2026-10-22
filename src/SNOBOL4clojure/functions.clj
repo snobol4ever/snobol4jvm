@@ -35,16 +35,19 @@
 
 ;; An integer argument as sbl -bf reads it: an integer, a real (truncated toward zero) or a numeric string (read as a number, so a point or an exponent makes it a
 ;; real, which is truncated). Anything else is the calling function's own error, which the caller names.
-(defn- int-arg [x err]
+(defn integer-of
+  "The integer x is as an integer argument, or nil when it is none."
+  [x]
   (cond
     (integer? x) x
     (double? x)  (real->integer x)
     :else        (let [t (clojure.string/trim (str x))]
                    (if (re-matches #"[+-]?\d+" t)
-                     (try (Long/parseLong t) (catch NumberFormatException _ (throw (ex-info "argument is not integer" {:snobol/error err}))))
-                     (if-some [d (string->real t)]
-                       (real->integer d)
-                       (throw (ex-info "argument is not integer" {:snobol/error err})))))))
+                     (try (Long/parseLong t) (catch NumberFormatException _ nil))
+                     (when-some [d (string->real t)] (real->integer d))))))
+
+(defn- int-arg [x err]
+  (if-some [n (integer-of x)] n (throw (ex-info "argument is not integer" {:snobol/error err}))))
 
 
 ;; A string argument as SPITBOL converts it: an integer as its digits and a real "converted to its standard representation" (manual ch. 17, Real to string: 21. for 21.0,

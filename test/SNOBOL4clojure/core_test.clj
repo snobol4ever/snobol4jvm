@@ -3309,3 +3309,56 @@
                   "execution time msec  -\nREGENERATIONS        -\nmemory used (bytes)  -\nmemory left (bytes)  -\n\n")
              (fatal-figures (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p))))))
       (finally (.delete f)))))
+
+
+;; "These functions return a pattern based on their integer argument" (manual ch. 4, Integer pattern functions); for LEN "I must be an integer greater than or equal
+;; to zero". sbl -bf converts the argument as any integer argument (a numeric string, a real truncated) and refuses one that does not convert, "120 LEN argument is not
+;; integer or expression", or one below 0 or above 16777216, "121 LEN argument is negative or too large" (sbl.min patin, gtsmi); a deferred argument is checked when the
+;; match reaches it, "47 LEN evaluated argument is not integer", "48 ... negative or too large" (Appendix D). POS, RPOS, TAB and RTAB the same, with their own numbers.
+(deftest integer-pattern-arguments-are-checked
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 100\n"
+                   "        N = -1\n"
+                   "        S = 'X'\n"
+                   "        B = 16777217\n"
+                   "        P = LEN(N)                      :S(BAD)\n"
+                   "        OUTPUT = 'LEN ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        P = LEN(S)                      :S(BAD)\n"
+                   "        OUTPUT = 'LEN ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        P = POS(B)                      :S(BAD)\n"
+                   "        OUTPUT = 'POS ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        P = RPOS(S)                     :S(BAD)\n"
+                   "        OUTPUT = 'RPOS ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        P = TAB(N)                      :S(BAD)\n"
+                   "        OUTPUT = 'TAB ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        P = RTAB(TABLE())               :S(BAD)\n"
+                   "        OUTPUT = 'RTAB ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        'ABCDEFG' LEN('2') . R TAB(4.9) . Q RTAB(' 1') . T\n"
+                   "        OUTPUT = R ' ' Q ' ' T\n"
+                   "        'ABCDEFG' LEN(*N)               :S(BAD)\n"
+                   "        OUTPUT = 'LEN(*) ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        'ABCDEFG' POS(*S)               :S(BAD)\n"
+                   "        OUTPUT = 'POS(*) ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        'ABCDEFG' RPOS(*B)              :S(BAD)\n"
+                   "        OUTPUT = 'RPOS(*) ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        'ABCDEFG' TAB(*S)               :S(BAD)\n"
+                   "        OUTPUT = 'TAB(*) ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        'ABCDEFG' RTAB(*N)              :S(BAD)\n"
+                   "        OUTPUT = 'RTAB(*) ' &ERRTYPE ' ' &ERRTEXT  :(END)\n"
+                   "BAD     OUTPUT = 'succeeded'\n"
+                   "END\n"))
+      (is (= (str "LEN 121 len argument is negative or too large\n"
+                    "LEN 120 len argument is not integer or expression\n"
+                    "POS 163 pos argument is negative or too large\n"
+                    "RPOS 185 rpos argument is not integer or expression\n"
+                    "TAB 184 tab argument is negative or too large\n"
+                    "RTAB 181 rtab argument is not integer or expression\n"
+                    "AB CD EF\n"
+                    "LEN(*) 48 len evaluated argument is negative or too large\n"
+                    "POS(*) 50 pos evaluated argument is not integer\n"
+                    "RPOS(*) 53 rpos evaluated argument is negative or too large\n"
+                    "TAB(*) 57 tab evaluated argument is not integer\n"
+                    "RTAB(*) 55 rtab evaluated argument is negative or too large\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
