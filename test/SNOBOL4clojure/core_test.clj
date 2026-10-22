@@ -2765,3 +2765,23 @@
       (is (= "EXPRESSION 3\nEXPRESSION 15.9999\nbad expression fails\nEXPRESSION 3\nv\n42 REAL\nEXPRESSION 7\nEVAL of a syntax error fails\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A datatype name for CONVERT is in capitals while case-folding is off: "Data type names may be lower case if case-folding is active" (SPITBOL manual ch. 19, CONVERT).
+;; Under sbl -bf CONVERT('17','integer') fails and, with &CASE = 1, converts. The engine took any case. The oracle, sbl -bf, wrote exactly this output.
+(deftest a-lower-case-datatype-name-converts-only-while-folding
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        X = CONVERT('17','integer')     :S(S1)\n"
+                   "        OUTPUT = 'integer fails'        :(N2)\n"
+                   "S1      OUTPUT = 'integer converts ' DATATYPE(X)\n"
+                   "N2      X = CONVERT('17','Integer')     :S(S2)\n"
+                   "        OUTPUT = 'Integer fails'        :(N3)\n"
+                   "S2      OUTPUT = 'Integer converts'\n"
+                   "N3      &CASE = 1\n"
+                   "        X = CONVERT('17','integer')     :S(S3)\n"
+                   "        OUTPUT = 'integer fails with &CASE 1'   :(END)\n"
+                   "S3      OUTPUT = 'integer converts with &CASE 1'\n"
+                   "END\n"))
+      (is (= "integer fails\nInteger fails\ninteger converts with &CASE 1\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

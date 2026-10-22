@@ -951,17 +951,19 @@
     "end")
   (is (= "array" ($$ 'R))))
 
+;; The datatype names are in capitals: sbl -bf (no case-folding) refuses CONVERT(42,'string') and CONVERT('42','integer'), as the manual has it ("Data type names may be lower
+;; case if case-folding is active", ch. 19); CONVERT(42,'STRING') is the STRING 42 and CONVERT('42','INTEGER') the INTEGER 42.
 (deftest band6-convert-int-to-string
-  "CONVERT(42,'string') = '42'"
+  "CONVERT(42,'STRING') = '42'"
   (prog
-    "        R = CONVERT(42,'string')"
+    "        R = CONVERT(42,'STRING')"
     "end")
   (is (= "42" ($$ 'R))))
 
 (deftest band6-convert-string-to-int
-  "CONVERT('42','integer') = 42"
+  "CONVERT('42','INTEGER') = 42"
   (prog
-    "        R = CONVERT('42','integer')"
+    "        R = CONVERT('42','INTEGER')"
     "end")
   (is (= 42 ($$ 'R))))
 

@@ -82,8 +82,9 @@
 (defn CONVERT [x t]
   "CONVERT(x, type) — coerce x to the named SNOBOL4 type.
    Returns nil (failure) if the conversion is not defined."
+  ;; "Data type names may be lower case if case-folding is active" (manual ch. 19, CONVERT): while &CASE is 0, as sbl -bf runs, only the capitals name a type
   (let [from (clojure.string/upper-case (DATATYPE x))
-        to   (clojure.string/upper-case (str t))]
+        to   (if (zero? (long @env/&CASE)) (str t) (clojure.string/upper-case (str t)))]
     (cond
       ;; Same type → identity (but always a 'new' value logically)
       (clojure.core/= from to) x
