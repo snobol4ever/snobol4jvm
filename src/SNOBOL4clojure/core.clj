@@ -15,6 +15,7 @@
             [SNOBOL4clojure.compiler   :as comp]
             [SNOBOL4clojure.runtime    :as rt]
             [SNOBOL4clojure.dump       :as dump]
+            [SNOBOL4clojure.fatal      :as fatal]
             [SNOBOL4clojure.trace      :as trace]
             [SNOBOL4clojure.transpiler :as xpile]
             [SNOBOL4clojure.vm         :as vm]
@@ -221,9 +222,21 @@
                                  (println msg) (binding [*out* *err*] (println msg))))
                              (flush)
                              231)
-                         ;; the termination dump &DUMP asks for is written however the program ends
-                         (try (rt/RUN entry)
-                              (finally (when (pos? (long @env/&DUMP)) (print (dump/dump-text @env/&DUMP))))))))
+                         ;; an execution error that ends the program (and the statement limit, "244 Statement count exceeds value of STLIMIT keyword") is
+                         ;; reported as sbl -bf reports it, with &ERRTYPE and &ERRTEXT set, and the run ends there, exit code 0 as sbl's; the termination
+                         ;; dump &DUMP asks for is written after it, however the program ends
+                         (let [t0 (System/nanoTime)]
+                           (try (rt/RUN entry)
+                                (catch clojure.lang.ExceptionInfo e
+                                  (let [{n :snobol/error sig :snobol/signal steps :steps} (ex-data e)
+                                        code (or n (when (clojure.core/= :step-limit sig) 244))]
+                                    (when-not code (throw e))
+                                    (let [text (or (env/error-message code) (ex-message e))]
+                                      (reset! env/&ERRTYPE code)
+                                      (reset! env/&ERRTEXT text)
+                                      ;; the statement the limit stops is not executed
+                                      (fatal/report! code text (if n @env/&STCOUNT (dec (long steps))) t0))))
+                                (finally (when (pos? (long @env/&DUMP)) (print (dump/dump-text @env/&DUMP)))))))))
         "vm"     (print (vm/run-program! src)))]
         (flush)
         (when (integer? rc) rc)))))

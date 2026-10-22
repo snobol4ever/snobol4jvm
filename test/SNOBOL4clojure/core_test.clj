@@ -3270,3 +3270,42 @@
       (is (= "1\n2\n3\n4\n5\n6\n7\n8\n9\ndone 23\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; "With the first type of execution error, SPITBOL will send a message to the screen, much as it does with compilation errors ... program.spt(3) : Error 038 --
+;; Goto undefined label" (manual ch. 13, Execution errors). sbl -bf writes its report on standard output, part of it on standard error too, and exits 0. The time,
+;; the collector's count and the memory figures are the engine's own and are read here as -.
+(defn- fatal-figures [s]
+  (clojure.string/replace s #"(?m)^(execution time msec|REGENERATIONS|memory used \(bytes\)|memory left \(bytes\))( +)\d+$" "$1$2-"))
+
+(deftest execution-error-ends-the-run-with-sbls-report
+  (let [f (java.io.File/createTempFile "gen" ".sno") p (.getPath f) err (java.io.StringWriter.) rc (atom :unset)]
+    (try
+      (spit f (str "        OUTPUT = 'before'\n"
+                   "        X = 1\n"
+                   "        :(NOWHERE)\n"
+                   "END\n"))
+      (let [out (binding [*err* err] (with-out-str (reset! rc (-main p))))]
+        (is (= (str "before\n\n\n\n" p "(3) : ERROR 038 -- goto undefined label\n\n\n\n\n\n"
+                    "in file              " p "\nin line              3\nin statement         3\nstmts executed       3\n"
+                    "execution time msec  -\nREGENERATIONS        -\nmemory used (bytes)  -\nmemory left (bytes)  -\n\n")
+               (fatal-figures out)))
+        (is (= (str p "(3) : ERROR 038 -- goto undefined label\n\n\n"
+                    "in file              " p "\nin line              3\nin statement         3\nstmts executed       3\n"
+                    "execution time msec  -\nREGENERATIONS        -\n\n")
+               (fatal-figures (str err))))
+        (is (nil? @rc)))
+      (finally (.delete f)))))
+
+;; "244 Statement count exceeds value of STLIMIT keyword" (manual, Appendix D) ends the run with the same report; the statement it stops is not counted as executed.
+(deftest statement-limit-ends-the-run-with-sbls-report
+  (let [f (java.io.File/createTempFile "gen" ".sno") p (.getPath f)]
+    (try
+      (spit f (str "        &STLIMIT = 2\n"
+                   "        OUTPUT = 'one'\n"
+                   "        OUTPUT = 'two'\n"
+                   "END\n"))
+      (is (= (str "one\n\n\n\n" p "(3) : ERROR 244 -- statement count exceeds value of stlimit keyword\n\n\n\n\n\n"
+                  "in file              " p "\nin line              3\nin statement         3\nstmts executed       2\n"
+                  "execution time msec  -\nREGENERATIONS        -\nmemory used (bytes)  -\nmemory left (bytes)  -\n\n")
+             (fatal-figures (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p))))))
+      (finally (.delete f)))))
