@@ -3592,3 +3592,36 @@
                    "e 297 set caused non-recoverable i/o error\n")
              (binding [SNOBOL4clojure.env/*file-dir* (.getPath dir)] (with-out-str (-main (.getPath f))))))
       (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))
+
+
+;; "Deferred evaluation may also be applied to a pattern's alternate or subsequent clause or to the entire pattern ... PAT = *EQ(I, 4) 'ABC' | 'DEF'" (manual ch. 4,
+;; Unevaluated Expressions): the expression is evaluated when the match reaches it, and when it fails that element fails, so the match backtracks, as sbl -bf runs it.
+;; With immediate assignment, "An interesting substring at the beginning of the subject is immediately assigned to a variable, and the variable is then subsequently
+;; used in the very same pattern" (Immediate assignment and deferred evaluation): ARB $ T *DIFFER(T) gives T = 'A'. The engine matched a failed deferred expression as
+;; the null string (AIS SIR.sno: FASTBAL's ... $ TEMP *DIFFER(TEMP) took the null element and its read loop never ended).
+(deftest a-failing-deferred-expression-fails-its-pattern
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        'AB' POS(0) *DIFFER('') . X                 :F(F1)\n"
+                   "        OUTPUT = 'a matched [' X ']'\n"
+                   "F1      'AB' POS(0) *IDENT('A','B')                 :S(S2)\n"
+                   "        OUTPUT = 'b failed'                         :(F2)\n"
+                   "S2      OUTPUT = 'b matched'\n"
+                   "F2      'AB' POS(0) ARB $ T *DIFFER(T) . Y           :F(F3)\n"
+                   "        OUTPUT = 'c [' Y '] T=[' T ']'\n"
+                   "F3      'AB' POS(0) ARB $ T *IDENT(T,'AB') REM . Z   :F(F4)\n"
+                   "        OUTPUT = 'd T=[' T '] Z=[' Z ']'\n"
+                   "F4      Q = *DIFFER(T2)\n"
+                   "        T2 = ''\n"
+                   "        'AB' POS(0) Q                               :S(S5)\n"
+                   "        OUTPUT = 'e failed'                         :(F5)\n"
+                   "S5      OUTPUT = 'e matched'\n"
+                   "F5      'AB' POS(0) ARB $ T3 *GT(SIZE(T3),1) . W     :F(F6)\n"
+                   "        OUTPUT = 'f T3=[' T3 ']'\n"
+                   "F6\n"
+                   "END\n"))
+      (is (= "b failed\nc [] T=[A]\nd T=[AB] Z=[]\ne failed\nf T3=[AB]\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
+

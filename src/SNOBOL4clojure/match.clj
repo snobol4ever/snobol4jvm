@@ -547,12 +547,16 @@
         ;; (*expr): deferred pattern — thunk is a (fn [] pattern) evaluated at
         ;; match time, not build time.  Fixes eager-evaluation of guards like
         ;; (EQ N 2) inside ALT branches.
+        ;; An expression that fails (nil) fails here, and the match backtracks: "PAT = *EQ(I, 4) 'ABC' | 'DEF'" (manual ch. 4, Unevaluated Expressions), as sbl -bf
+        ;; runs it; an unset variable is the null string, which matches.
         DEFER!
         (case action
           :proceed
           (let [thunk (second (ζΠ ζ))
                 P     (if (fn? thunk) (thunk) thunk)]
-            (recur :proceed (ζ↓ ζ P) (🡥 Ω ζ)))
+            (if (nil? P)
+              (let [[Σ Δ] ζ] (recur :fail (ζ↑ ζ Σ Δ) Ω))
+              (recur :proceed (ζ↓ ζ P) (🡥 Ω ζ))))
           :succeed (recur :succeed (ζ↑ ζ) Ω)
           (:fail :recede)
           (recur :recede (🡡 Ω) (🡧 Ω)))))))
