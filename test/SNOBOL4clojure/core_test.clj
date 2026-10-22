@@ -2586,3 +2586,46 @@
       (is (= "assignment failed\nread failed\nafter a failing assignment without a branch\ntwo-dim failed\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A parameter that has the function's name starts the function's result with its argument: in DEFINE('mx(mx,x)'), mx(9,2) returns 9 when the body's assignment fails,
+;; as sbl -bf runs it. The engine cleared the result variable after binding the parameters, and so lost the argument (SnoRungs user_function_replace_2, this program).
+;; The oracle, sbl -bf, wrote exactly this output.
+(deftest a-parameter-named-like-its-function-starts-the-result
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "*-----------------------------------------------------------------------------------\n"
+                   "* ab_name_alias.sno -- WITNESS: function name aliased to a formal (SPITBOL Ch.8 idiom)\n"
+                   "*\n"
+                   "* DEFINE('max(max,x)') names formal 0 with the FUNCTION'S OWN NAME, so the result\n"
+                   "* variable and formal slot 0 are the SAME NAME.  This is the standard SPITBOL\n"
+                   "* accumulator idiom.\n"
+                   "*\n"
+                   "* Under SCRIP_AB=1 the AB call path reads the result from the WRONG GVA SLOT when\n"
+                   "* this aliasing is present; the error scales with nformals (2 formals -> returns\n"
+                   "* formal 1's actual; 3 formals -> returns null).  AB=0 and SPITBOL agree.\n"
+                   "*\n"
+                   "* DISCRIMINATOR: a call whose guarded assignment SUCCEEDS cannot expose the bug\n"
+                   "* (result and formal 1 hold the same value).  Only the FAILING-guard case\n"
+                   "* discriminates -- mx(3,7) is green under every arm, mx(9,2) is not.\n"
+                   "*-----------------------------------------------------------------------------------\n"
+                   "        DEFINE('mx(mx,x)')                      :(mx_end)\n"
+                   "mx      mx = LT(mx,x) x                         :(RETURN)\n"
+                   "mx_end\n"
+                   "        DEFINE('m3(m3,x,y)')                    :(m3_end)\n"
+                   "m3      m3 = LT(1,0) 0                          :(RETURN)\n"
+                   "m3_end\n"
+                   "        DEFINE('nn(a,x)')                       :(nn_end)\n"
+                   "nn      nn = LT(1,0) 0                          :(RETURN)\n"
+                   "nn_end\n"
+                   "*       assignment TAKEN -- vacuous, agrees under every arm\n"
+                   "        OUTPUT = mx(3,7)\n"
+                   "*       assignment NOT taken -- result must remain formal 0's actual\n"
+                   "        OUTPUT = mx(9,2)\n"
+                   "*       three formals, assignment never taken\n"
+                   "        OUTPUT = m3(9,2,5)\n"
+                   "*       NON-aliased control -- nn is never assigned, so null is correct\n"
+                   "        OUTPUT = 'nn=[' nn(9,2) ']'\n"
+                   "END\n"))
+      (is (= "7\n9\n9\nnn=[]\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

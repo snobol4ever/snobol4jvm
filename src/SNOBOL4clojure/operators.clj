@@ -365,15 +365,15 @@
                               stno-saved @&STNO
                               file-saved @&FILE
                               line-saved @&LINE]
-                          ;; Bind parameters to call arguments
+                          ;; Clear the result slot, then bind the parameters: a parameter that has the function's name starts the result with its argument, as sbl -bf
+                          ;; has it (mx(9,2) of DEFINE('mx(mx,x)') returns 9 when the body assigns nothing)
+                          (snobol-set! f-sym ε)
                           (doseq [i (range (count params))]
                             (snobol-set! (symbol (params i))
                                          (nth call-args i ε)))
                           ;; Clear locals
                           (doseq [l locals]
                             (snobol-set! (symbol l) ε))
-                          ;; Clear the result slot
-                          (snobol-set! f-sym ε)
                           ;; CALL trace
                           (fire-call! fname (map #(reference (symbol %)) params))
                           ;; Run from entry label; catch RETURN/FRETURN/NRETURN. The function level is one deeper while the body runs.
