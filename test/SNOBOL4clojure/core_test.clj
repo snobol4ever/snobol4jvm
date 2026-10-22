@@ -4236,3 +4236,30 @@
                    "h INTEGER REAL\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; HOST(-1, k), sbl x64's memory facts (osint/syshs.c; the manual's Appendix E has none): 0 the heap increment, 1 the heap's limit, 2 and 3 the heap's base and
+;; top, 4 the stack's size less 400, 5 the stack in use, 6 the word size, 7 the stack's high-water mark; k omitted is 0, and any other is "254 erroneous argument
+;; for host". sbl -bf at its defaults (-i1m -d128m -s4m) answers 1048576, 134217728, 4193904 and 8. The engine raised 254 for HOST(-1, k) (X64T gcbuster).
+(deftest host-minus-one-answers-the-memory-facts
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 10\n"
+                   "        OUTPUT = 'a ' HOST(-1, 0) ' ' HOST(-1, 1) ' ' HOST(-1, 4) ' ' HOST(-1, 6) ' ' HOST(-1)\n"
+                   "        OUTPUT = 'b ' DATATYPE(HOST(-1, 2)) ' ' DATATYPE(HOST(-1, 3)) ' ' DATATYPE(HOST(-1, 5)) ' ' DATATYPE(HOST(-1, 7)) ' ' GE(HOST(-1, 7), HOST(-1, 5))\n"
+                   "        X = HOST(-1, 8)\n"
+                   "        OUTPUT = 'c ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        &ERRTYPE = 0\n"
+                   "        X = HOST(-1, 'x')\n"
+                   "        OUTPUT = 'd ' &ERRTYPE\n"
+                   "        &ERRTYPE = 0\n"
+                   "        X = HOST(-1, -1)\n"
+                   "        OUTPUT = 'e ' &ERRTYPE\n"
+                   "END\n"))
+      (is (= (str "a 1048576 134217728 4193904 8 1048576\n"
+                   "b INTEGER INTEGER INTEGER INTEGER \n"
+                   "c 254 erroneous argument for host\n"
+                   "d 254\n"
+                   "e 254\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

@@ -649,15 +649,33 @@
 (defn EXIT    [] nil)
 ;; HOST() is "a 'host-information' string describing the system on which SPITBOL is executing", of the form computer type:operating system:version; HOST(0) is the
 ;; text of the -u option, "If -u was not specified, it returns the concatenation of all command line arguments" (manual ch. 19, HOST): sbl -bf joins the arguments after the
-;; program file with blanks. Another selector is ERROR 254, erroneous
-;; argument for host, as sbl -bf raises it for the sub-functions this engine does not have.
+;; program file with blanks. HOST(-1, k) answers sbl x64's memory facts (osint/syshs.c): 0 the heap increment and 1 the heap's limit (sbl's defaults, -i1m and
+;; -d128m, which the harness declares), 4 the stack's size less 400 (-s4m), 6 the word size; 2 and 3, the heap's base and top addresses, and 5 and 7, the stack in
+;; use and its high-water mark, are what a JVM can say of them: no address (0), the heap's current size, and the frames on the thread's stack. k omitted is 0.
+;; Another selector is ERROR 254, erroneous argument for host, as sbl -bf raises it for the sub-functions this engine does not have.
 (defn HOST
   ([] (str "jvm:" (System/getProperty "os.name") ":SNOBOL4clojure 0.2.0"))
-  ([i & _]
-   (let [n (SNOBOL4clojure.env/num i)]
-     (if (and (number? n) (not (and (double? n) (Double/isNaN n))) (zero? n))
-       (str @SNOBOL4clojure.env/<HOST0>)
-       (throw (ex-info "erroneous argument for host" {:snobol/error 254}))))))
+  ([i & more]
+   (let [n   (SNOBOL4clojure.env/num i)
+         bad #(throw (ex-info "erroneous argument for host" {:snobol/error 254}))]
+     (cond
+       (and (integer? n) (zero? n)) (str @SNOBOL4clojure.env/<HOST0>)
+       (and (integer? n) (clojure.core/= -1 n))
+       (let [k (SNOBOL4clojure.env/num (first more))
+             frames #(long (count (.getStackTrace (Thread/currentThread))))]
+         (if-not (integer? k)
+           (bad)
+           (case (long k)
+             0 1048576
+             1 134217728
+             2 0
+             3 (.totalMemory (Runtime/getRuntime))
+             4 (clojure.core/- 4194304 400)
+             5 (frames)
+             6 8
+             7 (frames)
+             (bad))))
+       :else (bad)))))
 ;; SETEXIT(label) arms the label (a string or a NAME) as the error handler and returns the handler it replaces, as a NAME, or the null string when there was none.
 ;; The null string, or no argument, disarms.
 (defn SETEXIT
