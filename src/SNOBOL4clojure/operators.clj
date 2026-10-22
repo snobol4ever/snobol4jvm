@@ -481,7 +481,7 @@
     REVERSE (REVERSE (first args))
     ITEM      (apply ITEM args)
     item      (ITEM      (first args) (second args))
-    PROTOTYPE (PROTOTYPE (first args))
+    PROTOTYPE (apply PROTOTYPE args)
     prototype (PROTOTYPE (first args))
     CONVERT   (CONVERT   (first args) (second args))
     convert   (CONVERT   (first args) (second args))

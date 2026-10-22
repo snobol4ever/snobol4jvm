@@ -2543,3 +2543,22 @@
       (is (= "anchor -1: 210 keyword value assigned is negative or too large 0\ntrim 2**24+1: 210 1\nanchor 2**24: 16777216\nstlimit -1: -1\nmaxlngth 1023: 287 value assigned to keyword maxlngth is too small 16777216\nmaxlngth 1024: 1024\n22 [undefined function called]\n999 [MINE]\n236 [array referenced with wrong number of subscripts]\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; TABLE(i, x, arg): arg "is a value which is to be returned instead of the default null string when table look-up is performed using a key which has not been
+;; entered into the table", and a look-up does not enter the key (SPITBOL manual ch. 19, TABLE); sbl -bf's PROTOTYPE answers for a table with its hash headers, an
+;; INTEGER, and ignores a second argument. The engine took at most two arguments to TABLE and PROTOTYPE of a table was the null string (SnoRungs
+;; table_array_datatype_replace_1). The oracle, sbl -bf, wrote exactly this output.
+(deftest table-takes-a-default-value-and-prototype-answers-for-a-table
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        WORDS = TABLE(1000,,'No such word')\n"
+                   "        OUTPUT = WORDS['nonesuch']\n"
+                   "        WORDS['cat'] = 'dog'\n"
+                   "        OUTPUT = WORDS['cat']\n"
+                   "        A = CONVERT(WORDS,'ARRAY')\n"
+                   "        OUTPUT = PROTOTYPE(A)\n"
+                   "        OUTPUT = PROTOTYPE(WORDS) ' ' PROTOTYPE(TABLE()) ' ' PROTOTYPE(TABLE(5,7)) ' ' PROTOTYPE(ARRAY('2,3'),1) ' ' DATATYPE(PROTOTYPE(TABLE()))\n"
+                   "END\n"))
+      (is (= "No such word\ndog\n1,2\n1000 11 5 2,3 INTEGER\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

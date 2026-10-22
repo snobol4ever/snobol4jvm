@@ -431,16 +431,19 @@
 
 ;; A TABLE is an atom holding a map, with the order its keys were first assigned kept beside it (in the atom's metadata), because SPITBOL lists a table's
 ;; entries in that order (CONVERT to an ARRAY, SORT, RSORT) and a plain map does not keep it.
-(defn- new-table [size] (atom {} :meta {:order (atom {}) :size size :serial (next-serial!)}))
-(defn- table-size [n] (let [k (num n)] (cond (integer? k) k (and (double? k) (not (Double/isNaN k))) (long k) :else 11)))   ; TABLE() is TABLE(11), the size a dump shows
+;; TABLE(i, x, arg): i hash headers (11 when omitted), x ignored, and arg "a value which is to be returned instead of the default null string when table look-up is performed
+;; using a key which has not been entered into the table" (manual ch. 19, TABLE). A look-up does not enter the key.
+(defn- new-table ([size] (new-table size ε)) ([size dflt] (atom {} :meta {:order (atom {}) :size size :serial (next-serial!) :dflt dflt})))
+(defn- table-size [n] (let [k (num n)] (cond (and (integer? k) (pos? k)) k (and (double? k) (pos? k)) (long k) :else 11)))   ; TABLE() and TABLE(,..) are TABLE(11)   ; TABLE() is TABLE(11), the size a dump shows
 (defn TABLE     ([]      (new-table 11))
                 ([n]     (new-table (table-size n)))
-                ([n _d]  (new-table (table-size n))))
+                ([n _x]  (new-table (table-size n)))
+                ([n _x d] (new-table (table-size n) (if (nil? d) ε d))))
 (defn SET       [] (hash-set))
 
 (defn table?    [x] (and (instance? clojure.lang.IDeref x)
                          (map? @x)))
-(defn table-get [t k]        (get @t k ε))
+(defn table-get [t k]        (get @t k (:dflt (meta t) ε)))
 (defn table-set [t k v]
   (when-let [o (:order (meta t))]
     (swap! o (fn [m] (if (contains? m k) m (assoc m k (count m))))))

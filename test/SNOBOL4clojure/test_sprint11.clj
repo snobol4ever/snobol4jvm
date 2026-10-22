@@ -116,14 +116,15 @@ end")
     (is (= "ABC" ($$ 'r1)))
     (is (= "DEF" ($$ 'r2)))))
 
-;; ── PROTOTYPE of table returns ε ─────────────────────────────────────────────
+;; ── PROTOTYPE of a table is its hash headers ─────────────────────────────────
+;; sbl -bf: PROTOTYPE(TABLE()) is 11, an INTEGER, the number of hash headers TABLE() makes (the manual, ch. 19, documents PROTOTYPE for arrays; sbl answers for a table).
 
 (deftest table-011-prototype
-  (testing "PROTOTYPE of a TABLE returns empty string"
+  (testing "PROTOTYPE of a TABLE is its number of hash headers, 11 for TABLE()"
     (run-prog "        A = table()
         r1 = prototype(A)
 end")
-    (is (= "" ($$ 'r1)))))
+    (is (= 11 ($$ 'r1)))))
 
 ;; ── Integer keys ─────────────────────────────────────────────────────────────
 

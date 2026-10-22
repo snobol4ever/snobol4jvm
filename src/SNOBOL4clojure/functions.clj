@@ -567,11 +567,11 @@
     :else nil))
 
 (defn PROTOTYPE
-  "PROTOTYPE(array-or-table) — return the dimension spec string.
-   For TABLE returns ε.  For ARRAY returns normalized 'lo:hi,...' string."
-  [x]
+  "PROTOTYPE(array): the prototype the array was made from (manual ch. 19). sbl -bf also answers for a table, with the number of its hash headers, an INTEGER (11 for
+   TABLE()), and ignores a second argument."
+  [x & _]
   (cond
-    (SNOBOL4clojure.env/table? x) ""
+    (SNOBOL4clojure.env/table? x) (:size (meta x) 11)
     (SNOBOL4clojure.env/array? x) (SNOBOL4clojure.env/array-prototype x)
     :else ""))
 
