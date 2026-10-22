@@ -89,6 +89,13 @@
       ;; Same type → identity (but always a 'new' value logically)
       (clojure.core/= from to) x
 
+      ;; "s can take an additional data type, 'NUMERIC', which converts the argument to integer or real, as appropriate" (manual ch. 19, CONVERT): a number is itself, a
+      ;; string of a number's form its number (blanks around it ignored, the null string 0), anything else fails
+      (clojure.core/= to "NUMERIC")
+      (cond (number? x) x
+            (string? x) (let [n (env/num x)] (when-not (and (double? n) (Double/isNaN n)) n))
+            :else nil)
+
       ;; STRING conversions
       ;; Integer syntax is an integer (out of range fails); anything else is read
       ;; as a real and converted as one. nil propagates as failure.

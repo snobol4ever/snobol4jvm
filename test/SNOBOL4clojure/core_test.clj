@@ -2766,6 +2766,28 @@
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
 
+;; CONVERT(x,'NUMERIC') converts to an integer or a real as appropriate: "s can take an additional data type, 'NUMERIC', which converts the argument to integer or
+;; real, as appropriate" (SPITBOL manual ch. 19, CONVERT); a string of a number's form converts (blanks around it ignored, the null string to 0) and anything else fails.
+;; The engine knew no NUMERIC and failed every one (aisnobol TEST's NUMBER(X), ?CONVERT(X,"NUMERIC")). The oracle, sbl -bf, wrote exactly this output.
+(deftest convert-to-numeric-is-an-integer-or-a-real
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        OUTPUT = CONVERT('-15.9999','NUMERIC') ' ' DATATYPE(CONVERT('-15.9999','NUMERIC'))\n"
+                   "        OUTPUT = CONVERT(' 12 ','NUMERIC') ' ' DATATYPE(CONVERT(' 12 ','NUMERIC'))\n"
+                   "        OUTPUT = CONVERT(7,'NUMERIC') ' ' DATATYPE(CONVERT(7,'NUMERIC'))\n"
+                   "        OUTPUT = CONVERT(2.5,'NUMERIC') ' ' DATATYPE(CONVERT(2.5,'NUMERIC'))\n"
+                   "        OUTPUT = DATATYPE(CONVERT('','NUMERIC'))\n"
+                   "        CONVERT('abc','NUMERIC')                :S(BAD)\n"
+                   "        OUTPUT = 'abc is not numeric'           :(N2)\n"
+                   "BAD     OUTPUT = 'abc converted'\n"
+                   "N2      CONVERT(ARRAY(2),'NUMERIC')             :S(BAD2)\n"
+                   "        OUTPUT = 'an array is not numeric'      :(END)\n"
+                   "BAD2    OUTPUT = 'array converted'\n"
+                   "END\n"))
+      (is (= "-15.9999 REAL\n12 INTEGER\n7 INTEGER\n2.5 REAL\nINTEGER\nabc is not numeric\nan array is not numeric\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
 ;; A datatype name for CONVERT is in capitals while case-folding is off: "Data type names may be lower case if case-folding is active" (SPITBOL manual ch. 19, CONVERT).
 ;; Under sbl -bf CONVERT('17','integer') fails and, with &CASE = 1, converts. The engine took any case. The oracle, sbl -bf, wrote exactly this output.
 (deftest a-lower-case-datatype-name-converts-only-while-folding
