@@ -69,9 +69,11 @@
       (if (not (seq σ)) (err σ δ) (recur (rest σ) (inc δ))))))
 
 (defn TAB# [Σ Δ Π]
-  (loop [σ Σ δ Δ]
-    (if (>= δ Π) [σ δ]
-      (if (not (seq σ)) (err σ δ) (recur (rest σ) (inc δ))))))
+  (if (> Δ Π)
+    (err Σ Δ)                                ; the cursor is already past the target: TAB fails
+    (loop [σ Σ δ Δ]
+      (if (>= δ Π) [σ δ]
+        (if (not (seq σ)) (err σ δ) (recur (rest σ) (inc δ)))))))
 
 (defn RTAB# [Σ Δ Π]
   (loop [σ Σ δ Δ]

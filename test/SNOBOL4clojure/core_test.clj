@@ -1913,6 +1913,32 @@
              (with-out-str (-main main))))
       (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))
 
+;; TAB(N) moves the cursor forward to position N and fails when the cursor is already past it; the engine took TAB(0) after a character as a null match, so a pattern built to
+;; fail there matched (SnoRungs arbno_fence_arb_branch_1). The oracle, sbl -bf, wrote exactly this output.
+(deftest tab-fails-when-the-cursor-is-already-past-its-target
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "	'aaa' LEN(1) TAB(0)	:S(A1)F(B1)\n"
+                   "A1	OUTPUT = 'T1 match'	:(N2)\n"
+                   "B1	OUTPUT = 'T1 nomatch'\n"
+                   "N2	'aaa' LEN(1) TAB(1)	:S(A2)F(B2)\n"
+                   "A2	OUTPUT = 'T2 match'	:(N3)\n"
+                   "B2	OUTPUT = 'T2 nomatch'\n"
+                   "N3	'aaa' LEN(2) TAB(1)	:S(A3)F(B3)\n"
+                   "A3	OUTPUT = 'T3 match'	:(N4)\n"
+                   "B3	OUTPUT = 'T3 nomatch'\n"
+                   "N4	'aaa' LEN(2) RTAB(2)	:S(A4)F(B4)\n"
+                   "A4	OUTPUT = 'T4 match'	:(N5)\n"
+                   "B4	OUTPUT = 'T4 nomatch'\n"
+                   "N5	'aaa' LEN(2) RTAB(1)	:S(A5)F(B5)\n"
+                   "A5	OUTPUT = 'T5 match'	:(DONE)\n"
+                   "B5	OUTPUT = 'T5 nomatch'\n"
+                   "DONE\n"
+                   "END\n"))
+      (is (= "T1 nomatch\nT2 match\nT3 nomatch\nT4 nomatch\nT5 match\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
 ;; A repetition of ARBNO that matches the null string made no progress and fails, as SPITBOL's does; the engine expanded ARBNO(ARB) again at the same cursor for ever (ten
 ;; SnoRungs arbno entries ran into the harness's time limit). The oracle, sbl -bf, answers match for this program.
 (deftest arbno-of-a-pattern-that-matches-the-null-string-ends
