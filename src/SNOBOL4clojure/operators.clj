@@ -91,13 +91,26 @@
             ([x y & zs] (n-n multiply x y zs)))
 (defn %     ([_x]       η)
             ([_x _y]    η))
+;; An arithmetic operand as a number. A string converts when it has the form of a number, blanks around it ignored, and a null or blank string is 0 (manual ch. 17,
+;; String to integer and String to real); anything else is the operator's error, "1 Addition left operand is not numeric" and its kin (manual, Appendix D).
+(defn- operand [x code msg]
+  (let [n (num x)]
+    (if (and (double? n) (Double/isNaN n) (not (double? x)))
+      (throw (ex-info msg {:snobol/error code}))
+      n)))
+
+;; An integer result past 64 bits is the operator's overflow error (3 addition, 34 subtraction, 28 multiplication); exact is Math/addExact and its kin.
+(defn- exact [exact-op a b code msg]
+  (try (exact-op (long a) (long b)) (catch ArithmeticException _ (throw (ex-info msg {:snobol/error code})))))
+
 (defn pow-fn
   "SNOBOL4 exponentiation (**, and its synonyms ^ and !). Integer ** non-negative
    integer is an exact integer: 0 ** 0 is error 18 and a result past 64 bits is
    error 17, as SPITBOL reports them. A negative exponent or a real operand gives
    a real; 0 ** -n is 0.0, as SPITBOL prints it."
   [x y]
-  (let [x (num x) y (num y)]
+  (let [x (operand x 16 "exponentiation left operand is not numeric")
+        y (operand y 15 "exponentiation right operand is not numeric")]
     (if (and (integer? x) (integer? y) (not (neg? y)))
       (cond
         (and (zero? x) (zero? y))
@@ -212,27 +225,39 @@
     GT      (GT     (first args) (second args))
     FAIL    FAIL
     ;; Arithmetic — coerce to SNOBOL numeric type (integer if both integer, else real)
-    +       (let [ns (map num args)]
-              (if (every? integer? ns)
-                (long (apply clojure.core/+' ns))
-                (apply clojure.core/+ ns)))
-    -       (let [ns (map num args)]
-              (if (every? integer? ns)
-                (long (apply clojure.core/-' ns))
-                (apply clojure.core/- ns)))
-    *       (let [ns (map num args)]
-              (if (every? integer? ns)
-                (long (apply clojure.core/*' ns))
-                (apply clojure.core/* ns)))
+    ;; unary + is affirmation (error 4), unary - negation (error 10)
+    +       (if (clojure.core/= 1 (count args))
+              (operand (first args) 4 "affirmation operand is not numeric")
+              (let [a (operand (first args) 1 "addition left operand is not numeric")
+                    b (operand (second args) 2 "addition right operand is not numeric")]
+                (if (and (integer? a) (integer? b))
+                  (exact #(Math/addExact ^long %1 ^long %2) a b 3 "addition caused integer overflow")
+                  (clojure.core/+ a b))))
+    -       (if (clojure.core/= 1 (count args))
+              (let [a (operand (first args) 10 "negation operand is not numeric")]
+                (if (integer? a) (exact #(Math/subtractExact ^long %1 ^long %2) 0 a 11 "negation caused integer overflow") (clojure.core/- a)))
+              (let [a (operand (first args) 32 "subtraction left operand is not numeric")
+                    b (operand (second args) 33 "subtraction right operand is not numeric")]
+                (if (and (integer? a) (integer? b))
+                  (exact #(Math/subtractExact ^long %1 ^long %2) a b 34 "subtraction caused integer overflow")
+                  (clojure.core/- a b))))
+    *       (let [a (operand (first args) 26 "multiplication left operand is not numeric")
+                  b (operand (second args) 27 "multiplication right operand is not numeric")]
+              (if (and (integer? a) (integer? b))
+                (exact #(Math/multiplyExact ^long %1 ^long %2) a b 28 "multiplication caused integer overflow")
+                (clojure.core/* a b)))
     tilde   (let [v (first args)]       ; ~ negates success/failure
               (if (nil? v) ε nil))
-    /       (let [ns (map num args)
-                  d  (last ns)]
-              (if (zero? d)
-                (throw (ex-info "Division by zero" {:snobol/error 14}))
-                (if (every? integer? ns)
-                  (apply quot ns)
-                  (apply clojure.core// ns))))
+    ;; a zero divisor is "14 Division caused integer overflow" between integers and "262 Division caused real overflow" otherwise, as sbl -bf reports them
+    /       (let [a (operand (first args) 12 "division left operand is not numeric")
+                  b (operand (second args) 13 "division right operand is not numeric")]
+              (cond
+                (and (integer? a) (integer? b))
+                (if (or (zero? b) (and (clojure.core/= b -1) (clojure.core/= a Long/MIN_VALUE)))
+                  (throw (ex-info "division caused integer overflow" {:snobol/error 14}))
+                  (quot a b))
+                (zero? (double b)) (throw (ex-info "division caused real overflow" {:snobol/error 262}))
+                :else (clojure.core// (double a) (double b))))
     **      (let [[x y] args] (pow-fn x y))
     ?       (let [[s p] args] (SEARCH (str s) p))
     =       (let [[N r] args]

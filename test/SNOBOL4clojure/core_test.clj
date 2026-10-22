@@ -2239,3 +2239,67 @@
       (is (= "in G\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; An arithmetic operand that is not numeric is its operator's error, left and right numbered apart (SPITBOL manual Appendix D: 1/2 addition, 32/33 subtraction, 26/27
+;; multiplication, 12/13 division, 16/15 exponentiation, 10 negation, 4 affirmation); a string converts when it has a number's form, blanks around it ignored, and the null
+;; string is 0 (ch. 17). A zero divisor is 14 between integers and 262 otherwise. The engine computed NaN and went on. The oracle, sbl -bf, wrote exactly this output.
+(deftest an-arithmetic-operand-that-is-not-numeric-is-its-operators-error
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 100\n"
+                   "        Z = 'a'\n"
+                   "        X = Z + 1\n"
+                   "        OUTPUT = 'add L ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = 1 + Z\n"
+                   "        OUTPUT = 'add R ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = Z - 1\n"
+                   "        OUTPUT = 'sub L ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = 1 - Z\n"
+                   "        OUTPUT = 'sub R ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = Z * 2\n"
+                   "        OUTPUT = 'mul L ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = 2 * Z\n"
+                   "        OUTPUT = 'mul R ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = Z / 2\n"
+                   "        OUTPUT = 'div L ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = 2 / Z\n"
+                   "        OUTPUT = 'div R ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = Z ** 2\n"
+                   "        OUTPUT = 'exp L ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = 2 ** Z\n"
+                   "        OUTPUT = 'exp R ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = -Z\n"
+                   "        OUTPUT = 'neg ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = +Z\n"
+                   "        OUTPUT = 'aff ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        ZERO = 0\n"
+                   "        X = 1 / ZERO\n"
+                   "        OUTPUT = 'idiv0 ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = 1.0 / ZERO\n"
+                   "        OUTPUT = 'rdiv0 ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        OUTPUT = ' 3 ' + 1 ' ' ('' + 1) ' ' ('1e2' + 1) ' ' ('+5' - 1)\n"
+                   "        X = ARRAY(2) + 1\n"
+                   "        OUTPUT = 'arr ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "END\n"))
+      (is (= "add L 1 addition left operand is not numeric\nadd R 2 addition right operand is not numeric\nsub L 32 subtraction left operand is not numeric\nsub R 33 subtraction right operand is not numeric\nmul L 26 multiplication left operand is not numeric\nmul R 27 multiplication right operand is not numeric\ndiv L 12 division left operand is not numeric\ndiv R 13 division right operand is not numeric\nexp L 16 exponentiation left operand is not numeric\nexp R 15 exponentiation right operand is not numeric\nneg 10 negation operand is not numeric\naff 4 affirmation operand is not numeric\nidiv0 14 division caused integer overflow\nrdiv0 262 division caused real overflow\n4 1 101. 4\narr 1 addition left operand is not numeric\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
+;; An integer result past 64 bits is the operator's overflow error: 3 addition, 34 subtraction, 28 multiplication (SPITBOL manual Appendix D); integer division
+;; truncates and a real operand makes the result real. The engine raised a Clojure ArithmeticException. The oracle, sbl -bf, wrote exactly this output.
+(deftest integer-overflow-is-the-operators-error
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 100\n"
+                   "        BIG = 9223372036854775807\n"
+                   "        X = BIG + 1\n"
+                   "        OUTPUT = 'add ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = -BIG - 2\n"
+                   "        OUTPUT = 'sub ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = BIG * 2\n"
+                   "        OUTPUT = 'mul ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        OUTPUT = 7 / 2 ' ' -7 / 2 ' ' 7.0 / 2 ' ' (2 + 3.5) ' ' (10 - 2.5) ' ' (3 * 1.5)\n"
+                   "END\n"))
+      (is (= "add 3 addition caused integer overflow\nsub 34 subtraction caused integer overflow\nmul 28 multiplication caused integer overflow\n3 -3 3.5 5.5 7.5 4.5\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
