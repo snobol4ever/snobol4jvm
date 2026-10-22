@@ -179,12 +179,12 @@
 (defn- ftz ^double [^double x] (if (< (Math/abs x) Double/MIN_NORMAL) (clojure.core/* x 0.0) x))
 
 (defn parse-real
-  "The real sbl.min gtnum makes of s (an optional sign, digits with or without a point, an optional exponent marked e, E, d or D, blanks at the ends), or nil
-   when s has no digits or a step overflows. The digits before the point are an integer while it fits in 64 bits, the rest go in as r*10 + digit, and the
+  "The real sbl.min gtnum makes of s (an optional sign, digits, a point or an exponent marked e, E, d or D or both, blanks at the ends), or nil when s has
+   no digits, neither a point nor an exponent, or a step overflows. The digits before the point are an integer while it fits in 64 bits, the rest go in as r*10 + digit, and the
    value is scaled by steps of 10**10 and then a powers-of-ten table entry, each step rounded."
   [s]
-  (when-let [[_ sg ^String ip fp ex] (re-matches #"\s*([+-]?)(\d*)(?:\.(\d*))?(?:[eEdD]([+-]?\d+))?\s*" (str s))]
-    (let [^String fp (or fp "")
+  (when-let [[_ sg ^String ip point ex] (re-matches #"\s*([+-]?)(\d*)(?:\.(\d*))?(?:[eEdD]([+-]?\d+))?\s*" (str s))]
+    (let [^String fp (or point "")
           ;; the integer part, gathered negative as cvm does, until a digit would overflow it
           [n i] (loop [i 0 n 0]
                   (if (< i (.length ip))
@@ -195,7 +195,7 @@
           digit (fn [^double r ^Character c] (clojure.core/+ (clojure.core/* r 10.0) (double (clojure.core/- (int c) 48))))
           r     (reduce digit (clojure.core/- (double n)) (concat (subs ip i) fp))
           sc    (try (clojure.core/- (.length fp) (Long/parseLong (or ex "0"))) (catch NumberFormatException _ nil))]
-      (when (and sc (pos? (clojure.core/+ (.length ip) (.length fp))))
+      (when (and sc (pos? (clojure.core/+ (.length ip) (.length fp))) (or point ex))
         (let [r (loop [r (double r) sc (long sc)]
                   (cond
                     (or (Double/isInfinite r) (zero? r)) r
@@ -215,11 +215,11 @@
     true (let [s (clojure.string/trim (str x))]
            (if (clojure.core/= s "")
              0                            ; empty string = 0 in arithmetic context
-             (or (try (Long/parseLong s)  ; try integer parse first
+             ;; an integer that fits, else a real as gtnum reads one; anything else is not numeric (##NaN, the operator's error), as sbl -bf has it
+             (or (try (Long/parseLong s)
                    (catch NumberFormatException _ nil))
                  (parse-real s)
-                 (try (Double/parseDouble s)
-                   (catch NumberFormatException _ ##NaN)))))))
+                 ##NaN)))))
 
 (defn  ncvt [x] (list 'num x))
 (defn  scvt [x] (list 'str x))

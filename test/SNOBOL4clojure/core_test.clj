@@ -4162,3 +4162,42 @@
                    "g 266 exponentiation caused real overflow\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; A string is a number only as sbl.min gtnum reads one: an integer that fits, or a real, which has a point or an exponent and is not too large for a real
+;; (manual ch. 17, String to integer, String to real). Under sbl -bf '1.797693135E+308' + 0, 'Infinity' + 0, '1f' * 2 and '123456789012345678901234' + 0 are
+;; each the operator's "operand is not numeric" error. The engine fell back on Java's Double/parseDouble, which overflows to an infinity and reads Infinity, 1f
+;; and an integer too long for 64 bits (X64T math_limits2).
+(deftest a-string-is-a-number-only-as-spitbol-reads-one
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 20\n"
+                   "        S = '1.797693135E+308'\n"
+                   "        Y = S + 0\n"
+                   "        OUTPUT = 'a ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        &ERRTYPE = 0\n"
+                   "        S = 'Infinity'\n"
+                   "        Y = S + 0\n"
+                   "        OUTPUT = 'b ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        &ERRTYPE = 0\n"
+                   "        S = '1f'\n"
+                   "        Y = S * 2\n"
+                   "        OUTPUT = 'c ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        &ERRTYPE = 0\n"
+                   "        S = '123456789012345678901234'\n"
+                   "        Y = S + 0\n"
+                   "        OUTPUT = 'd ' &ERRTYPE ' ' Y ' ' DATATYPE(Y)\n"
+                   "        S = ' 1.5D2 '\n"
+                   "        H = '-.5' ; E1 = '1.e1' ; NN = 'NaN'\n"
+                   "        OUTPUT = 'e ' (S + 0) ' ' (H + 1) ' ' (E1 + 0)\n"
+                   "        Y = NN + 0\n"
+                   "        OUTPUT = 'f ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "END\n"))
+      (is (= (str "a 1 addition left operand is not numeric\n"
+                   "b 1 addition left operand is not numeric\n"
+                   "c 26 multiplication left operand is not numeric\n"
+                   "d 1  STRING\n"
+                   "e 150. 0.5 10.\n"
+                   "f 1 addition left operand is not numeric\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

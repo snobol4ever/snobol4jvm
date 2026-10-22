@@ -18,6 +18,9 @@
   (let [t (clojure.string/trim (str x))]
     (cond
       (clojure.core/= t "") 0.0
+      ;; an integer's digits are an integer first (one too large for 64 bits is no number), anything else a real as gtnum reads it
+      (re-matches #"[+-]?\d+" t)
+      (try (double (Long/parseLong t)) (catch NumberFormatException _ nil))
       (re-matches #"[+-]?(\d+\.?\d*|\.\d+)([eEdD][+-]?\d+)?" t)
       (env/parse-real t)
       :else nil)))
