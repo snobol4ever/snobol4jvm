@@ -50,7 +50,9 @@
   <grp>     ::=  <'('> expr <')'>
   cnd       ::=  <'('> expr <','> lst <')'>
   inv       ::=  N <'()'>  |  N <'('> lst <')'>
-  <lst>     ::=  expr? | expr (<','> expr?)+
+  <lst>     ::=  expr | arg (<','> arg)+
+  <arg>     ::=  expr | nul
+  nul       ::=  <__>
   <_>       ::=  <white+>
   <__>      ::=  <white*>
   I         ::=  #'[0-9]+'

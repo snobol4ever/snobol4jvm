@@ -95,6 +95,8 @@
                   ;; (e1, e2, ...): the first expression that succeeds; the keyword marks the group, which no concatenation can begin with
                   ([x & ys]  (apply vector :comma x ys)))
      :inv       (fn [f & xs] (apply list f xs))
+     ;; an argument left out, F(A,,C) or F(,B), is the null string in its place
+     :nul       (fn []       "")
      :N         (fn [n]      (symbol n))
      :S         (fn [s]      (subs s 1 (subtract (count s) 1)))
      :I         edn/read-string

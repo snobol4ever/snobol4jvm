@@ -59,14 +59,14 @@
   ([s n]        (LPAD s n " "))
   ([s n fill]   (let [s-str  (str s)
                       pad    (clojure.core/- (int-arg n 145) (count s-str))
-                      fill-c (str (first (str fill)))]
+                      fill-c (let [f (str fill)] (if (clojure.core/= "" f) " " (subs f 0 1)))]   ; a null fill pads with blanks
                   (if (clojure.core/<= pad 0) s-str
                     (str (apply str (repeat pad fill-c)) s-str)))))
 (defn RPAD
   ([s n]        (RPAD s n " "))
   ([s n fill]   (let [s-str  (str s)
                       pad    (clojure.core/- (int-arg n 179) (count s-str))
-                      fill-c (str (first (str fill)))]
+                      fill-c (let [f (str fill)] (if (clojure.core/= "" f) " " (subs f 0 1)))]   ; a null fill pads with blanks
                   (if (clojure.core/<= pad 0) s-str
                     (str s-str (apply str (repeat pad fill-c)))))))
 (defn SUBSTR

@@ -2028,3 +2028,24 @@
       (is (= "failed\nafter a failing INPUT without a branch\noutput failed\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; An argument left out is the null string in its place: F(1,,3) passes 1, the null string and 3, F(,2) passes the null string and 2, and a null fill pads LPAD and RPAD
+;; with blanks. The grammar dropped the empty places, so the arguments after one moved left (F(1,,3) gave A=1 B=3) and F(,2) did not parse; TRACE('STCOUNT','KEYWORD',,.S)
+;; took .S for its label. The oracle, sbl -bf, wrote exactly this output.
+(deftest an-argument-left-out-is-the-null-string-in-its-place
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DEFINE('F(A,B,C)')                      :(FEND)\n"
+                   "F       F = '[' A '|' B '|' C ']'               :(RETURN)\n"
+                   "FEND    OUTPUT = F(1,,3)\n"
+                   "        OUTPUT = F(,2)\n"
+                   "        OUTPUT = F(1,2,)\n"
+                   "        OUTPUT = F()\n"
+                   "        OUTPUT = SUBSTR('abcdef',2,)\n"
+                   "        OUTPUT = '[' LPAD('x',3,) ']'\n"
+                   "        OUTPUT = '[' RPAD('x',3,) ']'\n"
+                   "        OUTPUT = DUPL('ab',2)\n"
+                   "END\n"))
+      (is (= "[1||3]\n[|2|]\n[1|2|]\n[||]\nbcdef\n[  x]\n[x  ]\nabab\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
