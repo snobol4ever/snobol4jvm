@@ -4346,3 +4346,28 @@
                    "3 z\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; A program may DEFINE a function SPITBOL does not have, and calling it calls it: Gimpel's SEQ(S, N) runs the CODE of S while N counts up (seq.inc), as sbl
+;; -bf runs it. The engine's evaluator took any (SEQ ...) form for the concatenation it builds internally, so a program's SEQ was never called and its
+;; arguments were joined into a string (Gimpel seq, and ai, aopa, trunc and the others built on it).
+(deftest a-program-may-define-a-function-named-seq
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DEFINE('SEQ(ARG_S,ARG_NAME)')           :(SEQ_END)\n"
+                   "SEQ     $ARG_NAME  =  0\n"
+                   "        OUTPUT = 'a ' K\n"
+                   "        ARG_S  =  CODE(ARG_S  ' :S(SEQ_1)F(SEQ_2)')     :F(ERROR)\n"
+                   "SEQ_1   $ARG_NAME  =  $ARG_NAME + 1             :<ARG_S>\n"
+                   "SEQ_2   EQ($ARG_NAME,1)                         :S(FRETURN)F(RETURN)\n"
+                   "SEQ_END\n"
+                   "        SEQ(' OUTPUT = K ; LT(K, 3) ', .K)\n"
+                   "        OUTPUT = 'returned; K = ' K\n"
+                   "END\n"))
+      (is (= (str "a 0\n"
+                   "1\n"
+                   "2\n"
+                   "3\n"
+                   "returned; K = 3\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

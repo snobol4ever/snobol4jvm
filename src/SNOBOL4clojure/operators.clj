@@ -878,8 +878,9 @@
                                                 (var-get vr))
                                               ($$ kw-sym))]
                               (if (instance? clojure.lang.IDeref v) @v v))
-          (equal op 'SEQ)   (apply str (map #(sstr (EVAL! %)) parms))
-          (equal op 'quote) (first parms)
+          ;; the engine's own forms, unless the program defined a function of the name (SPITBOL has no SEQ, so a program may: Gimpel's seq.inc)
+          (and (equal op 'SEQ) (not (program-fn op)))   (apply str (map #(sstr (EVAL! %)) parms))
+          (and (equal op 'quote) (not (program-fn op))) (first parms)
           ;; Unary * = deferred pattern: do NOT pre-evaluate the arg.
           ;; The thunk must re-read the variable at match time so that
           ;; SPAN(*B) / ANY(*B) / NOTANY(*B) see the current value of B,
