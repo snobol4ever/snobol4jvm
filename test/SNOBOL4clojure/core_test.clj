@@ -4126,3 +4126,39 @@
                    "6 x2.y\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; Exponentiation as sbl.min o_exp computes it: an integer exponent not below zero is repeated multiplication, of integers ("17 Exponentiation caused integer
+;; overflow") or of a real base ("266 Exponentiation caused real overflow"); a real exponent, or a negative integer one, gives e ** (exponent * ln(base)), a
+;; negative base only to an integral power (its parity the sign; else "311 Exponentiation of negative base to non-integral power"), a zero base 0.0, and 0 to the
+;; power 0 or 0.0 is "18 Exponentiation result is undefined" (manual, Appendix D), as sbl -bf runs them. The engine called Math/pow, whose digits differ from
+;; exp(y * ln(x)) in the 14th place (X64T math_pow), and it gave 1.0 for 0.0 ** 0, NaN for a negative base to a fractional power, and 0.0 ** -1 overflowed.
+(deftest exponentiation-is-computed-as-spitbol-computes-it
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 20\n"
+                   "        I2 = 2 ; N1 = -1 ; N2 = -2 ; R2 = 2.0 ; R3 = 3 ; M2 = -2.0 ; M8 = -8.0 ; Z = 0.0 ; ZI = 0 ; H = 0.5 ; T = 10.0 ; P308 = 308 ; P309 = 309\n"
+                   "        S = 1.0e-200 ; THIRD = 1.0 / 3 ; F15 = 1.5 ; X = 2.1229509447726124e-200 ; Y = 1.4010207140730579e+00\n"
+                   "        OUTPUT = 'a ' (I2 ** N1) ' ' (R2 ** R3) ' ' (M2 ** R3) ' ' (N2 ** N2) ' ' (I2 ** H) ' ' (F15 ** I2) ' ' (R2 ** ZI)\n"
+                   "        OUTPUT = 'b ' (T ** P308) ' ' (S ** I2) ' ' (Z ** N1) ' ' (X ** Y) ' ' (M2 ** -3.0) ' ' (I2 ** 62) ' ' (N2 ** 63)\n"
+                   "        V = M8 ** THIRD\n"
+                   "        OUTPUT = 'c ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        V = T ** P309\n"
+                   "        OUTPUT = 'd ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        V = Z ** ZI\n"
+                   "        OUTPUT = 'e ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        &ERRTYPE = 0\n"
+                   "        V = ZI ** Z\n"
+                   "        OUTPUT = 'f ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        V = T ** 400.0\n"
+                   "        OUTPUT = 'g ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "END\n"))
+      (is (= (str "a 0.5 8. -8. 0.25 1.4142135623731 2.25 1.\n"
+                   "b 0.1e+309 0. 0. 0.179434868275613e-279 -0.125 4611686018427387904 -9223372036854775808\n"
+                   "c 311 exponentiation of negative base to non-integral power\n"
+                   "d 266 exponentiation caused real overflow\n"
+                   "e 18 exponentiation result is undefined\n"
+                   "f 18 exponentiation result is undefined\n"
+                   "g 266 exponentiation caused real overflow\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

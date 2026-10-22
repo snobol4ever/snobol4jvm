@@ -123,17 +123,19 @@
 (numeric-predicate GE clojure.core/>= 109 110)
 
 (defn pow-fn
-  "SNOBOL4 exponentiation (**, and its synonyms ^ and !). Integer ** non-negative
-   integer is an exact integer: 0 ** 0 is error 18 and a result past 64 bits is
-   error 17, as SPITBOL reports them. A negative exponent or a real operand gives
-   a real; 0 ** -n is 0.0, as SPITBOL prints it."
+  "SNOBOL4 exponentiation (**, and its synonyms ^ and !) as sbl.min o_exp computes it. An integer exponent not below zero is repeated multiplication: of an
+   integer base, exact, 0 ** 0 error 18 and a result past 64 bits error 17; of a real base, each product rounded, 0.0 ** 0 error 18 and an overflow error 266.
+   A real exponent, or a negative integer one, gives e ** (exponent * ln(base)) (glibc's exp and log, which Math/exp and Math/log follow): a zero base gives
+   0.0, or error 18 to the power 0.0; a negative base is allowed only to an integral power, whose parity is the sign, else error 311."
   [x y]
-  (let [x (operand x 16 "exponentiation left operand is not numeric")
-        y (operand y 15 "exponentiation right operand is not numeric")]
-    (if (and (integer? x) (integer? y) (not (neg? y)))
+  (let [x   (operand x 16 "exponentiation left operand is not numeric")
+        y   (operand y 15 "exponentiation right operand is not numeric")
+        ovf "exponentiation caused real overflow"
+        undefined #(throw (ex-info "exponentiation result is undefined" {:snobol/error 18}))]
+    (cond
+      (and (integer? x) (integer? y) (not (neg? y)))
       (cond
-        (and (zero? x) (zero? y))
-        (throw (ex-info "exponentiation result is undefined" {:snobol/error 18}))
+        (and (zero? x) (zero? y)) (undefined)
         (zero? x) 0
         (clojure.core/= x 1) 1
         (clojure.core/= x -1) (if (even? y) 1 -1)
@@ -144,9 +146,24 @@
           (if (clojure.core/< (.bitLength r) 64)
             (long r)
             (throw (ex-info "exponentiation caused integer overflow" {:snobol/error 17})))))
-      (if (and (integer? x) (zero? x) (neg? y))
-        0.0
-        (finite (Math/pow (double x) (double y)) 266 "exponentiation caused real overflow")))))
+      (and (integer? y) (not (neg? y)))
+      (let [b (double x)]
+        (if (zero? y)
+          (if (zero? b) (undefined) 1.0)
+          (loop [r b k (dec (long y))]
+            (if (or (zero? k) (zero? r)) r (recur (finite (clojure.core/* r b) 266 ovf) (dec k))))))
+      :else
+      (let [b (double x) e (double y)]
+        (if (zero? b)
+          (if (zero? e) (undefined) 0.0)
+          (let [c   (when (neg? b)
+                      (let [c (if (neg? e) (Math/ceil e) (Math/floor e))]
+                        (when (clojure.core/>= (Math/abs c) 9.223372036854775807E18) (throw (ex-info ovf {:snobol/error 266})))
+                        (when-not (clojure.core/== c e)
+                          (throw (ex-info "exponentiation of negative base to non-integral power" {:snobol/error 311})))
+                        (long c)))
+                r   (finite (Math/exp (finite (clojure.core/* (finite (Math/log (Math/abs b)) 266 ovf) e) 266 ovf)) 266 ovf)]
+            (if (and c (odd? c)) (clojure.core/- r) r)))))))
 (defn !     ([_x]       η)
             ([x y]      (pow-fn x y)))
 (defn **    ([x y]      (pow-fn x y)))

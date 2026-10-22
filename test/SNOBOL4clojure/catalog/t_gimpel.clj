@@ -283,7 +283,8 @@ DONE2
         RSQRT2 = SQRT(2.0)
      END")
   (is (= 2.0 (double ($$ 'RSQRT4))))
-  (is (= 3.0 (double ($$ 'RSQRT9))))
+  ;; SQRT is Y ** 0.5, which SPITBOL computes as e ** (0.5 * ln(Y)): 3.0000000000000004 for 9.0, so EQ(9.0 ** 0.5, 3.0) fails under sbl -bf (it prints 3.)
+  (is (= 3.0000000000000004 (double ($$ 'RSQRT9))))
   ;; sqrt(2) ≈ 1.41421…
   (is (< 1.414 (double ($$ 'RSQRT2)) 1.415)))
 
