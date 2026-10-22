@@ -12,6 +12,9 @@
             [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.test-helpers :refer [prog-timeout run-with-timeout]]))
 
+;; Every test starts from a clean runtime: the functions, variables, labels and keywords of the test before it would otherwise be there.
+(use-fixtures :each (fn [t] (GLOBALS) (t)))
+
 ;; ── stdin helper ────────────────────────────────────────────────────────────
 (use-fixtures :once
   ;; The Budne programs that write files (openo, openo2, update) name them
@@ -774,7 +777,8 @@ END
 end
 " 2000)]
     (is (= " 	
- !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~��������������������������������������������������������������������������������������������������������������������������������
+
+ !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~��������������������������������������������������������������������������������������������������������������������������������
 256
 abcdefghijklmnopqrstuvwxyz
 26
@@ -2532,7 +2536,8 @@ D: 4
 (deftest csnobol4-crlf
   "Budne suite: crlf.sno — reads from INPUT (stdin below END)"
   (let [r (run-with-input "loop	output = input		:s(loop)
-end"
+end
+"
                           "this line has no CR
 this line ends in a CR
 this line has no CR
