@@ -35,6 +35,7 @@
 (def  &FTRACE    env/&FTRACE)
 (def  &FULLSCAN  env/&FULLSCAN)
 (def  &LASTNO    env/&LASTNO)
+(def  &STNO      env/&STNO)
 (def  &LCASE     env/&LCASE)
 (def  &MAXLNGTH  env/&MAXLNGTH)
 (def  &PROFILE   env/&PROFILE)

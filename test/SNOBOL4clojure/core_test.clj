@@ -1260,3 +1260,18 @@
                    " T = S('x')\n OUTPUT = 'T=' T\nEND\n"))
       (is (= "in D: S=aa\nin D: L=a\ntop: DATATYPE(S)=STRING null=STRING\nP=PATTERN\nT=x\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; &STNO is the number of the statement being executed, counted from 1 over the statements of the program in the order they are written (a statement that is
+;; only a goto counts), and &LASTNO is the number of the statement executed before it; a function call leaves them as the caller had them, so the statement
+;; after X = F() sees the call as the last. &STNO is protected (ERROR 209). The engine had no &STNO (Budne's contin prints it) and &LASTNO stayed 0. The
+;; oracle, sbl -bf, wrote exactly this output.
+(deftest stno-and-lastno-count-the-statements
+  (let [f (java.io.File/createTempFile "stno" ".sno")]
+    (try
+      (spit f (str " OUTPUT = &STNO; OUTPUT = &STNO\n OUTPUT = &STNO ;* THIS IS A COMMENT\n OUTPUT = &LASTNO ' ' &STNO\nL OUTPUT = &STNO\n :(M)\n"
+                   " OUTPUT = 'skipped'\nM OUTPUT = &LASTNO ' ' &STNO\n DEFINE('F()')                         :(FE)\n"
+                   "F OUTPUT = 'in F: ' &LASTNO ' ' &STNO\n F = &STNO                             :(RETURN)\n"
+                   "FE X = F()\n OUTPUT = 'after: ' X ' ' &LASTNO ' ' &STNO\nEND\n"))
+      (is (= "1\n2\n3\n3 4\n5\n6 8\nin F: 12 10\nafter: 11 12 13\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f))))
+  (is (= 209 (try (RUN (CODE " &STNO = 5\nEND\n")) :no-error (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e)))))))

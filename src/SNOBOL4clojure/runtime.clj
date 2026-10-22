@@ -14,7 +14,7 @@
   Statement-level trace (wildcard '*') prints each statement number + label.
   Pattern traces are handled in match.clj via *trace* dynamic var."
   (:require [SNOBOL4clojure.env   :refer [<STNO> <LABL> <CODE>
-                                           &STCOUNT &STLIMIT &TRACE
+                                           &STCOUNT &STLIMIT &TRACE &STNO &LASTNO
                                            snobol-return! snobol-freturn!
                                            snobol-nreturn! snobol-end!
                                            snobol-steplimit!]]
@@ -82,6 +82,8 @@
             (dispatch-special! key))
           (when-let [stmt (@<CODE> key)]
             ;; ── &STCOUNT / &STLIMIT ──────────────────────────────────────────
+            (reset! &LASTNO @&STNO)
+            (reset! &STNO (first current))
             (let [n (swap! &STCOUNT inc)]
               (when (> n @&STLIMIT)
                 (snobol-steplimit! n))

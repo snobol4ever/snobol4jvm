@@ -9,7 +9,7 @@
               table? table-get table-set
               array? array-get array-set array-prototype assign-keyword! name-string
               snobol-return! snobol-freturn! snobol-nreturn!
-              <FUNS> <FDEFS> <CHANNELS> <OPSYN>]]
+              <FUNS> <FDEFS> <CHANNELS> <OPSYN> &STNO]]
             [SNOBOL4clojure.functions :refer
              [ASCII CHAR ORD DATE TIME REMDR ATAN CHOP COS EXP LN SIN SQRT TAN INTEGER integer-predicate REAL STRING SIZE TRIM DUPL REVERSE LPAD RPAD REPLACE SUBSTR
               ITEM PROTOTYPE CONVERT COPY FIELD SORT RSORT DATA
@@ -327,7 +327,8 @@
                         ;; What is saved is the program's own variable (nil: it was not set), never the engine's built-in of that name that $$ would
                         ;; find in the core namespace, so the restore leaves the variable as the caller had it.
                         (let [saved   (zipmap all-saved (map #(reference (symbol %)) all-saved))
-                              f-saved (reference f-sym)]
+                              f-saved (reference f-sym)
+                              stno-saved @&STNO]
                           ;; Bind parameters to call arguments
                           (doseq [i (range (count params))]
                             (snobol-set! (symbol (params i))
@@ -355,6 +356,8 @@
                                 (restore-var! (symbol k) v))
                               ;; Restore the caller's result variable
                               (restore-var! f-sym f-saved)
+                              ;; the statement that called the function is again the one last executed
+                              (reset! &STNO stno-saved)
                               ;; Dispatch on outcome
                               (case outcome
                                 :return  result
