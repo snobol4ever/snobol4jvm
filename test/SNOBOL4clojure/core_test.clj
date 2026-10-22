@@ -4043,3 +4043,30 @@
                    "int 263 13 0.1e+302\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; The math functions' errors read as sbl -bf writes them, in lower case: "307 ln produced real overflow", "315 ln argument negative", "314 sqrt argument
+;; negative", "304 exp argument not numeric" (manual, Appendix D, which spells them LN, SQRT, EXP). The engine's &ERRTEXT named the function in capitals.
+(deftest the-math-functions-errors-read-as-sbl-writes-them
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 20\n"
+                   "        Z = 0 ; P = 800 ; NG = -1.0 ; HP = 1.5707963267948966\n"
+                   "        X = LN(Z)\n"
+                   "        OUTPUT = 'ln0 ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = LN(NG)\n"
+                   "        OUTPUT = 'lnneg ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = SQRT(NG)\n"
+                   "        OUTPUT = 'sqrt ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = TAN(HP)\n"
+                   "        OUTPUT = 'tan ' &ERRTYPE ' ' &ERRTEXT ' ' X\n"
+                   "        A = 'A' ; X = EXP(A)\n"
+                   "        OUTPUT = 'expa ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "END\n"))
+      (is (= (str "ln0 307 ln produced real overflow\n"
+                   "lnneg 315 ln argument negative\n"
+                   "sqrt 314 sqrt argument negative\n"
+                   "tan 314 sqrt argument negative 0.163312393531954e+17\n"
+                   "expa 304 exp argument not numeric\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

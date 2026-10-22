@@ -237,7 +237,8 @@
 ;; 301 ATAN, 302 CHOP, 303 COS, 304 EXP, 306 LN, 308 SIN, 309 TAN, 313 SQRT;
 ;; overflow is 305 EXP, 307 LN (of 0), 310 TAN; 315 is LN of a negative and 314
 ;; SQRT of a negative.
-(defn- real-error [code msg] (throw (ex-info msg {:snobol/error code})))
+;; the text is SPITBOL's, in lower case as sbl -bf writes it ("ln produced real overflow")
+(defn- real-error [code msg] (throw (ex-info (or (env/error-message code) msg) {:snobol/error code})))
 
 (defn- real-arg
   "x as a double, or ERROR code when it is not numeric."
