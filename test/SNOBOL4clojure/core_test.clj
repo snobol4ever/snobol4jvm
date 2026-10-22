@@ -4286,3 +4286,41 @@
                    "c 0.1797693134e+309\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; "The unary name operator . returns the name of its operand" (manual ch. 15, NRETURN): the name of an element, .A<K>, is that element of the table or array
+;; A holds now, and a function that returns it by NRETURN gives its caller that element even after its own A, a parameter, is restored (Griswold 1971 ch. 4:
+;; NEXT(B) = 'FIRST' fills B<1>); the name of a variable, .V, stays the variable's, so after the return it is the caller's V, as sbl -bf has both. The engine kept
+;; the variable A in the element's name and read it after the return, when it no longer held the array (snoflake nreturn).
+(deftest the-name-of-an-element-holds-its-table-or-array
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "         DEFINE('NEXT(A)')                    :(N_END)\n"
+                   "NEXT     A[0] = A[0] + 1\n"
+                   "         NEXT = .A[A[0]]                      :(NRETURN)\n"
+                   "N_END    B = ARRAY('0:10')\n"
+                   "         NEXT(B) = 'FIRST'\n"
+                   "         NEXT(B) = 'SECOND'\n"
+                   "         OUTPUT = '1 ' B[1] ' ' B[2] ' ' NEXT(B) '|'\n"
+                   "         DEFINE('SLOT(T,K)')                  :(S_END)\n"
+                   "SLOT     SLOT = .T<K>                         :(NRETURN)\n"
+                   "S_END    U = TABLE()\n"
+                   "         SLOT(U, 'a') = 'x'\n"
+                   "         OUTPUT = '2 ' U<'a'> ' ' SLOT(U, 'a')\n"
+                   "         N = .B[1]\n"
+                   "         $N = 'third'\n"
+                   "         OUTPUT = '3 ' B[1] ' ' IDENT(.B[2], .B[2]) 'same'\n"
+                   "         DEFINE('F(V)')                       :(F_END)\n"
+                   "F        V = 'local'\n"
+                   "         F = .V                               :(NRETURN)\n"
+                   "F_END    V = 'global'\n"
+                   "         F('arg') = 'set'\n"
+                   "         OUTPUT = '4 ' V\n"
+                   "END\n"))
+      (is (= (str "1 FIRST SECOND |\n"
+                   "2 x x\n"
+                   "3 third same\n"
+                   "4 set\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+

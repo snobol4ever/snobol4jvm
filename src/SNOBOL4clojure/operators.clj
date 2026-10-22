@@ -311,10 +311,12 @@
                       r (concat-value r)
                       ;; the container is a variable's name, or the table or array itself when it came from a subscript (tt['blue']['green'])
                       ;; a field of a DATA type, F(x) = v, when the name holds no table or array (A<k> and F(k) are one form in the IR)
-                      raw-container (if (symbol? container-sym)
+                      raw-container (cond
+                                      (:container (meta N)) (:container (meta N))   ; the element a name of an element holds
+                                      (symbol? container-sym)
                                       (let [v ($$ container-sym) f (get @<FUNS> (name container-sym))]
                                         (if (and (not (table? v)) (not (array? v)) (:data (meta f))) f v))
-                                      container-sym)
+                                      :else container-sym)
                       ;; NAME indirect reference — dereference to the actual array/table
                       container (if (instance? NAME raw-container)
                                   ($$ (symbol (str (.n raw-container))))
@@ -721,7 +723,7 @@
 ;; A call that returned a name (NRETURN) is a NameResult. Used as a value it is the value of the variable or element it names; used as the target of an assignment
 ;; or a capture it is that variable or element.
 (defn- name-value [target]
-  (if (symbol? target) ($$ target) (apply INVOKE (first target) (rest target))))
+  (if (symbol? target) ($$ target) (apply INVOKE (or (:container (meta target)) (first target)) (rest target))))
 
 (defn- deref-result [r]
   (if (instance? SNOBOL4clojure.env.NameResult r) (name-value (:target r)) r))
@@ -808,10 +810,14 @@
             (if (clojure.core/= n 1)
               ;; Unary .VAR — NAME reference (indirect). Return a NAME wrapping the symbol.
               ;; Do NOT evaluate the arg — we want the symbol itself, not its current value.
-              ;; The name of an element, .A<k>, takes its subscripts' values now.
+              ;; The name of an element, .A<k>, is that element of the table or array A holds now, its subscripts taken now: the table or array rides on the
+              ;; name as its :container, so a function that returns it by NRETURN gives the element even after its own A is restored (sbl -bf), while the
+              ;; name still reads .A<k>; a field F(x) keeps its function's name.
               (let [x (first parms)]
                 (NAME. (if (and (list? x) (>= (count x) 2))
-                         (apply list (first x) (map EVAL! (rest x)))
+                         (let [v (when (symbol? (first x)) (reference (first x)))]
+                           (cond-> (apply list (first x) (map EVAL! (rest x)))
+                             (or (table? v) (array? v)) (with-meta {:container v})))
                          x)))
               ;; Binary P . V — CAPTURE-COND (conditional assignment on match success).
               (let [[P N] parms] (INVOKE '. (EVAL! P) (capture-target N)))))
