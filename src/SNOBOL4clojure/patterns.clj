@@ -13,12 +13,24 @@
 ;; the pattern (and re-builds the charset) at match time from the live value.
 (defn- deferred? [S] (and (list? S) (clojure.core/= (first S) 'DEFER!)))
 
-(defn ANY    [S] (if (deferred? S) (list 'DEFER! (fn [] (ANY    (str ((second S))))))  (list 'ANY$    (charset S))))
-(defn BREAK  [S] (if (deferred? S) (list 'DEFER! (fn [] (BREAK  (str ((second S))))))  (list 'BREAK$  (charset S))))
-(defn BREAKX [S] (if (deferred? S) (list 'DEFER! (fn [] (BREAKX (str ((second S))))))  (list 'BREAKX# (charset S))))  ; backtracking form
-(defn NOTANY [S] (if (deferred? S) (list 'DEFER! (fn [] (NOTANY (str ((second S))))))  (list 'NOTANY$ (charset S))))
+;; The argument is a string: an integer converts to its digits, a real as SPITBOL writes it and a NAME to its name; a null one, or any other value, is the
+;; function's "argument is not a string or expression" (59 ANY, 151 NOTANY, 188 SPAN, 69 BREAK, 70 BREAKX), and when it came deferred, read as the match reaches
+;; it, its "evaluated argument is not a string" (43, 49, 56, 44, 45; Appendix D), as sbl -bf raises them. A deferred expression that fails fails the element.
+(defn- set-of [S err]
+  (let [s (if (or (string? S) (number? S) (instance? SNOBOL4clojure.env.NAME S)) (env/sstr S) "")]
+    (if (seq s) (charset s) (throw (ex-info (env/error-message err) {:snobol/error err})))))
+
+(defn- set-pattern-of [op S bad ebad]
+  (if (deferred? S)
+    (list 'DEFER! (fn [] (when-some [v ((second S))] (list op (set-of v ebad)))))
+    (list op (set-of S bad))))
+
+(defn ANY    [S] (set-pattern-of 'ANY$    S  59 43))
+(defn BREAK  [S] (set-pattern-of 'BREAK$  S  69 44))
+(defn BREAKX [S] (set-pattern-of 'BREAKX# S  70 45))   ; backtracking form
+(defn NOTANY [S] (set-pattern-of 'NOTANY$ S 151 49))
 (defn NSPAN  [S] (if (deferred? S) (list 'DEFER! (fn [] (NSPAN  (str ((second S))))))  (list 'NSPAN$  (charset S))))   ; 0-or-more span
-(defn SPAN   [S] (if (deferred? S) (list 'DEFER! (fn [] (SPAN   (str ((second S))))))  (list 'SPAN$   (charset S))))
+(defn SPAN   [S] (set-pattern-of 'SPAN$   S 188 56))
 
 ;; ── Length / position patterns ────────────────────────────────────────────────
 ;; A deferred argument (*N) is read when the match reaches the pattern, as for

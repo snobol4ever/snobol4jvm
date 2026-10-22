@@ -3900,3 +3900,66 @@
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
 
+
+;; "SPAN(S) Matches one or more characters from the set of characters specified by the argument string" (manual ch. 19, SPAN), and ANY, NOTANY, BREAK and BREAKX
+;; the same. As sbl -bf has it, the argument converts as a string argument does, a null one or any other value is the function's "argument is not a string or
+;; expression" (59 ANY, 151 NOTANY, 188 SPAN, 69 BREAK, 70 BREAKX), and a deferred one is checked when the match reaches it, "56 SPAN evaluated argument is not a
+;; string" (43, 49, 44, 45 the others; Appendix D). The error ends the whole match: the statement fails once, &ERRLIMIT drops by one, and an immediate assignment
+;; made before it stands; an error inside a function the scan calls fails only that function's statement. The engine made an empty set of a null argument and
+;; matched on (CEO-1915: hq_dotnet's fuzz witness an_error_a_pattern_node_raises_ends_the_match).
+(deftest a-character-set-argument-is-checked-and-its-error-ends-the-match
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 20\n"
+                   "        A = 'a'\n"
+                   "        DEFINE('G()')                               :(GE)\n"
+                   "G       G = 1 + A\n"
+                   "        G = 'k'                                     :(RETURN)\n"
+                   "GE      'ykm' (LEN(1) $ X) SPAN(*Y)                 :S(Y1)\n"
+                   "        OUTPUT = '1 F X=' X ' lim=' &ERRLIMIT ' t=' &ERRTYPE :(E1)\n"
+                   "Y1      OUTPUT = '1 S X=' X\n"
+                   "E1      X =\n"
+                   "        'ykm' (LEN(1) . X) SPAN(*Y)                 :S(Y2)\n"
+                   "        OUTPUT = '2 F X=' X ' lim=' &ERRLIMIT ' t=' &ERRTYPE :(E2)\n"
+                   "Y2      OUTPUT = '2 S X=' X\n"
+                   "E2      X =\n"
+                   "        'ykm' (LEN(1) $ X) ('q' | SPAN(*Y))         :S(Y3)\n"
+                   "        OUTPUT = '3 F X=' X ' lim=' &ERRLIMIT ' t=' &ERRTYPE :(E3)\n"
+                   "Y3      OUTPUT = '3 S X=' X\n"
+                   "E3      X =\n"
+                   "        &ERRTYPE = 0\n"
+                   "        'ykm' (LEN(1) $ X) *G()                     :S(Y4)\n"
+                   "        OUTPUT = '4 F X=' X ' lim=' &ERRLIMIT ' t=' &ERRTYPE :(E4)\n"
+                   "Y4      OUTPUT = '4 S X=' X ' lim=' &ERRLIMIT ' t=' &ERRTYPE\n"
+                   "E4      T = TABLE()\n"
+                   "        'abc' SPAN(Y)\n"
+                   "        OUTPUT = '5 ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        'abc' ANY(T)\n"
+                   "        OUTPUT = '6 ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        'abc' NOTANY(Y)\n"
+                   "        OUTPUT = '7 ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        'abc' BREAK(*Y)\n"
+                   "        OUTPUT = '8 ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        'abc' BREAKX(*T)\n"
+                   "        OUTPUT = '9 ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        'abc' ANY(*Y)\n"
+                   "        OUTPUT = '10 ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        'abc' NOTANY(*Y)\n"
+                   "        OUTPUT = '11 ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        'a5b' SPAN(5) . V\n"
+                   "        OUTPUT = '12 [' V '] ' &ERRLIMIT\n"
+                   "END\n"))
+      (is (= (str "1 F X=y lim=19 t=56\n"
+                   "2 F X= lim=18 t=56\n"
+                   "3 F X=y lim=17 t=56\n"
+                   "4 S X=y lim=15 t=2\n"
+                   "5 188 span argument is not a string or expression\n"
+                   "6 59 any argument is not a string or expression\n"
+                   "7 151 notany argument is not a string or expression\n"
+                   "8 44 break evaluated argument is not a string\n"
+                   "9 45 breakx evaluated argument is not a string\n"
+                   "10 43 any evaluated argument is not a string\n"
+                   "11 49 notany evaluated argument is not a string\n"
+                   "12 [5] 8\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
