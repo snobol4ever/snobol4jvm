@@ -1247,61 +1247,61 @@
 
 (deftest micro_t4_define_simple_fn
   (prog
-    "        DEFINE('double(N)')"
+    "        DEFINE('DOUBLE(N)')"
     "        :(ENDDOUBLE)"
-    "DOUBLE  double = N * 2"
+    "DOUBLE  DOUBLE = N * 2"
     "        :(RETURN)"
     "ENDDOUBLE"
-    "        I = double(7)"
+    "        I = DOUBLE(7)"
     "end")
   (is (clojure.core/= 14 ($$ 'I))))
 
 (deftest micro_t4_define_fn_two_args
   (prog
-    "        DEFINE('add(A,B)')"
+    "        DEFINE('ADD(A,B)')"
     "        :(ENDADD)"
-    "ADD     add = A + B"
+    "ADD     ADD = A + B"
     "        :(RETURN)"
     "ENDADD"
-    "        K = add(3,4)"
+    "        K = ADD(3,4)"
     "end")
   (is (clojure.core/= 7 ($$ 'K))))
 
 (deftest micro_t4_define_string_fn
   (prog
-    "        DEFINE('greet(NAME)')"
+    "        DEFINE('GREET(NAME)')"
     "        :(ENDGREET)"
-    "GREET   greet = 'Hello, ' NAME"
+    "GREET   GREET = 'Hello, ' NAME"
     "        :(RETURN)"
     "ENDGREET"
-    "        S = greet('world')"
+    "        S = GREET('world')"
     "end")
   (is (clojure.core/= "Hello, world" ($$ 'S))))
 
 (deftest micro_t4_define_with_local
   (prog
-    "        DEFINE('square(N),tmp')"
+    "        DEFINE('SQUARE(N),tmp')"
     "        :(ENDSQ)"
     "SQUARE  tmp = N * N"
-    "        square = tmp"
+    "        SQUARE = tmp"
     "        :(RETURN)"
     "ENDSQ"
-    "        I = square(6)"
+    "        I = SQUARE(6)"
     "end")
   (is (clojure.core/= 36 ($$ 'I))))
 
 (deftest micro_t4_freturn_on_failure
   (prog
-    "        DEFINE('safe_div(A,B)')"
+    "        DEFINE('SAFE_DIV(A,B)')"
     "        :(ENDSD)"
     "SAFE_DIV EQ(B,0) :S(DIVZERO)"
-    "        safe_div = A / B"
+    "        SAFE_DIV = A / B"
     "        :(RETURN)"
-    "DIVZERO safe_div = -1"
+    "DIVZERO SAFE_DIV = -1"
     "        :(FRETURN)"
     "ENDSD"
-    "        I = safe_div(10,2)"
-    "        J = safe_div(10,0)"
+    "        I = SAFE_DIV(10,2)"
+    "        J = SAFE_DIV(10,0)"
     "end")
   (is (clojure.core/= 5 ($$ 'I)))
   (is (clojure.core/= 10 ($$ 'J))))  ; J stays at fixture 10 — FRETURN makes statement fail
@@ -1389,16 +1389,16 @@
 ;; ─────────────────────────────────────────────────────────────────────────────
 (deftest micro_t4_freturn_on_zero_div
   (prog
-    "        DEFINE('safe_div(A,B)')"
+    "        DEFINE('SAFE_DIV(A,B)')"
     "        :(ENDSD)"
     "SAFE_DIV EQ(B,0) :S(DIVZERO)"
-    "        safe_div = A / B"
+    "        SAFE_DIV = A / B"
     "        :(RETURN)"
-    "DIVZERO safe_div = -1"
+    "DIVZERO SAFE_DIV = -1"
     "        :(FRETURN)"
     "ENDSD"
-    "        I = safe_div(10,2)"
-    "        J = safe_div(10,0)"
+    "        I = SAFE_DIV(10,2)"
+    "        J = SAFE_DIV(10,0)"
     "end")
   (is (clojure.core/= 5 ($$ 'I)))
   (is (clojure.core/= 10 ($$ 'J))))  ; J stays at fixture 10 — FRETURN makes statement fail
@@ -1536,15 +1536,15 @@
 
 (deftest micro_t5_recursive_factorial
   (prog-steplimit 2000 1000
-    "        DEFINE('fact(N)')"
+    "        DEFINE('FACT(N)')"
     "        :(ENDFACT)"
     "FACT    EQ(N,0) :S(BASE)"
-    "        fact = N * fact(N - 1)"
+    "        FACT = N * FACT(N - 1)"
     "        :(RETURN)"
-    "BASE    fact = 1"
+    "BASE    FACT = 1"
     "        :(RETURN)"
     "ENDFACT"
-    "        I = fact(5)"
+    "        I = FACT(5)"
     "end")
   (is (clojure.core/= 120 ($$ 'I))))
 

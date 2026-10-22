@@ -307,13 +307,13 @@
                                          (mapv clojure.string/trim
                                                (clojure.string/split s #",")))))
                   f-sym     (symbol fname)
-                  ;; Entry point: explicit .label arg, or keyword from fname (uppercased to match label table)
+                  ;; Entry point: explicit .label arg, or the keyword of fname, in the case it is written (sbl -bf folds no name)
                   entry     (if (and (>= (count args) 2) entry-arg)
                               ;; entry-arg may be a NAME (symbol) from (.label) notation
                               (if (symbol? entry-arg)
-                                (keyword (clojure.string/upper-case (str (name entry-arg))))
-                                (keyword (clojure.string/upper-case (str entry-arg))))
-                              (keyword (clojure.string/upper-case fname)))
+                                (keyword (str (name entry-arg)))
+                                (keyword (str entry-arg)))
+                              (keyword fname))
                   all-saved (into params locals)]
               (letfn [(the-fn [& call-args]
                         ;; Save current values of params + locals
@@ -355,20 +355,20 @@
                                 :nreturn nil
                                 result)))))]   ; fall-through = return
                 (snobol-set! f-sym the-fn)
-                (swap! <FUNS>  assoc (clojure.string/upper-case fname) the-fn)
-                (swap! <FDEFS> assoc (clojure.string/upper-case fname)
+                (swap! <FUNS>  assoc fname the-fn)
+                (swap! <FDEFS> assoc fname
                                {:params params :locals locals})
                 ε))
     define  (apply INVOKE 'DEFINE args)
     ;; ── OPSYN(new, old, n) ── Sprint 25E ─────────────────────────────────────────────
     ;; Makes 'new' a synonym for 'old'.  n omitted/0=function, 1=unary op, 2=binary op.
-    ;; Stores a wrapper fn in <FUNS> under uppercase new-name so the INVOKE fallthrough
-    ;; arm dispatches to it automatically (it already checks <FUNS> by upper-case key).
+    ;; Stores a wrapper fn in <FUNS> under new-name, as it is written, so the INVOKE fallthrough
+    ;; arm dispatches to it automatically (it already checks <FUNS> by that key).
     ;; For operator synonyms (n=1/2), also index under the raw symbol string.
     ;; Always succeeds (even if old is unknown — wraps to no-op fn).
     OPSYN   (let [[new-arg old-arg n-arg] args
-                  new-name (clojure.string/upper-case (name-string new-arg))
-                  old-name (clojure.string/upper-case (name-string old-arg))
+                  new-name (name-string new-arg)
+                  old-name (name-string old-arg)
                   old-sym  (symbol (name-string old-arg))
                   n        (when (and n-arg (not= n-arg ε)) (long n-arg))
                   old-fn   (or (get @<FUNS> old-name)
@@ -471,13 +471,13 @@
     ;; ARG(fname, n) — nth parameter name of function fname (1-based), as a NAME
     ;; (CEO-1861: sbl -bf returns one; the manual's string is not followed)
     ARG       (let [[fname n] args
-                    meta (get @<FDEFS> (clojure.string/upper-case (name-string fname)))]
+                    meta (get @<FDEFS> (name-string fname))]
                 (when-some [p (when meta (nth (:params meta) (dec (long n)) nil))]
                   (NAME. (symbol p))))
     arg       (apply INVOKE 'ARG args)
     ;; LOCAL(fname, n) — nth local variable name of function fname (1-based), as a NAME
     LOCAL     (let [[fname n] args
-                    meta (get @<FDEFS> (clojure.string/upper-case (name-string fname)))]
+                    meta (get @<FDEFS> (name-string fname))]
                 (when-some [p (when meta (nth (:locals meta) (dec (long n)) nil))]
                   (NAME. (symbol p))))
     local     (apply INVOKE 'LOCAL args)
@@ -573,7 +573,7 @@
                   ;; When f is not callable (e.g. result-slot cleared to ε during
                   ;; recursive execution), fall back to the functions registry.
                   f (if (fn? f) f
-                      (get @<FUNS> (clojure.string/upper-case (str op)) f))]
+                      (get @<FUNS> (str op) f))]
               (cond
                 (table? f) (table-get f (first args))   ; TABLE subscript read
                 (array? f) (array-get f (vec args))     ; ARRAY subscript read
@@ -589,7 +589,7 @@
   "APPLY(fname, arg1, ...) — call the function fname, a string or a NAME, as a
    call written in the program calls it: through INVOKE, built-ins included."
   [fname & fargs]
-  (apply INVOKE (symbol (clojure.string/upper-case (name-string fname))) fargs))
+  (apply INVOKE (symbol (name-string fname)) fargs))
 
 ;; ── EVAL! / EVAL ─────────────────────────────────────────────────────────────
 ;; Unary operators SPITBOL leaves unused, each with the name OPSYN files it

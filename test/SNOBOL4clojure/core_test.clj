@@ -1152,3 +1152,21 @@
     (is (= n (try (RUN (CODE (str "        V = " stmt "\nEND\n"))) :no-error
                   (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e)))))
         stmt)))
+
+;; A function name is read in the case it is written, as sbl -bf reads it: DEFINE('q(x)') has the entry label q, not Q, and a call of Q is ERROR 22, an
+;; undefined function. DEFINE folded the name to upper case for the entry label and the function table, so a function written in lower case (Budne's lexcmp
+;; names its q, try and check) never found its entry label and the program ended at the first call. The oracle, sbl -bf, wrote exactly this output.
+(deftest a-function-name-keeps-its-case
+  (let [f (java.io.File/createTempFile "fncase" ".sno")]
+    (try
+      (spit f (str " DEFINE(\"q(x)t\")                         :(EQ)\n"
+                   "q t = DATATYPE(x)\n q = LEQ(t,\"STRING\") \"'\" x \"'\"        :s(RETURN)\n q = x                                  :(RETURN)\n"
+                   "EQ OUTPUT = q('a') ' ' q(5)\n"
+                   " DEFINE('Mixed(A)')                      :(MEND)\n"
+                   "Mixed Mixed = A A                        :(RETURN)\n"
+                   "MEND OUTPUT = Mixed('ab')\n"
+                   "END\n"))
+      (is (= "'a' 5\nabab\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f))))
+  (is (= 22 (try (RUN (CODE " DEFINE('q(x)')                  :(QEND)\nq q = x x                      :(RETURN)\nQEND V = Q('ab')\nEND\n")) :no-error
+                 (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e)))))))
