@@ -3058,3 +3058,21 @@
       (is (= "read 5 5\nafter qlink= 7 7\nname NAME 7\nthrough the name 9\ndecr 8\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A continuation line (+ or . in column one) continues the statement on the line before it; one that continues nothing -- the first line of the program, a line after a
+;; comment line ("Comment and control statements are always one line long", SPITBOL manual ch. 14), a line after a statement closed by a semicolon -- is a compile error,
+;; "214 bad label or misplaced continuation line", and the program is not run ("-NOERRORS is the default, and suppresses execution if there is a compilation error",
+;; ch. 14). After a blank line it continues the blank one. sbl -bf writes file(line) : ERROR 214 -- ... and exits 231; -main answers 231. The engine ran the program
+;; (TPgm test2, which sbl refuses at line 238).
+(deftest a-misplaced-continuation-line-is-error-214-and-the-program-does-not-run
+  (let [dir (.toFile (java.nio.file.Files/createTempDirectory "cont" (make-array java.nio.file.attribute.FileAttribute 0)))
+        run (fn [nm src] (let [f (java.io.File. dir nm)] (spit f src)
+                           (let [rc (atom nil) out (with-out-str (binding [*err* (java.io.StringWriter.)] (reset! rc (-main (.getPath f)))))]
+                             [(clojure.string/replace out (str dir "/") "") @rc])))]
+    (try
+      (is (= ["c1.sno(2) : ERROR 214 -- bad label or misplaced continuation line\n" 231] (run "c1.sno" "\tX = 1 ;\n+\tY = 2\n\tOUTPUT = 'ran'\nEND\n")))
+      (is (= ["c2.sno(2) : ERROR 214 -- bad label or misplaced continuation line\n" 231] (run "c2.sno" "* a comment\n+\tY = 2\n\tOUTPUT = 'ran'\nEND\n")))
+      (is (= ["c4.sno(1) : ERROR 214 -- bad label or misplaced continuation line\n" 231] (run "c4.sno" "+\tY = 2\n\tOUTPUT = 'ran'\nEND\n")))
+      (is (= "ran 1\n" (first (run "c3.sno" "\tX = 1\n\n+\tY = 2\n\tOUTPUT = 'ran ' X\nEND\n"))))
+      (is (= "ran 3\n" (first (run "c5.sno" "\tX = 1\n+\t+ 2\n\tOUTPUT = 'ran ' X\nEND\n"))))
+      (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))

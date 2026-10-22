@@ -208,14 +208,25 @@
       (System/exit 1))
     (let [src (slurp file :encoding "ISO-8859-1")   ; a program is bytes
           dir (or (.getParent (java.io.File. ^String file)) ".")]
-      (case engine
+      ;; -main answers the exit code the program answers: 231 for a refused compile, nil for a run
+      (let [rc (case engine
         "interp" (do (env/GLOBALS)
                      (reset! env/<HOST0> (or u (clojure.string/join " " (remove #{"--"} prog-args))))
-                     ;; the termination dump &DUMP asks for is written however the program ends
-                     (try (rt/RUN (comp/CODE src (include-dirs dir (System/getenv "SNO_LIB")) file))
-                          (finally (when (pos? (long @env/&DUMP)) (print (dump/dump-text @env/&DUMP))))))
-        "vm"     (print (vm/run-program! src)))
-      (flush))))
+                     ;; "-NOERRORS is the default, and suppresses execution if there is a compilation error" (manual ch. 14): a program with a compile error is
+                     ;; reported in sbl -bf's shape, file(line) : ERROR code -- text, and not run; -main answers 231, sbl's exit code for it
+                     (let [entry (comp/CODE src (include-dirs dir (System/getenv "SNO_LIB")) file)]
+                       (if (seq @env/<DIAGNOSTICS>)
+                         (do (doseq [[l code] @env/<DIAGNOSTICS>]
+                               (let [msg (str file "(" l ") : ERROR " (format "%03d" code) " -- " (env/error-message code))]
+                                 (println msg) (binding [*out* *err*] (println msg))))
+                             (flush)
+                             231)
+                         ;; the termination dump &DUMP asks for is written however the program ends
+                         (try (rt/RUN entry)
+                              (finally (when (pos? (long @env/&DUMP)) (print (dump/dump-text @env/&DUMP))))))))
+        "vm"     (print (vm/run-program! src)))]
+        (flush)
+        (when (integer? rc) rc)))))
 
 ;; ── Re-export transpiler (Stage 23B) ─────────────────────────────────────────
 (def transpile          xpile/transpile)

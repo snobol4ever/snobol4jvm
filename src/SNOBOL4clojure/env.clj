@@ -104,6 +104,7 @@
 (def <OBJNO> (atom 0))   ; how many arrays, tables and DATA objects the program has made: the number a dump gives each, #n
 (defn next-serial! [] (swap! <OBJNO> inc))
 (def <PRIMS-READ> (atom #{}))   ; the primitive pattern variables (BAL, ARB, ...) the program has read, which a dump lists as SPITBOL lists them
+(def <DIAGNOSTICS> (atom []))   ; the compile-time errors of the last source compiled, as [line code] pairs
 (def <HOST0> (atom ""))   ; what HOST(0) returns: the -u text, or else the program's own arguments joined by blanks
 (def <LASTOUT> (atom nil))   ; the last value assigned to OUTPUT, which a dump lists as the variable OUTPUT
 (def <SETEXIT> (atom nil))   ; the label SETEXIT named (a keyword), or nil when no handler is armed
@@ -270,6 +271,8 @@
 ;; ── Keyword assignment ───────────────────────────────────────────────────────
 ;; The text of SPITBOL's own error n, as sbl -bf writes it (Appendix D in lower case), or nil for a number outside SPITBOL's. The manual's table lacks 274 to 280 (its
 ;; extraction took the page number 274 and two more for entries), so the one of those sbl was seen to write is given here.
+(declare error-text)
+(defn error-message "SPITBOL's text for its error n, in lower case as sbl -bf writes it, or nil." [n] (error-text n))
 (def ^:private error-text
   (merge (into {} (for [[n m] errors/error-messages :when (not (#{274 276 278} n))] [n (clojure.string/lower-case m)]))
          {274 "value assigned to keyword fullscan is zero"}))

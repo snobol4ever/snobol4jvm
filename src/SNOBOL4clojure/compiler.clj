@@ -28,7 +28,7 @@
      (edn->ir s)                  — EDN string -> [codes nos labels]"
   (:require [clojure.string          :as string]
             [clojure.edn             :as edn]
-            [SNOBOL4clojure.env      :refer [STNO <STNO> <LABL> <CODE> <DISPNO> <POS> BLANKS &CASE fold-case]]
+            [SNOBOL4clojure.env      :refer [STNO <STNO> <LABL> <CODE> <DISPNO> <POS> <DIAGNOSTICS> BLANKS &CASE fold-case]]
             [SNOBOL4clojure.grammar  :refer [parse-statement]]
             [SNOBOL4clojure.emitter  :refer [emitter]]))
 
@@ -50,32 +50,45 @@
   (let [chars (if (string/ends-with? (str src) "\n") (str src) (str src "\n"))
         n     (count chars)
         blank-line? (fn [from to] (every? #(Character/isWhitespace ^char %) (subs chars from to)))]
-    (loop [i 0 cur (StringBuilder.) stmts [] in-sq false in-dq false ls 0 line 1 sl 1]
+    ;; "A continuation mark ... is placed in the first column of the additional lines" (manual ch. 14): a + or . line that continues nothing -- the first line, a
+    ;; line after a comment line, or after a statement closed by a semicolon -- is "214 bad label or misplaced continuation line" at compile time, as sbl -bf reports it.
+    ;; The diagnostics ride on the result as metadata, {:diagnostics [[line 214] ..]}.
+    (loop [i 0 cur (StringBuilder.) stmts [] in-sq false in-dq false ls 0 line 1 sl 1
+           diags (if (and (pos? n) (#{\+ \.} (.charAt chars 0))) [[1 214]] [])]
       (if (>= i n)
         (let [s (string/trimr (str cur))]
-          (if (seq s) (conj stmts [s sl]) stmts))
+          (with-meta (if (seq s) (conj stmts [s sl]) stmts) {:diagnostics diags}))
         (let [ch (.charAt chars i)
               sl (if (zero? (.length cur)) line sl)]
           (cond
             (and (= ch \') (not in-dq))
-            (recur (inc i) (.append cur ch) stmts (not in-sq) in-dq ls line sl)
+            (recur (inc i) (.append cur ch) stmts (not in-sq) in-dq ls line sl diags)
             (and (= ch \") (not in-sq))
-            (recur (inc i) (.append cur ch) stmts in-sq (not in-dq) ls line sl)
+            (recur (inc i) (.append cur ch) stmts in-sq (not in-dq) ls line sl diags)
             ;; a comment line (* in column 1) is one comment: a semicolon in it separates nothing
             (and (= ch \;) (not in-sq) (not in-dq) (not (and (pos? (.length cur)) (= \* (.charAt cur 0)))))
             (let [s (string/trimr (str cur))]
-              (recur (inc i) (StringBuilder.) (if (seq s) (conj stmts [s sl]) stmts) false false ls line line))
+              (recur (inc i) (StringBuilder.) (if (seq s) (conj stmts [s sl]) stmts) false false ls line line diags))
             (= ch \newline)
-            (let [s (string/trimr (str cur))]
+            (let [s (string/trimr (str cur))
+                  next-i (inc i)
+                  next-ch (when (< next-i n) (.charAt chars next-i))
+                  cont? (and next-ch (or (= next-ch \+) (= next-ch \.)))]
               (if (seq s)
-                (let [next-i (inc i)
-                      next-ch (when (< next-i n) (.charAt chars next-i))]
-                  (if (and next-ch (or (= next-ch \+) (= next-ch \.)))
-                    (recur (+ i 2) (.append cur \space) stmts false false (inc i) (inc line) sl)
-                    (recur (inc i) (StringBuilder.) (conj stmts [s sl]) false false (inc i) (inc line) (inc line))))
-                (recur (inc i) (StringBuilder.) (if (blank-line? ls i) (conj stmts [:blank line]) stmts) false false (inc i) (inc line) (inc line))))
+                (cond
+                  ;; a comment is one line long: a continuation after it is misplaced
+                  (and cont? (= \* (.charAt s 0)))
+                  (recur (inc i) (StringBuilder.) (conj stmts [s sl]) false false (inc i) (inc line) (inc line) (conj diags [(inc line) 214]))
+                  cont?
+                  (recur (+ i 2) (.append cur \space) stmts false false (inc i) (inc line) sl diags)
+                  :else
+                  (recur (inc i) (StringBuilder.) (conj stmts [s sl]) false false (inc i) (inc line) (inc line) diags))
+                (let [blank? (blank-line? ls i)]
+                  (recur (inc i) (StringBuilder.) (if blank? (conj stmts [:blank line]) stmts) false false (inc i) (inc line) (inc line)
+                         ;; the line ended in a semicolon, which closed its last statement: a continuation after it is misplaced
+                         (if (and cont? (not blank?)) (conj diags [(inc line) 214]) diags)))))
             :else
-            (recur (inc i) (.append cur ch) stmts in-sq in-dq ls line sl)))))))
+            (recur (inc i) (.append cur ch) stmts in-sq in-dq ls line sl diags)))))))
 
 ;; -- -INCLUDE preprocessor ----------------------------------------------------
 
@@ -166,7 +179,8 @@
   ([S include-path] (CODE! S include-path nil))
   ([S include-path file]
    (let [expanded  (preprocess-includes (str S) include-path)
-         raw-stmts (split-source expanded)]
+         raw-stmts (split-source expanded)
+         _         (reset! <DIAGNOSTICS> (:diagnostics (meta raw-stmts)))]
      (loop [stmts raw-stmts NO 1 CODES {} NOS {} LABELS {} blanks 0 before [] fold (not (zero? (long @&CASE)))
             poss [] pos {:file (str file) :bp 1 :bl 1 :stack []}]
        (if (empty? stmts)

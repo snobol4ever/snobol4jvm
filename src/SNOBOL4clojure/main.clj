@@ -13,7 +13,9 @@
   (let [out (java.io.PrintWriter. (java.io.OutputStreamWriter. (java.io.FileOutputStream. java.io.FileDescriptor/out) "ISO-8859-1") true)
         err (java.io.PrintWriter. (java.io.OutputStreamWriter. (java.io.FileOutputStream. java.io.FileDescriptor/err) "ISO-8859-1") true)
         in  (clojure.lang.LineNumberingPushbackReader. (java.io.InputStreamReader. System/in "ISO-8859-1"))]
-    (try
-      (binding [*out* out *err* err *in* in]
-        (apply (resolve 'SNOBOL4clojure.core/-main) args))
-      (finally (.flush out) (.flush err)))))
+    ;; -main answers an exit code when the program is refused (231 for a compile error, as sbl -bf exits); the process exits with it
+    (let [rc (try
+               (binding [*out* out *err* err *in* in]
+                 (apply (resolve 'SNOBOL4clojure.core/-main) args))
+               (finally (.flush out) (.flush err)))]
+      (when (and (integer? rc) (pos? rc)) (System/exit rc)))))
