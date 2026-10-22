@@ -90,7 +90,8 @@
    wins) and splices its content inline.  The include file is itself
    preprocessed recursively.
 
-   As SPITBOL has it, a file name is included once: a second -INCLUDE of the same name (as written) is skipped, and so is a cycle. The splice is bracketed by
+   As SPITBOL has it, a file name is included once: a second -INCLUDE of the same name is skipped, and so is a cycle; the names kept are trimmed, so a name
+   written with a blank after it is included every time. The splice is bracketed by
    the cards -FILE-ENTER \"name\" and -FILE-LEAVE (STALE), which CODE! reads to keep &FILE and &LINE. STALE is written when the included file's last line is a comment,
    the case in which SPITBOL leaves the included file's name as &FILE for the statement that follows.
 
@@ -119,12 +120,14 @@
               ;; File not found — keep the directive as a comment so the compiler sees a harmless *-line
               (nil? found)
               (recur (rest lines) (conj out (str "* -INCLUDE not found: " fname)) seen)
+              ;; "SPITBOL remembers only the 'trimmed' names of files included so far, so the comparison with the blank-padded name will fail, and the file will be
+              ;; included again" (manual ch. 14, -INCLUDE): the name as written is looked up among the trimmed names
               (seen fname)
               (recur (rest lines) (conj out (str "* -INCLUDE skipped (already included): " fname)) seen)
               :else
               (let [text            (slurp found :encoding "ISO-8859-1")
                     ;; the included file's own directory joins the search path
-                    [body seen']    (preprocess-includes* text (distinct (cons (.getParent found) search-path)) (conj seen fname))
+                    [body seen']    (preprocess-includes* text (distinct (cons (.getParent found) search-path)) (conj seen (string/trim fname)))
                     last-line       (last (string/split-lines text))
                     stale?          (boolean (and last-line (string/starts-with? last-line "*")))]
                 (recur (rest lines)

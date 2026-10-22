@@ -2145,3 +2145,24 @@
       (is (= "single.sno:500\ndouble.sno:600\ndouble.sno:700\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A file name is included once, and "SPITBOL remembers only the 'trimmed' names of files included so far, so the comparison with the blank-padded name will fail, and
+;; the file will be included again" (SPITBOL manual ch. 14, -INCLUDE): a name written with a blank after it is included every time. The engine kept the padded name and so
+;; skipped the second padded include. The oracle, sbl -bf, wrote exactly this output.
+(deftest a-blank-padded-include-name-includes-the-file-every-time
+  (let [dir  (.toFile (java.nio.file.Files/createTempDirectory "srcpos" (make-array java.nio.file.attribute.FileAttribute 0)))
+        main (str dir "/inc_main.sno")]
+    (try
+      (spit (str dir "/inc_x.sno") (str "	OUTPUT = 'inc ' &FILE ':' &LINE\n"))
+      (spit (str dir "/inc_main.sno") (str "-INCLUDE \"inc_x.sno\"\n"
+                  "-INCLUDE \"inc_x.sno \"\n"
+                  "-INCLUDE \"inc_x.sno \"\n"
+                  "-INCLUDE \"inc_x.sno\"\n"
+                  "	OUTPUT = 'end'\n"
+                  "END\n"))
+      (is (= (clojure.string/replace (str "inc inc_x.sno:1\n"
+                                         "inc inc_x.sno:1\n"
+                                         "inc inc_x.sno:1\n"
+                                         "end\n") "inc_main.sno" main)
+             (with-out-str (-main main))))
+      (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))
