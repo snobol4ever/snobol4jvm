@@ -159,11 +159,12 @@
         :else                                        (apply list 'SEQ parts)))
     r))
 
-;; What OUTPUT writes for a value: a pattern prints as its datatype name,
-;; PATTERN, as SPITBOL prints it; everything else as sstr.
+;; What OUTPUT writes for a value: an object that is not a string, a number or a name prints as its datatype name, as SPITBOL prints it (PATTERN, EXPRESSION, ARRAY,
+;; TABLE, the type of a DATA object); everything else as sstr.
 (defn- output-text [v]
-  (if (and (or (list? v) (vector? v)) (clojure.core/= "PATTERN" (SNOBOL4clojure.env/DATATYPE v)))
-    "PATTERN"
+  (if (or (and (or (list? v) (vector? v)) (#{"PATTERN" "EXPRESSION"} (SNOBOL4clojure.env/DATATYPE v)))
+          (array? v) (table? v) (instance? SNOBOL4clojure.env.DataObj v))
+    (SNOBOL4clojure.env/DATATYPE v)
     (sstr v)))
 
 (defn- program-fn

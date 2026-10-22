@@ -2050,6 +2050,23 @@
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
 
+;; OUTPUT of an object that is not a string, a number or a name writes its datatype: the type of a DATA object, ARRAY, TABLE, PATTERN, EXPRESSION; a NAME writes the
+;; name. The engine wrote a DATA object as #object[...] (SnoRungs simple_output_305). The oracle, sbl -bf, wrote exactly this output.
+(deftest output-of-an-object-writes-its-datatype
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DATA('PRODUCT(NAME,PRICE)')\n"
+                   "        OUTPUT = PRODUCT('CAPERS', 2.39)\n"
+                   "        OUTPUT = ARRAY(3)\n"
+                   "        OUTPUT = TABLE()\n"
+                   "        OUTPUT = LEN(3)\n"
+                   "        OUTPUT = *X\n"
+                   "        OUTPUT = .X\n"
+                   "END\n"))
+      (is (= "PRODUCT\nARRAY\nTABLE\nPATTERN\nEXPRESSION\nX\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
 ;; REWIND(unit) starts an input file again from its first record, and a unit no INPUT or OUTPUT opened is ERROR 174, which SETEXIT catches. The engine tried to reset the reader
 ;; (which did nothing) and failed the statement for an unopened unit (SnoRungs keyword_replace_5). The files are written in a scratch directory. The oracle, sbl -bf, wrote exactly
 ;; this output.
