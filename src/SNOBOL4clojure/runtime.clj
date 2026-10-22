@@ -62,6 +62,13 @@
                                               [n (@<LABL> n)]))
                                           [(@<STNO> at) at])
                         (integer? at) [at (@<LABL> at)]))
+     ;; A computed goto, :($X) or :S($('WANG.A.' OP)), names its label by the value of the expression: a string (a label, RETURN, END) or an integer.
+     ;; It is resolved here, once, so that the jump and the special labels see the label itself. A target that is not a $ form is passed on as it was.
+     (computed-target [tgt]
+       (if (and (list? tgt) (clojure.core/= '$ (first tgt)) (clojure.core/= 2 (count tgt)))
+         (when-some [v (EVAL! (second tgt))]
+           (if (integer? v) v (keyword (str v))))
+         tgt))
      (goto! [tgt]
        (if (special-targets tgt)
          (dispatch-special! tgt)
@@ -92,12 +99,12 @@
               (if (or (nil? body) (EVAL! body))
                 ;; success branch — goto is nil or a map; guard contains? against non-maps
                 ;; nil body = no operation = unconditional success (pure-goto statement)
-                (let [tgt (or (when (map? goto) (or (:G goto) (:S goto))))]
+                (let [tgt (computed-target (or (when (map? goto) (or (:G goto) (:S goto)))))]
                   (if tgt
                     (do (goto! tgt) (recur (saddr tgt)))
                     (recur (saddr (inc (current 0))))))
                 ;; failure branch
-                (let [tgt (or (when (map? goto) (or (:G goto) (:F goto))))]
+                (let [tgt (computed-target (or (when (map? goto) (or (:G goto) (:F goto)))))]
                   (if tgt
                     (do (goto! tgt) (recur (saddr tgt)))
                     (recur (saddr (inc (current 0)))))))))))

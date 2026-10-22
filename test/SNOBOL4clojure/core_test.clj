@@ -1045,3 +1045,25 @@
                    "END\n"))
       (is (= "a: abab\nb: at A.B\nd: I=3\ne: yes\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A goto may name its label by an expression, :($X) or :S($('WANG.A.' OP)): the label is the value of the expression. The interpreter could resolve
+;; a label, a string and a number but had no case for an expression, so the jump found nothing and the program ended there; inside a function that is
+;; a RETURN, so Wang's prover, which dispatches to WANG.C.NOT through S($('WANG.C.' OP)), came back with success for a formula that is not valid.
+;; The oracle, sbl -bf, wrote exactly this output.
+(deftest a-goto-may-name-its-label-by-an-expression
+  (let [f (java.io.File/createTempFile "compgoto" ".sno")]
+    (try
+      (spit f (str " X = 'T1'\n :($X)\n OUTPUT = 'skipped a'\nT1 OUTPUT = 'a: at T1'\n"
+                   " OP = 'NOT'\n IDENT(1,1)                            :S($('WANG.A.' OP))\n OUTPUT = 'skipped b'\n"
+                   "WANG.A.NOT OUTPUT = 'b: at WANG.A.NOT'\n"
+                   " IDENT(1,2)                            :S(NOPE)F($('F.' 'ONE'))\n"
+                   "NOPE OUTPUT = 'skipped c'\nF.ONE OUTPUT = 'c: at F.ONE'\n"
+                   " DEFINE('G(OP)')                       :(GEND)\n"
+                   "G G = 'start'\n IDENT(1,1)                            :S($('G.' OP))\n G = 'fell through'                    :(RETURN)\n"
+                   "G.YES G = 'yes'                             :(RETURN)\n"
+                   "G.NO G = 'no'                              :(RETURN)\n"
+                   "GEND OUTPUT = 'd: ' G('YES') ' ' G('NO')\n"
+                   " L = 'E1'\n :($L)\n OUTPUT = 'skipped e'\nE1 OUTPUT = 'e: at E1'\n"
+                   "END\n"))
+      (is (= "a: at T1\nb: at WANG.A.NOT\nc: at F.ONE\nd: yes no\ne: at E1\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
