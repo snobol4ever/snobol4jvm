@@ -660,6 +660,9 @@
       (string? E)  E
       (integer? E) E
       (symbol? E)  (let [v ($$ E)] (if (identical? v FENCE) (FENCE) v))   ; a bare FENCE is the pattern, not the function that builds one
+      ;; (e1, e2, ...): the value of the first expression that succeeds, the later ones not evaluated; failure if none does
+      (and (vector? E) (clojure.core/= :comma (first E)))
+      (some EVAL! (rest E))
       (vector? E)  (let [evaled (eval-operands E)]
                     ;; nil in any SEQ element = sub-expression failed → whole SEQ fails
                     (when evaled

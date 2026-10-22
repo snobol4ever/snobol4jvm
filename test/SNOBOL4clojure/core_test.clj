@@ -1369,3 +1369,18 @@
                    " t2['x']<3> = t2['x']<2> '!'\n OUTPUT = t2['x']<3>\n OUTPUT = IDENT(.tt['blue']['green'],.tt['blue']['green']) 'same'\nEND\n"))
       (is (= "cyan\nv\narr\narr!\nsame\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; (e1, e2, e3) is an alternation of expressions: they are evaluated in order and the value is that of the first one that succeeds; the later ones are not
+;; evaluated, and the whole fails if none succeeds. The engine joined the parts as a concatenation of the word comma and the values, so x() failed and
+;; ended the statement (Budne's spit prints TOO BIG and stops; z() was never reached). The oracle, sbl -bf, wrote exactly this output.
+(deftest a-comma-group-is-the-first-expression-that-succeeds
+  (let [f (java.io.File/createTempFile "commagrp" ".sno")]
+    (try
+      (spit f (str " DEFINE('X()')                         :(XE)\nX OUTPUT = 'x runs'                     :(FRETURN)\nXE DEFINE('Y()')                         :(YE)\n"
+                   "Y OUTPUT = 'y runs'                     :(FRETURN)\nYE DEFINE('Z()')                         :(ZE)\nZ OUTPUT = 'z runs'                     :(RETURN)\n"
+                   "ZE DEFINE('D()')                         :(DE)\nD OUTPUT = 'D RUNS'                     :(RETURN)\nDE (X(), Y(), Z(), D())\n"
+                   " OUTPUT = 'a: done'\n V = (IDENT(1,2), 'second', 'third')\n OUTPUT = 'b: ' V\n W = (IDENT(1,2), IDENT(3,4))          :S(OK)F(NO)\n"
+                   "OK OUTPUT = 'c: succeeded'               :(C)\nNO OUTPUT = 'c: failed'\nC U = (7)\n OUTPUT = 'd: ' U\n T = ('a', 'b') 'x'\n OUTPUT = 'e: ' T\n"
+                   " S = ((IDENT(1,2), 'in') (IDENT(1,1), 'ner'))\n OUTPUT = 'f: ' S\nEND\n"))
+      (is (= "x runs\ny runs\nz runs\na: done\nb: second\nc: failed\nd: 7\ne: ax\nf: in\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
