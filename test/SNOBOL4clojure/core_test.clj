@@ -1,6 +1,7 @@
 (ns SNOBOL4clojure.core-test
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]))
+            [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
+            [SNOBOL4clojure.test-helpers :refer [prog]]))
 
 ;; Point the SNOBOL runtime at this namespace so that $$ resolves vars.
 (GLOBALS *ns*)
@@ -1014,3 +1015,11 @@
       (is (= "a: x\nb: x\nc: x\nd: xy\ne: a\nf: 2\ng: pqr\nh: x\ni: z\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; The prog macros run the lines they are given. They joined the SOURCE TEXT of their arguments at macro expansion, so a (str ...) form or a def'd
+;; program text was run as the characters of the Clojure expression and every variable stayed unset: all twelve t_aisnobol tests and the Gimpel BSORT
+;; and HSORT tests passed one. A string literal behaves as before.
+(deftest prog-runs-the-lines-it-is-given
+  (let [text " PROGEVAL2 = PROGEVAL1 PROGEVAL1"]
+    (prog (str " PROGEVAL1 = 'a'") text "END"))
+  (is (= "aa" ($$ 'PROGEVAL2))))

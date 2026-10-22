@@ -136,13 +136,15 @@
   "Run SNOBOL4 program lines under a wall-clock budget (ms).
    Fails the test (via is) if it times out after 1 retry.
    Normal usage: side-effects land in global env; check with ($$ 'VAR).
+   Each line is evaluated when the test runs, so it may be a string literal, a (str ...) form or a def'd program text; the macro used to join the
+   SOURCE TEXT of its arguments, which ran the characters of a (str ...) form as the program and left every variable unset.
 
    Example:
      (prog-timeout 500
        \"        S = 'hello'\"
        \"END\")"
   [budget-ms & lines]
-  `(let [src# ~(clojure.string/join "\n" (map str lines))
+  `(let [src# (clojure.string/join "\n" [~@lines])
          r#   (run-with-timeout src# ~budget-ms)]
      (is (not (#{:timeout :step-limit} (:exit r#)))
          (str (if (= :step-limit (:exit r#))
@@ -179,7 +181,7 @@
    Asserts that it DOES time out within budget-ms.
    Use this for tests that verify loop-detection / :S(SELF) behaviour."
   [budget-ms & lines]
-  `(let [src# ~(clojure.string/join "\n" (map str lines))
+  `(let [src# (clojure.string/join "\n" [~@lines])
          r#   (run-with-timeout src# ~budget-ms)]
      (is (= :timeout (:exit r#))
          (str "Expected TIMEOUT but program returned: " (:exit r#)))
