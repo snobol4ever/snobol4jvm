@@ -3645,3 +3645,29 @@
       (finally (.delete f)))))
 
 
+;; Unary ~ "Negates failure or success of its operand"; binary ~ is one of "the following binary operations [that] are undefined and are available for user definition
+;; using OPSYN()" (manual ch. 15, Operators): an operator like any other, it fails when an operand fails, as sbl -bf has it. The engine passed a failed operand to
+;; binary ~ as it does to unary ~ and answered the null string (AIS SPITCORE makes ~ its list constructor: POP(.LST) ~ L on an empty list succeeded).
+(deftest binary-tilde-fails-when-an-operand-fails
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DEFINE('F(A,B)')                      :(F.END)\n"
+                   "F       OUTPUT = 'F called [' A '] [' B ']'\n"
+                   "        F = A B                               :(RETURN)\n"
+                   "F.END\n"
+                   "        OPSYN('~', 'F', 2)\n"
+                   "        X = 'a' ~ 'b'\n"
+                   "        OUTPUT = '1 [' X ']'\n"
+                   "        X = IDENT(1,2) ~ 'b'                  :S(S2)\n"
+                   "        OUTPUT = '2 failed'                   :(N3)\n"
+                   "S2      OUTPUT = '2 succeeded [' X ']'\n"
+                   "N3      X = 'a' ~ IDENT(1,2)                  :S(S3)\n"
+                   "        OUTPUT = '3 failed'                   :(N4)\n"
+                   "S3      OUTPUT = '3 succeeded [' X ']'\n"
+                   "N4      Y = ~IDENT(1,2)                       :F(F4)\n"
+                   "        OUTPUT = '4 unary succeeded [' Y ']'\n"
+                   "F4\n"
+                   "END\n"))
+      (is (= "F called [a] [b]\n1 [ab]\n2 failed\n3 failed\n4 unary succeeded []\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

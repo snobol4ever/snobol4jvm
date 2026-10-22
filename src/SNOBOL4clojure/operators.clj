@@ -858,8 +858,9 @@
           ;; a subscript on a subscript, tt['blue']['green']: the operator is the inner subscript, whose value is the container
           (list? op) (when-some [container (EVAL! op)] (when-some [args (eval-operands parms)] (apply INVOKE container args)))
           true (let [;; ~X negates success and failure, so it takes a failed operand
-                     ;; as its input; any other operator or function fails with it.
-                     args     (if (equal op 'tilde)
+                     ;; as its input; any other operator or function fails with it, binary ~ among them, an operator "available for user definition
+                     ;; using OPSYN()" (manual ch. 15)
+                     args     (if (and (equal op 'tilde) (clojure.core/= 1 (count parms)))
                                 (apply vector (map EVAL! parms))
                                 (eval-operands parms))
                      ;; OPSYN: an operator may be redefined, under its spelling
