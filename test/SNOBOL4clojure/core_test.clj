@@ -3096,3 +3096,18 @@
       (is (= "assignment failed\nF called\nv\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; Standard input is one stream: a channel opened on it ([-f0]) and the INPUT variable read its records in turn, as sbl -bf does. The engine's channel wrapped the
+;; input in a reader of its own, which read ahead and left nothing for INPUT. The oracle, sbl -bf, wrote exactly this output from this input.
+(deftest a-stdin-channel-and-input-read-one-stream
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        INPUT(.IN, 5, '[-f0]')\n"
+                   "        X = IN\n"
+                   "        Y = INPUT\n"
+                   "        Z = IN\n"
+                   "        OUTPUT = '[' X '] [' Y '] [' Z ']'\n"
+                   "END\n"))
+      (is (= "[one] [two] [three]\n"
+             (with-out-str (binding [*in* (java.io.BufferedReader. (java.io.StringReader. "one\ntwo\nthree\n"))] (-main (.getPath f))))))
+      (finally (.delete f)))))

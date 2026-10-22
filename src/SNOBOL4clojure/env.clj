@@ -326,6 +326,17 @@
   [N]
   (get @<VARS> (symbol (name N))))
 
+;; Standard input, one reader for the INPUT variable and every channel opened on it ([-f0], or no file), so a record read through one is not read again through
+;; another and none reads ahead of the others; it follows the *in* of the run (a test binds its own).
+(def ^:private stdin-cache (atom nil))
+(defn stdin-reader ^java.io.BufferedReader []
+  (let [in *in* [k r] @stdin-cache]
+    (if (identical? k in)
+      r
+      (let [r (if (instance? java.io.BufferedReader in) in (java.io.BufferedReader. ^java.io.Reader in))]
+        (reset! stdin-cache [in r])
+        r))))
+
 ;; An input record as the program reads it: at most 1024 characters, a longer line losing the rest of its length (it is not read as the next record), and
 ;; while &TRIM is not 0 the blanks and tabs at its end dropped.
 (def ^:private record-length 1024)
@@ -363,17 +374,19 @@
       (clojure.core/= :input (:type (get @<CHANNELS> sym)))
       (let [ch  (get @<CHANNELS> sym)
             rdr ^java.io.BufferedReader (:reader ch)
-            line (try (if-let [n (:raw ch)] (read-raw rdr n) (.readLine rdr)) (catch Exception _ nil))]
-        (cond (nil? line) nil                       ; nil = EOF = statement fails (:F branch)
-              (:raw ch)   line                      ; a raw read is the data as it is
-              :else       (input-record line (:maxlen ch))))
+            line (try (if-let [n (:raw ch)] (read-raw rdr n) (.readLine rdr)) (catch Exception _ nil))
+            v    (cond (nil? line) nil                       ; nil = EOF = statement fails (:F branch)
+                       (:raw ch)   line                      ; a raw read is the data as it is
+                       :else       (input-record line (:maxlen ch)))]
+        v)
 
       ;; Plain INPUT variable (no channel): read from *in* (stdin)
       (clojure.core/= sym 'INPUT)
       (if (zero? (long @&INPUT))
         ε                                                   ; &INPUT = 0 switches the variable off: a read gives the null string
-        (let [line (try (read-line) (catch Exception _ nil))]
-          (if (nil? line) nil (input-record line))))   ; nil = EOF = statement fails, as SPITBOL does
+        (let [line (try (.readLine (stdin-reader)) (catch Exception _ nil))
+              v    (when-not (nil? line) (input-record line))]
+          v))   ; nil = EOF = statement fails, as SPITBOL does
 
       :else
       ;; Scope chain: user <VARS> first, then engine builtins (read-only).

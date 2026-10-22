@@ -381,7 +381,7 @@
 ;; ── I/O ───────────────────────────────────────────────────────────────────────
 ;; Bare INPUT() call (no args): read one line from stdin.
 (defn READ-LINE! []
-  (let [line (try (read-line) (catch Exception _ nil))]
+  (let [line (try (.readLine (env/stdin-reader)) (catch Exception _ nil))]
     (if (nil? line) ε (env/input-record line))))
 
 ;; ── Named I/O channel management (Sprint 25D) ────────────────────────────────
@@ -435,7 +435,7 @@
                          (catch Exception _ nil))
                     (if quietly nil (bad))))
               ;; stdin: wrap *in* but mark :file nil so close-channel! won't close it
-              (java.io.BufferedReader. *in*))]
+              (env/stdin-reader))]
     (when rdr
       (let [ch (cond-> {:type :input :unit unit :var var-sym :reader rdr :file file-str}
                  (get opts \r) (assoc :raw (get opts \r))
