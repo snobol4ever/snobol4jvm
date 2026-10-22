@@ -620,7 +620,7 @@
     ;; Uses resolve to avoid circular dependency (runtime → operators → compiler).
     ;; Sprint 25F.
     CODE      (let [src       (str (first args))
-                    compile-f (ns-resolve 'SNOBOL4clojure.compiler 'CODE)]
+                    compile-f (ns-resolve 'SNOBOL4clojure.compiler 'CODE-block)]
                 (when-not compile-f
                   (throw (ex-info "CODE: compiler not loaded"
                                   {:snobol/signal :error})))

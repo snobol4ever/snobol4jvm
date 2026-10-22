@@ -3731,3 +3731,30 @@
       (is (= "1 [one]\n2 [one] NAME\n3 ident\n4 ident\n5 [two]\n6 differ\n7 ident\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; "Notice how we placed a Goto from the new code back to label DONE in the main program. If we had not done this, SPITBOL would terminate when execution 'fell
+;; out of the bottom' of the new code block" (manual ch. 9, The CODE function): a block CODE compiles ends in a statement of its own, numbered after the block's
+;; last, that ends the program when control reaches it, as END does. sbl -bf numbers it (CODE(' X = 1 ; Y = 2 ;') takes three numbers, CODE('') and a comment
+;; one each, and DATATYPE of either is CODE), and falling out of C1 ends the run "in statement" C1's closing one; it never runs on into C2, the block compiled
+;; after it. The engine numbered no such statement, failed CODE('') and fell through (AIS TEST.sno: LTRACE's &LASTNO and &STNO read 256 low).
+(deftest a-code-block-ends-in-a-statement-of-its-own
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &STLIMIT = 100\n"
+                   "        C1 = CODE(' OUTPUT = \"1 \" &STNO')\n"
+                   "        C2 = CODE(' OUTPUT = \"2 \" &STNO :(BACK)')\n"
+                   "        E = CODE('')\n"
+                   "        K = CODE('* a comment')\n"
+                   "        OUTPUT = '3 ' DATATYPE(E) ' ' DATATYPE(K)\n"
+                   "        C3 = CODE(' X = 1 ; Y = 2 ;')\n"
+                   "        C4 = CODE(' OUTPUT = \"4 \" &STNO :(BACK)')\n"
+                   "        :<C4>\n"
+                   "BACK    :<C1>\n"
+                   "        OUTPUT = 'not reached'\n"
+                   "END\n"))
+      (is (= "3 CODE CODE\n4 22\n1 13\n"
+             (with-out-str (-main (.getPath f)))))
+      (is (= 14 @SNOBOL4clojure.env/&STNO))
+      (is (= 13 @SNOBOL4clojure.env/&STCOUNT))
+      (finally (.delete f)))))

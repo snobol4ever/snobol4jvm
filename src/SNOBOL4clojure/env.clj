@@ -120,6 +120,8 @@
 (def <STNO>  (atom {}))
 (def <LABL>  (atom {}))
 (def <CODE>  (atom {}))
+;; the statement that closes a block CODE() compiles at run time: reached, it is counted and numbered as any statement is, and it ends the program
+(def block-end [::block-end])
 
 ;; ── User-defined function registry ───────────────────────────────────────────
 ;; Stores DEFINE'd closures keyed by uppercased function name (string).

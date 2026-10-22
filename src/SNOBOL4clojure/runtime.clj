@@ -13,7 +13,7 @@
   LABEL traces fire at every statement whose key has a registration.
   Statement-level trace (wildcard '*') prints each statement number + label.
   Pattern traces are handled in match.clj via *trace* dynamic var."
-  (:require [SNOBOL4clojure.env   :refer [<STNO> <LABL> <CODE> <DISPNO>
+  (:require [SNOBOL4clojure.env   :refer [<STNO> <LABL> <CODE> <DISPNO> block-end
                                            &STCOUNT &STLIMIT &TRACE &STNO &LASTNO &ERRLIMIT &ERRTYPE &ERRTEXT <SETEXIT> <POS> &FILE &LASTFILE &LINE &LASTLINE &FNCLEVEL
                                            snobol-return! snobol-freturn!
                                            snobol-nreturn! snobol-end!
@@ -156,6 +156,8 @@
                 (when (statement-trace-active?)
                   (binding [*out* *err*]
                     (println (format ">>> stmt %5d  %s" (dec n) (str key)))))))
+            ;; the statement closing a CODE block ends the program, itself the last statement executed
+            (when (identical? stmt block-end) (throw (ex-info "END" {:snobol/signal :end :snobol/closing true})))
             ;; ── Execute statement ────────────────────────────────────────────
             (let [ferst  (first stmt)
                   seqond (second stmt)
@@ -177,7 +179,7 @@
                     (recur nxt err'))))))))
       (catch clojure.lang.ExceptionInfo e
         (case (get (ex-data e) :snobol/signal)
-          :end        (if (pos? (long @&FNCLEVEL)) (throw e) (do (end-statement!) nil))   ; program end, from any level
+          :end        (if (pos? (long @&FNCLEVEL)) (throw e) (do (when-not (:snobol/closing (ex-data e)) (end-statement!)) nil))   ; program end, from any level
           :return     nil          ; bubble up to DEFINE wrapper
           :step-limit (throw e)    ; propagate — caught by test-helpers/harness
           :freturn    (throw e)    ; bubble up to DEFINE wrapper

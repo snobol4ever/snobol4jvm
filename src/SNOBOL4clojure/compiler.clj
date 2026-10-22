@@ -28,7 +28,7 @@
      (edn->ir s)                  — EDN string -> [codes nos labels]"
   (:require [clojure.string          :as string]
             [clojure.edn             :as edn]
-            [SNOBOL4clojure.env      :refer [STNO <STNO> <LABL> <CODE> <DISPNO> <POS> <DIAGNOSTICS> <SOURCE> BLANKS &CASE fold-case]]
+            [SNOBOL4clojure.env      :refer [STNO <STNO> <LABL> <CODE> <DISPNO> <POS> <DIAGNOSTICS> <SOURCE> BLANKS &CASE fold-case block-end]]
             [SNOBOL4clojure.grammar  :refer [parse-statement]]
             [SNOBOL4clojure.emitter  :refer [emitter]]))
 
@@ -47,7 +47,8 @@
   "Split SNOBOL4 source into raw statement strings, each with the physical line it begins on, as [statement line]. A blank physical line is a statement of its own as
    SPITBOL numbers them, and is [:blank line]. ls is where the physical line being read begins, line is its number and sl the line the statement being read began on."
   [src]
-  (let [chars (if (string/ends-with? (str src) "\n") (str src) (str src "\n"))
+  ;; the null string is no line at all, so CODE('') compiles no statement (sbl -bf), not a blank one
+  (let [chars (if (or (= "" (str src)) (string/ends-with? (str src) "\n")) (str src) (str src "\n"))
         n     (count chars)
         blank-line? (fn [from to] (every? #(Character/isWhitespace ^char %) (subs chars from to)))]
     ;; "A continuation mark ... is placed in the first column of the additional lines" (manual ch. 14): a + or . line that continues nothing -- the first line, a
@@ -247,6 +248,16 @@
                (swap! <STNO> #(assoc % label @STNO)))
              (swap! <CODE> #(assoc % @STNO (codes NO))))
            (recur (inc NO))))))))
+
+;; "If we had not done this, SPITBOL would terminate when execution 'fell out of the bottom' of the new code block" (manual ch. 9, The CODE function): the block
+;; CODE() compiles at run time ends in a statement of its own, numbered after its last, which ends the program when control reaches it (env/block-end). A block
+;; with no statements, CODE('') or a comment alone, is that statement, and starts there.
+(defn CODE-block [S]
+  (let [entry (CODE S)]
+    (swap! STNO inc)
+    (swap! <DISPNO> assoc @STNO (+ @STNO @BLANKS))
+    (swap! <CODE> assoc @STNO block-end)
+    (or entry @STNO)))
 
 ;; -- Stage 23A: EDN serialisation --------------------------------------------
 
