@@ -2331,7 +2331,7 @@ this is a test
 " (:stdout r)))))
 
 (deftest csnobol4-case1
-  "Budne suite: case1.sno"
+  "Budne suite: case1.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "* test case (in)sensitivity
 * 5/25/94 -plb
 
@@ -2371,10 +2371,9 @@ esame
 * test END label!!
 END
 " 2000)]
-    (is (= "ONE
-TWO
+    (is (same-output? "two
 three
-FOUR
+four
 FIVE
 SIX
 seven
