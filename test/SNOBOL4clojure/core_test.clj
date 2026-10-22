@@ -1396,3 +1396,14 @@
       (is (= (str "****4*******  a = 'yes!!'\n****5*******  b = 'yes!!'\n****7*******  b = '!!'\n****8*******  a = 'no!!'\nno!! !!\nleft 96\nit\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; S ? P = R is a match with a replacement, in a statement and in parentheses: (a ? '!!' = '') removes the !! from a. Inside parentheses the grammar read it as an
+;; assignment to the match, (= (? a '!!') ''), which makes a pattern of nothing and left a holding a PATTERN (Budne's spit). The oracle, sbl -bf, wrote exactly
+;; this output.
+(deftest a-parenthesised-match-with-a-replacement-replaces
+  (let [f (java.io.File/createTempFile "pmatch" ".sno")]
+    (try
+      (spit f (str " a = 'yes!!'\n (a ? '!!' = '')\n OUTPUT = 'a=' a\n a = 'abc'\n a '!!' = ''\n (a ? 'b' = 'X')\n OUTPUT = 'a=' a\n b = 'x!'\n"
+                   " (b ? '!' = '')  :F(NO)\n OUTPUT = 'b=' b\nNO\nEND\n"))
+      (is (= "a=yes\na=aXc\nb=x\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

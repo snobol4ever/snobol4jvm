@@ -35,7 +35,10 @@
      :expr      (fn [x]      x)
      :asn       (fn
                   ([x]       x)
-                  ([x y]     (list '= x y)))
+                  ;; (S ? P) = R is S ? P = R, a match with a replacement: the grammar reads it this way inside parentheses
+                  ([x y]     (if (and (seq? x) (= '? (first x)) (= 3 (count x)))
+                               (list '?= (second x) (nth x 2) y)
+                               (list '= x y))))
      :mch       (fn
                   ([x]       x)
                   ([x y]     (list '? x y))
