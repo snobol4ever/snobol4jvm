@@ -600,6 +600,17 @@
     (.n ^NAME v)
     (symbol (name-string v))))
 
+(defn- eval-operands
+  "Evaluate the operands left to right. The first one that fails (nil) fails the
+   whole expression, and the operands after it are not evaluated, so a call among
+   them has no effect. Returns the vector of values, or nil."
+  [operands]
+  (loop [ops (seq operands) vals []]
+    (if ops
+      (let [v (EVAL! (first ops))]
+        (when-not (nil? v) (recur (next ops) (conj vals v))))
+      vals)))
+
 (defn EVAL! [E]
   (when E
     (cond
@@ -609,10 +620,9 @@
       (string? E)  E
       (integer? E) E
       (symbol? E)  ($$ E)
-      (vector? E)  (let [evaled (map EVAL! E)]
+      (vector? E)  (let [evaled (eval-operands E)]
                     ;; nil in any SEQ element = sub-expression failed → whole SEQ fails
-                    (if (some nil? evaled)
-                      nil
+                    (when evaled
                       (concat-value (apply list 'SEQ evaled))))
       (list? E)
       (let [[op & parms] E]
@@ -685,13 +695,18 @@
           (and (equal op '*) (clojure.core/= (count parms) 1))
           (let [sym (first parms)]
             (list 'DEFER! (fn [] (EVAL! sym))))
-          true (let [args     (apply vector (map EVAL! parms))
+          true (let [;; ~X negates success and failure, so it takes a failed operand
+                     ;; as its input; any other operator or function fails with it.
+                     args     (if (equal op 'tilde)
+                                (apply vector (map EVAL! parms))
+                                (eval-operands parms))
                      ;; OPSYN: an operator may be redefined, under its spelling
                      ;; and arity (opsyn-key). Check before the built-in INVOKE table.
                      opsyn-fn (get @<FUNS> (opsyn-key (get op-spelling op (str op)) (count parms)))]
-                 (if opsyn-fn
-                   (apply opsyn-fn args)
-                   (apply INVOKE op args)))))
+                 (when args
+                   (if opsyn-fn
+                     (apply opsyn-fn args)
+                     (apply INVOKE op args))))))
       true "Yikes! What is E?")))
 
 (defn EVAL [X]

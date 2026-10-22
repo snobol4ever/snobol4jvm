@@ -955,3 +955,35 @@
       (is (= "a: V1=1\nb: V2=2.5\nc: V3=12\nd: V4=THREE\ne: failed\nf: V6=-3\ng: V7=1\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; An expression is evaluated left to right and stops at the first operand that
+;; fails: the operands after it are not evaluated, so a call among them has no
+;; effect, and the statement fails without assigning. This holds for the operands
+;; of a concatenation, the arguments of a function and the operands of an
+;; operator. The engine evaluated every operand and only then noticed the failure;
+;; Gimpel's SPELL, NE(N,0) SPELL '-' SPELL(N), made the recursive call it had to
+;; skip. ~X negates success and failure, so it takes a failed operand as its
+;; input. The oracle, sbl -bf, wrote exactly this output.
+(deftest an-operand-that-fails-stops-the-evaluation
+  (let [f (java.io.File/createTempFile "shortcircuit" ".sno")]
+    (try
+      (spit f (str " DEFINE('SIDE(T)')                     :(SIDEND)\n"
+                   "SIDE OUTPUT = 'side ' T                    :(RETURN)\n"
+                   "SIDEND X = 'init'\n"
+                   " X = NE(1,1) SIDE('a')\n OUTPUT = 'a: X=' X\n"
+                   " X = SIDE('b') NE(1,1) SIDE('c')\n OUTPUT = 'b: X=' X\n"
+                   " X = NE(1,1) SIDE('d') 'x' SIDE('e')\n OUTPUT = 'c: X=' X\n"
+                   " X = SIZE(NE(1,1) SIDE('f'))\n OUTPUT = 'd: X=' X\n"
+                   " X = NE(1,1) + SIDE('g')\n OUTPUT = 'e: X=' X\n"
+                   " X = IDENT(1,2) SIDE('h')              :S(Y)F(N)\n"
+                   "Y OUTPUT = 'f yes'                      :(Z)\n"
+                   "N OUTPUT = 'f no X=' X\n"
+                   "Z X = ('p' NE(1,1)) SIDE('i')\n OUTPUT = 'g: X=' X\n"
+                   " X = ~IDENT(1,2) SIDE('j')\n OUTPUT = 'h: X=' X\n"
+                   " X = ~IDENT(1,1) SIDE('k')\n OUTPUT = 'i: X=' X\n"
+                   " X = SIDE('l') ~IDENT(1,1) SIDE('m')\n OUTPUT = 'j: X=' X\n"
+                   "END\n"))
+      (is (= (str "a: X=init\nside b\nb: X=init\nc: X=init\nd: X=init\ne: X=init\nf no X=init\n"
+                  "g: X=init\nside j\nh: X=\ni: X=\nside l\nj: X=\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
