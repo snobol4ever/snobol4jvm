@@ -28,7 +28,7 @@
      (edn->ir s)                  — EDN string -> [codes nos labels]"
   (:require [clojure.string          :as string]
             [clojure.edn             :as edn]
-            [SNOBOL4clojure.env      :refer [STNO <STNO> <LABL> <CODE>]]
+            [SNOBOL4clojure.env      :refer [STNO <STNO> <LABL> <CODE> <DISPNO> BLANKS]]
             [SNOBOL4clojure.grammar  :refer [parse-statement]]
             [SNOBOL4clojure.emitter  :refer [emitter]]))
 
@@ -38,34 +38,36 @@
 (defn- error-node [info] (list 'ERROR (:line info) (:column info) (:text info)))
 
 (defn- split-source
-  "Split SNOBOL4 source into raw statement strings."
+  "Split SNOBOL4 source into raw statement strings. A blank physical line is a statement of its own as SPITBOL numbers them, and is marked :blank.
+   ls is where the physical line being read begins."
   [src]
-  (let [chars (str src "\n")
-        n     (count chars)]
-    (loop [i 0 cur (StringBuilder.) stmts [] in-sq false in-dq false]
+  (let [chars (if (string/ends-with? (str src) "\n") (str src) (str src "\n"))
+        n     (count chars)
+        blank-line? (fn [from to] (every? #(Character/isWhitespace ^char %) (subs chars from to)))]
+    (loop [i 0 cur (StringBuilder.) stmts [] in-sq false in-dq false ls 0]
       (if (>= i n)
         (let [s (string/trimr (str cur))]
           (if (seq s) (conj stmts s) stmts))
         (let [ch (.charAt chars i)]
           (cond
             (and (= ch \') (not in-dq))
-            (recur (inc i) (.append cur ch) stmts (not in-sq) in-dq)
+            (recur (inc i) (.append cur ch) stmts (not in-sq) in-dq ls)
             (and (= ch \") (not in-sq))
-            (recur (inc i) (.append cur ch) stmts in-sq (not in-dq))
+            (recur (inc i) (.append cur ch) stmts in-sq (not in-dq) ls)
             (and (= ch \;) (not in-sq) (not in-dq))
             (let [s (string/trimr (str cur))]
-              (recur (inc i) (StringBuilder.) (if (seq s) (conj stmts s) stmts) false false))
+              (recur (inc i) (StringBuilder.) (if (seq s) (conj stmts s) stmts) false false ls))
             (= ch \newline)
             (let [s (string/trimr (str cur))]
               (if (seq s)
                 (let [next-i (inc i)
                       next-ch (when (< next-i n) (.charAt chars next-i))]
                   (if (and next-ch (or (= next-ch \+) (= next-ch \.)))
-                    (recur (+ i 2) (.append cur \space) stmts false false)
-                    (recur (inc i) (StringBuilder.) (conj stmts s) false false)))
-                (recur (inc i) (StringBuilder.) stmts false false)))
+                    (recur (+ i 2) (.append cur \space) stmts false false (inc i))
+                    (recur (inc i) (StringBuilder.) (conj stmts s) false false (inc i))))
+                (recur (inc i) (StringBuilder.) (if (blank-line? ls i) (conj stmts :blank) stmts) false false (inc i))))
             :else
-            (recur (inc i) (.append cur ch) stmts in-sq in-dq)))))))
+            (recur (inc i) (.append cur ch) stmts in-sq in-dq ls)))))))
 
 ;; -- -INCLUDE preprocessor ----------------------------------------------------
 
@@ -117,26 +119,28 @@
 
 ;; -- CODE! — parse source into {CODES NOS LABELS} ----------------------------
 (defn CODE!
-  "Compile SNOBOL4 source S into a [codes nos labels] triple.
+  "Compile SNOBOL4 source S into a [codes nos labels disp] vector. disp holds, for each statement in order, how many blank lines (statements SPITBOL
+   numbers but never runs) came before it, and the total, as {:before [..] :total n}.
    Optional include-path is a seq of directory strings used to resolve
    -INCLUDE directives (default [\".\"])."
   ([S] (CODE! S ["."]))
   ([S include-path]
    (let [expanded  (preprocess-includes (str S) include-path)
          raw-stmts (split-source expanded)]
-     (loop [stmts raw-stmts NO 1 CODES {} NOS {} LABELS {}]
+     (loop [stmts raw-stmts NO 1 CODES {} NOS {} LABELS {} blanks 0 before []]
        (if (empty? stmts)
-         [CODES NOS LABELS]
+         [CODES NOS LABELS {:before before :total blanks}]
          (let [command (first stmts)]
            (cond
-             (comment? command)(recur (rest stmts) NO CODES NOS LABELS)
-             (control? command)(recur (rest stmts) NO CODES NOS LABELS)
+             (= command :blank) (recur (rest stmts) NO CODES NOS LABELS (inc blanks) before)
+             (comment? command) (recur (rest stmts) NO CODES NOS LABELS blanks before)
+             (control? command) (recur (rest stmts) NO CODES NOS LABELS blanks before)
              :else
              (let [stmt   (string/replace command #"\r" "")
                    ast    (parse-statement stmt)
                    code   (emitter ast)]
                (if (and (map? code) (:reason code))
-                 (recur (rest stmts) (inc NO) (assoc CODES NO (error-node code)) NOS LABELS)
+                 (recur (rest stmts) (inc NO) (assoc CODES NO (error-node code)) NOS LABELS blanks (conj before blanks))
                  (let [label  (:label code)
                        body   (:body  code)
                        goto   (:goto  code)
@@ -145,7 +149,7 @@
                        nos    (if (keyword? key) (assoc NOS   key NO) NOS)
                        labels (if (keyword? key) (assoc LABELS NO key) LABELS)
                        codes  (assoc CODES key code)]
-                   (recur (rest stmts) (inc NO) codes nos labels)))))))))))
+                   (recur (rest stmts) (inc NO) codes nos labels blanks (conj before blanks))))))))))))
 
 ;; -- CODE — compile and load into the global statement store ------------------
 (defn CODE
@@ -153,15 +157,19 @@
    Optional include-path is a seq of directory strings (default [\".\"])."
   ([S] (CODE S ["."]))
   ([S include-path]
-   (let [[codes nos labels] (CODE! S include-path)
-         start              (inc @STNO)]
+   (let [[codes nos labels disp] (CODE! S include-path)
+         start              (inc @STNO)
+         base               @BLANKS]
      (loop [NO 1]
        (if (> NO (count codes))
-         (if (and (@<LABL> start) (@<CODE> (@<LABL> start)))
-           (@<LABL> start)
-           (when (@<CODE> start) start))
+         (do
+           (swap! BLANKS + (:total disp 0))
+           (if (and (@<LABL> start) (@<CODE> (@<LABL> start)))
+             (@<LABL> start)
+             (when (@<CODE> start) start)))
          (do
            (swap! STNO inc)
+           (swap! <DISPNO> assoc @STNO (+ @STNO base (get (:before disp) (dec NO) 0)))
            (if-let [label (labels NO)]
              (do
                (swap! <CODE> #(assoc % label (codes label)))
@@ -175,30 +183,34 @@
 (defn ir->edn
   "Serialise a CODE! result triple [codes nos labels] to a compact EDN string.
    The IR is pure Clojure data so pr-str is lossless."
-  [[codes nos labels]]
-  (pr-str {:codes codes :nos nos :labels labels}))
+  [[codes nos labels disp]]
+  (pr-str {:codes codes :nos nos :labels labels :disp disp}))
 
 (defn edn->ir
   "Deserialise an EDN string produced by ir->edn back to [codes nos labels].
    Uses clojure.edn/read-string — safe, no eval."
   [s]
-  (let [{:keys [codes nos labels]} (edn/read-string s)]
-    [codes nos labels]))
+  (let [{:keys [codes nos labels disp]} (edn/read-string s)]
+    [codes nos labels disp]))
 
 ;; -- Stage 23A: CODE-ir — load pre-compiled IR into statement store -----------
 
 (defn CODE-ir
   "Like CODE, but takes a pre-compiled [codes nos labels] triple.
    Skips grammar and emitter entirely. ~10x faster than CODE for short programs."
-  [[codes nos labels]]
-  (let [start (inc @STNO)]
+  [[codes nos labels disp]]
+  (let [start (inc @STNO)
+        base  @BLANKS]
     (loop [NO 1]
       (if (> NO (count codes))
-        (if (and (@<LABL> start) (@<CODE> (@<LABL> start)))
-          (@<LABL> start)
-          (when (@<CODE> start) start))
+        (do
+          (swap! BLANKS + (:total disp 0))
+          (if (and (@<LABL> start) (@<CODE> (@<LABL> start)))
+            (@<LABL> start)
+            (when (@<CODE> start) start)))
         (do
           (swap! STNO inc)
+          (swap! <DISPNO> assoc @STNO (+ @STNO base (get (:before disp) (dec NO) 0)))
           (if-let [label (labels NO)]
             (do
               (swap! <CODE> #(assoc % label (codes label)))

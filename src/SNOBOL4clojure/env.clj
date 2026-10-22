@@ -88,6 +88,8 @@
 ;;   :arity 0 = function synonym (no-op on arity, just alias)
 ;;   :arity 1 = unary operator redefinition
 ;;   :arity 2 = binary operator redefinition
+(def <DISPNO> (atom {}))   ; statement key (the number a statement is stored under) -> the number SPITBOL gives it, which counts blank lines
+(def BLANKS   (atom 0))    ; the blank lines of the code loaded so far: they take numbers and are never run
 (def <TRACES> (atom {}))   ; the TRACE registrations: [name kind] -> options; a program's own state, reset with the rest
 (def <OPSYN> (atom {}))
 
@@ -207,6 +209,8 @@
    (reset! <CHANNELS> {})
    (reset! <OPSYN>    {})
    (reset! <TRACES>   {})
+   (reset! <DISPNO>   {})
+   (reset! BLANKS     0)
    (reset! STNO    0)
    (reset! <STNO>  {})
    (reset! <LABL>  {})

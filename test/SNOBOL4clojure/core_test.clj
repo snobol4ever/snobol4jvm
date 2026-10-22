@@ -1344,3 +1344,16 @@
           (.waitFor p)
           (is (= (str "éÿ\u0080\n\ncafÃ© Ã¼Ã±\n5\n256\n12 naÃ¯ve Ã©tÃ©\n") out))))
       (finally (.delete f)))))
+
+;; A blank line is a statement of its own as SPITBOL numbers them: it takes a number but is never executed, so &STNO skips it and &STCOUNT does not count it,
+;; and &LASTNO is the last statement that was run. A comment, a control card and the lines a statement is continued on take no number, and a ; at the end of
+;; a line adds none. The numbers in trace lines are these too. The engine numbered only the statements with something in them, so every trace of Budne's
+;; trfunc, ftrace and spit named the wrong statement. The oracle, sbl -bf, wrote exactly this output.
+(deftest blank-lines-are-numbered-statements
+  (let [f (java.io.File/createTempFile "blanks" ".sno")]
+    (try
+      (spit f (str "* comment first\n\n        A = 1\n\n\n* another comment\n        B = 2\n\t\n        OUTPUT = &STNO ' ' &LASTNO ' ' &STCOUNT\n-TITLE hello\n"
+                   "        OUTPUT = &STNO ' ' &LASTNO ' ' &STCOUNT\n        C = 1 ;\n        OUTPUT = &STNO ' ' &LASTNO ' ' &STCOUNT\n"
+                   "        D = 1 +\n+       2\n        OUTPUT = &STNO ' ' &LASTNO ' ' &STCOUNT\n\n        &TRACE = 5\n        TRACE('X')\n\n        X = 1\nEND\n"))
+      (is (= "7 5 3\n8 7 4\n10 9 6\n12 11 8\n****17******  X = 1\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
