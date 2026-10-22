@@ -232,7 +232,24 @@
   "ORD(s): the code of the first character of s; it fails for the null string. A number is read as its text."
   [s]
   (let [t (sstr s)] (when (seq t) (long (int (first t))))))
-(defn REMDR   [x y] (clojure.core/rem (long x) (long y)))
+(declare finite-or)
+;; REMDR(n1, n2) as sbl.min s_rmd computes it: the arguments convert as an arithmetic operator's do; two integers give the integer remainder, its sign the
+;; first's ("167 remdr caused integer overflow" for a zero divisor), and otherwise both are reals and the result is chop(n1/n2) * n2 - n1 given the sign of n1,
+;; each step rounded ("312 remdr caused real overflow" when the quotient overflows). The errors' texts are sbl -bf's.
+(defn REMDR [x y]
+  (let [a (env/num x)
+        b (env/num y)
+        nan? #(and (double? %) (Double/isNaN ^double %))]
+    (when (nan? a) (throw (ex-info "remdr first argument is not numeric" {:snobol/error 166})))
+    (when (nan? b) (throw (ex-info "remdr second argument is not numeric" {:snobol/error 165})))
+    (if (and (integer? a) (integer? b))
+      (if (zero? b) (throw (ex-info "remdr caused integer overflow" {:snobol/error 167})) (clojure.core/rem (long a) (long b)))
+      (let [a (double a)
+            q (clojure.core// a (double b))
+            _ (when (or (Double/isInfinite q) (Double/isNaN q)) (throw (ex-info "remdr caused real overflow" {:snobol/error 312})))
+            q (finite-or q 312 "remdr caused real overflow")
+            d (finite-or (clojure.core/- (finite-or (clojure.core/* (if (neg? q) (Math/ceil q) (Math/floor q)) (double b)) 312 "") a) 312 "")]
+        (if (neg? a) (if (clojure.core/<= d 0.0) d (clojure.core/- d)) (if (neg? d) (clojure.core/- d) d))))))
 
 ;; ── Real functions (SPITBOL) ─────────────────────────────────────────────────
 ;; Each takes an integer, a real or a numeric string and returns a real. The

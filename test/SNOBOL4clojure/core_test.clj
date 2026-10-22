@@ -4201,3 +4201,38 @@
                    "f 1 addition left operand is not numeric\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; REMDR as sbl.min s_rmd computes it: its arguments convert as an arithmetic operator's do, both integers giving the integer remainder with the sign of the
+;; first ("167 remdr caused integer overflow" for a zero divisor), and otherwise reals, the result chop(n1/n2) * n2 - n1 given the sign of n1, each step rounded
+;; ("312 remdr caused real overflow" when the quotient overflows); "166 remdr first argument is not numeric", "165 remdr second argument is not numeric", as
+;; sbl -bf writes them. The engine truncated both arguments to integers, so a real divisor below 1 died dividing by zero (X64T math_remdr).
+(deftest remdr-of-integers-and-of-reals
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 20\n"
+                   "        A = 7 ; B = -2 ; C = 7.5 ; D = 2 ; Z = 0 ; ZR = 0.0 ; S = '7' ; X = 'x' ; MN = -9223372036854775807 - 1 ; M1 = -1\n"
+                   "        OUTPUT = 'a ' REMDR(A, B) ' ' REMDR(-A, D) ' ' REMDR(C, D) ' ' REMDR(-C, D) ' ' REMDR(S, D) ' ' REMDR(A, 2.5)\n"
+                   "        OUTPUT = 'b ' REMDR(2.6308364999025602e-300, 1.5746769247801736e-300) ' ' REMDR(1.0e300, 3.0) ' ' REMDR(C, -D)\n"
+                   "        V = REMDR(A, Z)\n"
+                   "        OUTPUT = 'c ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        V = REMDR(C, ZR)\n"
+                   "        OUTPUT = 'd ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        V = REMDR(X, D)\n"
+                   "        OUTPUT = 'e ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        V = REMDR(A, X)\n"
+                   "        OUTPUT = 'f ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        V = REMDR(MN, M1)\n"
+                   "        OUTPUT = 'g ' &ERRTYPE ' ' &ERRTEXT ' [' V ']'\n"
+                   "        OUTPUT = 'h ' DATATYPE(REMDR(A, D)) ' ' DATATYPE(REMDR(C, D))\n"
+                   "END\n"))
+      (is (= (str "a 1 -1 1.5 -1.5 1 2.\n"
+                   "b 0.105615957512239e-299 0. 1.5\n"
+                   "c 167 remdr caused integer overflow\n"
+                   "d 312 remdr caused real overflow\n"
+                   "e 166 remdr first argument is not numeric\n"
+                   "f 165 remdr second argument is not numeric\n"
+                   "g 165 remdr second argument is not numeric [0]\n"
+                   "h INTEGER REAL\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
