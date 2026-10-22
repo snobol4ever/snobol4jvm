@@ -4371,3 +4371,37 @@
                    "returned; K = 3\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; The subject of a match with replacement may be an element or a field, A<I> 'o' = '0', VAL(N) 'y' = 'Y': its subscripts are taken before the pattern runs, and
+;; the text after the replacement goes into that same element, as sbl -bf has it (A<I> BUMP() = 'W' fills A<2> though BUMP moves I to 3). The engine read the
+;; subject as a variable's name and died on an element (Gimpel peel, perms, physical, snoput).
+(deftest the-subject-of-a-replacement-may-be-an-element-or-a-field
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        A = ARRAY(3) ; A<1> = 'hello world' ; I = 1\n"
+                   "        A<I> 'o' = '0'\n"
+                   "        OUTPUT = '1 ' A<1>\n"
+                   "        T = TABLE() ; T['k'] = 'abcabc'\n"
+                   "        T['k'] 'b' = 'B'\n"
+                   "        OUTPUT = '2 ' T['k']\n"
+                   "        DATA('NODE(VAL,NXT)')\n"
+                   "        N = NODE('xyz', '')\n"
+                   "        VAL(N) 'y' = 'Y'\n"
+                   "        OUTPUT = '3 ' VAL(N)\n"
+                   "        A<I> 'q' = 'Q'                     :S(S4)\n"
+                   "        OUTPUT = '4 fails ' A<1>          :(N4)\n"
+                   "S4      OUTPUT = '4 ok'\n"
+                   "N4      DEFINE('BUMP()') :(BE)\n"
+                   "BUMP    I = I + 1 ; BUMP = 'w' :(RETURN)\n"
+                   "BE      A<2> = 'wow' ; I = 2\n"
+                   "        A<I> BUMP() = 'W'\n"
+                   "        OUTPUT = '5 ' A<2> ' ' A<3> ' ' I\n"
+                   "END\n"))
+      (is (= (str "1 hell0 world\n"
+                   "2 aBcabc\n"
+                   "3 xYz\n"
+                   "4 fails hell0 world\n"
+                   "5 Wow  3\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
