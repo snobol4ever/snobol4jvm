@@ -9,7 +9,7 @@
               table? table-get table-set
               array? array-get array-set array-prototype assign-keyword! name-string
               snobol-return! snobol-freturn! snobol-nreturn!
-              <FUNS> <FDEFS> <CHANNELS> <OPSYN> &STNO]]
+              <FUNS> <FDEFS> <CHANNELS> <OPSYN> &STNO &FNCLEVEL]]
             [SNOBOL4clojure.functions :refer
              [ASCII CHAR ORD DATE TIME REMDR ATAN CHOP COS EXP LN SIN SQRT TAN INTEGER integer-predicate REAL STRING SIZE TRIM DUPL REVERSE LPAD RPAD REPLACE SUBSTR
               ITEM PROTOTYPE CONVERT COPY FIELD SORT RSORT DATA
@@ -339,14 +339,16 @@
                           ;; Clear the result slot
                           (snobol-set! f-sym ε)
                           ;; CALL trace
-                          (fire-call! fname call-args)
-                          ;; Run from entry label; catch RETURN/FRETURN/NRETURN
+                          (fire-call! fname (map #(reference (symbol %)) params))
+                          ;; Run from entry label; catch RETURN/FRETURN/NRETURN. The function level is one deeper while the body runs.
+                          (swap! &FNCLEVEL inc)
                           (let [run-fn  (ns-resolve 'SNOBOL4clojure.runtime 'RUN)
                                 outcome (try
                                           (when run-fn ((var-get run-fn) entry))
                                           :return   ; normal fall-through = return
                                           (catch clojure.lang.ExceptionInfo e
-                                            (get (ex-data e) :snobol/signal :return)))]
+                                            (get (ex-data e) :snobol/signal :return))
+                                          (finally (swap! &FNCLEVEL dec)))]
                             ;; Collect result before restoring
                             (let [result ($$ f-sym)]
                               ;; RETURN trace

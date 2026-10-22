@@ -34,6 +34,7 @@
 (def  &FULLSCAN  (atom 0))
 (def  &LASTNO    (atom 0))   ; the number of the statement executed before the current one
 (def  &STNO      (atom 0))   ; the number of the statement being executed
+(def  &FNCLEVEL  (atom 0))   ; how many user functions are active
 (def  &LCASE     "abcdefghijklmnopqrstuvwxyz")
 (def  &MAXLNGTH  (atom 4194304))
 (def  &PROFILE   (atom 0))
@@ -211,6 +212,7 @@
    (reset! <LABL>  {})
    (reset! <CODE>  {})
    (reset! &STNO 0)
+   (reset! &FNCLEVEL 0)
    (reset! &LASTNO 0)
    (reset-keywords!))
   ([_ns] (GLOBALS)))

@@ -22,7 +22,7 @@
 
   Other trace types keep the form they had until they are measured against the oracle.
   "
-  (:require [SNOBOL4clojure.env :refer [&TRACE &FTRACE &STNO $$ real-str <TRACES>]])
+  (:require [SNOBOL4clojure.env :refer [&TRACE &FTRACE &STNO &FNCLEVEL $$ real-str <TRACES>]])
   (:import  [SNOBOL4clojure.env NAME]))
 
 ;; ── Registry ───────────────────────────────────────────�
@@ -148,32 +148,31 @@
       (when (@registry (reg-key lname :label))
         (trace-println "*** " lname)))))
 
+(defn- function-line!
+  "A call or return line of the function `fname`. It is written when the function is registered for `kind` and &TRACE is above 0 (and costs 1 of &TRACE),
+   or else when &FTRACE is above 0 (and costs 1 of &FTRACE). Four asterisks and the statement number, a blank, one i for each function level the caller is
+   inside, a blank, then the text."
+  [fname kind text]
+  (let [line #(trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " " text)]
+    (cond
+      (and (@registry (reg-key fname kind)) (pos? @&TRACE)) (do (swap! &TRACE dec) (line))
+      (pos? @&FTRACE)                                       (do (swap! &FTRACE dec) (line)))))
+
 (defn fire-call!
-  "Fire CALL trace when user function `fname` is called with `args`.
-   Called from the DEFINE wrapper in operators.clj before body executes.
-   Decrements &FTRACE; stops firing when &FTRACE reaches 0."
+  "Fire the call trace of user function `fname`, whose parameters hold `args`. Called from the DEFINE wrapper before the body runs, at the caller's
+   function level and with the number of the calling statement."
   [fname args]
-  (when (pos? @&FTRACE)
-    (swap! &FTRACE dec)
-    (when (@registry (reg-key fname :call))
-      (trace-println "*** " fname
-                     "(" (clojure.string/join ", " (map pr-str args)) ")")))
-  (when (pos? @&TRACE)
-    (when (@registry (reg-key fname :call))
-      (trace-println "*** " fname
-                     "(" (clojure.string/join ", " (map pr-str args)) ")"))))
+  (function-line! fname :call (str fname "(" (clojure.string/join "," (map trace-val args)) ")")))
 
 (defn fire-return!
-  "Fire RETURN trace when user function `fname` returns `val`.
-   signal is :return :freturn or :nreturn."
+  "Fire the return trace of user function `fname` returning `val`. signal is :return :freturn or :nreturn. Called from the DEFINE wrapper once the level is
+   the caller's again and while the number of the returning statement is still &STNO."
   [fname val signal]
-  (when (or (pos? @&FTRACE) (pos? @&TRACE))
-    (when (@registry (reg-key fname :return))
-      (let [tag (case signal
-                  :freturn " [FRETURN]"
-                  :nreturn " [NRETURN]"
-                  "")]
-        (trace-println "*** " fname " => " (pr-str val) tag)))))
+  (function-line! fname :return
+                  (case signal
+                    :freturn  (str "FRETURN " fname)
+                    :nreturn  (str "NRETURN " fname " = " (trace-val val))
+                    (str "RETURN " fname " = " (trace-val val)))))
 
 (defn pattern-trace-active?
   "True if PATTERN trace is registered for `subject-var` (or globally via \"*\").

@@ -1292,3 +1292,35 @@
                   "****25******  FOO = 7\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A function trace writes a line when the function is called, NAME(v1,v2) with the values of its parameters as a dump shows them and the number of the calling
+;; statement in front, and a line when it returns, RETURN NAME = value (FRETURN NAME for a failure) with the number of the statement that returned. The type
+;; says which: C(ALL), R(ETURN) or F(UNCTION) for both. &FTRACE traces every function without a registration; a trace line costs 1 of &TRACE if the function is
+;; registered and &TRACE is above 0, else 1 of &FTRACE; the lines of a nested call carry one i for each function level the caller is inside. The engine wrote
+;; "*** NAME(args)" to the error stream and charged nothing. The oracle, sbl -bf, wrote exactly this output.
+(deftest function-traces-write-the-call-and-the-return
+  (let [f (java.io.File/createTempFile "trfn" ".sno")]
+    (try
+      (spit f (str " DEFINE('ADD(X,Y)')                    :(AEND)\nADD ADD = X + Y                           :(RETURN)\n"
+                   "AEND DEFINE('NOTHING()')                   :(NEND)\nNOTHING                                       :(RETURN)\n"
+                   "NEND DEFINE('FAILS(Q)')                    :(FEND)\nFAILS                                         :(FRETURN)\n"
+                   "FEND TRACE('ADD','CALL')\n TRACE('NOTHING','RETURN')\n TRACE('FAILS','FUNCTION')\n &TRACE = 100\n"
+                   " Z = ADD(1,'2')\n Z = ADD(1.5,2)\n NOTHING()\n FAILS('q')\n FAILS('q')                            :F(NEXT)\n"
+                   "NEXT OUTPUT = 'count ' &TRACE\n &FTRACE = 3\n Z = ADD(3,4)\n OUTPUT = 'ftrace left ' &FTRACE\nEND\n"))
+      (is (= (str "****11******  ADD(1,'2')\n****12******  ADD(1.5,2)\n****4*******  RETURN NOTHING = ''\n****14******  FAILS('q')\n"
+                  "****6*******  FRETURN FAILS\n****15******  FAILS('q')\n****6*******  FRETURN FAILS\ncount 93\n"
+                  "****18******  ADD(3,4)\n****2*******  RETURN ADD = 7\nftrace left 2\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
+(deftest ftrace-writes-every-call-and-return-with-the-level
+  (let [f (java.io.File/createTempFile "ftrace" ".sno")]
+    (try
+      (spit f (str " DEFINE('R(N)')                        :(RE)\nR GT(N,0)                               :F(RETURN)\n R(N - 1)                              :(RETURN)\n"
+                   "RE &FTRACE = 100\n R(2)\n OUTPUT = 'after R(2): ' &FTRACE\n &FTRACE = 2\n R(2)\n OUTPUT = 'after limited: ' &FTRACE\n"
+                   " &FTRACE = 4\n &TRACE = 100\n TRACE('R','FUNCTION')\n R(1)\n OUTPUT = 'both: ftrace ' &FTRACE ' trace ' &TRACE\nEND\n"))
+      (is (= (str "****5*******  R(2)\n****3******* i R(1)\n****3******* ii R(0)\n****2******* ii RETURN R = ''\n****3******* i RETURN R = ''\n"
+                  "****3*******  RETURN R = ''\nafter R(2): 94\n****8*******  R(2)\n****3******* i R(1)\nafter limited: 0\n"
+                  "****13******  R(1)\n****3******* i R(0)\n****2******* i RETURN R = ''\n****3*******  RETURN R = ''\nboth: ftrace 4 trace 96\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
