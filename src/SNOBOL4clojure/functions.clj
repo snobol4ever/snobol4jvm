@@ -486,7 +486,15 @@
 ;; ── Program control stubs ─────────────────────────────────────────────────────
 (defn EXIT    [] nil)
 (defn HOST    [] nil)
-(defn SETEXIT [] nil)
+;; SETEXIT(label) arms the label (a string or a NAME) as the error handler and returns the handler it replaces, as a NAME, or the null string when there was none.
+;; The null string, or no argument, disarms.
+(defn SETEXIT
+  ([] (SETEXIT ε))
+  ([label]
+   (let [prev @env/<SETEXIT>
+         s    (if (nil? label) "" (env/name-string label))]
+     (reset! env/<SETEXIT> (when-not (clojure.string/blank? s) (keyword s)))
+     (if prev (SNOBOL4clojure.env.NAME. (symbol (name prev))) ε))))
 (defn STOPTR  [] nil)
 (defn TRACE   [] nil)
 

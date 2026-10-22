@@ -88,6 +88,7 @@
 ;;   :arity 0 = function synonym (no-op on arity, just alias)
 ;;   :arity 1 = unary operator redefinition
 ;;   :arity 2 = binary operator redefinition
+(def <SETEXIT> (atom nil))   ; the label SETEXIT named (a keyword), or nil when no handler is armed
 (def <DISPNO> (atom {}))   ; statement key (the number a statement is stored under) -> the number SPITBOL gives it, which counts blank lines
 (def BLANKS   (atom 0))    ; the blank lines of the code loaded so far: they take numbers and are never run
 (def <TRACES> (atom {}))   ; the TRACE registrations: [name kind] -> options; a program's own state, reset with the rest
@@ -212,6 +213,7 @@
    (reset! <OPSYN>    {})
    (reset! <TRACES>   {})
    (reset! <DISPNO>   {})
+   (reset! <SETEXIT>  nil)
    (reset! BLANKS     0)
    (reset! STNO    0)
    (reset! <STNO>  {})

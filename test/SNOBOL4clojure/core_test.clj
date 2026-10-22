@@ -1532,3 +1532,54 @@
       (is (= (str "0 2\nF branch 235 1 subscripted operand is not table or array\n235 0 subscripted operand is not table or array\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; SETEXIT(label) arms a label as the error handler and returns the one it replaces: a NAME, or the null string when none was armed. The null string or no argument disarms.
+;; The engine ignored SETEXIT and returned the null string every time (Budne's setexit3). The oracle, sbl -bf, wrote exactly this output.
+(deftest setexit-returns-the-handler-it-replaces
+  (let [f (java.io.File/createTempFile "setexit" ".sno")]
+    (try
+      (spit f (str "        OUTPUT = DATATYPE(SETEXIT('FOO'))\n"
+                   "        OUTPUT = DATATYPE(SETEXIT(.BAR))\n"
+                   "        X = SETEXIT()\n"
+                   "        OUTPUT = DATATYPE(X) ' ' X\n"
+                   "        OUTPUT = '[' SETEXIT('') ']'\n"
+                   "        SETEXIT('FOO')\n"
+                   "        Y = SETEXIT('BAR')\n"
+                   "        OUTPUT = DATATYPE(Y) ' ' Y\n"
+                   "FOO\n"
+                   "BAR\n"
+                   "END\n"))
+      (is (= "STRING\nNAME\nNAME BAR\n[]\nNAME FOO\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
+;; With &ERRLIMIT not 0 an error transfers control to the label SETEXIT armed, which is then disarmed (the handler arms it again to be called again). &LASTNO is the statement in
+;; error, :(CONTINUE) resumes at that statement's F exit (or the next statement when it has none), and a handler that does not branch falls through to what follows it.
+;; The oracle, sbl -bf, wrote exactly this output.
+(deftest an-error-under-errlimit-goes-to-the-setexit-handler-and-continue-takes-the-f-exit
+  (let [f (java.io.File/createTempFile "setexit" ".sno")]
+    (try
+      (spit f (str "        SETEXIT(.H)\n"
+                   "        &ERRLIMIT = 5\n"
+                   "        A<1> = 'x'              :S(OK)F(NOPE)\n"
+                   "        OUTPUT = 'fell through' :(T2)\n"
+                   "OK      OUTPUT = 'S branch'     :(T2)\n"
+                   "NOPE    OUTPUT = 'F branch'\n"
+                   "T2      OUTPUT = 'T2 ' &ERRLIMIT ' [' SETEXIT() ']'\n"
+                   "        A<2> = 'y'\n"
+                   "        OUTPUT = 'after second error'\n"
+                   "        SETEXIT(.H)\n"
+                   "        B<1> = 'x'\n"
+                   "        OUTPUT = 'next ' &ERRLIMIT\n"
+                   "        SETEXIT(.G)\n"
+                   "        C<1> = 'x'\n"
+                   "        OUTPUT = 'not reached'\n"
+                   "        :(DONE)\n"
+                   "H       OUTPUT = 'H ' &ERRTYPE ' ' &ERRLIMIT ' ' &LASTNO ' [' &ERRTEXT ']'\n"
+                   "        :(CONTINUE)\n"
+                   "G       OUTPUT = 'G ' &ERRLIMIT\n"
+                   "DONE    OUTPUT = 'done'\n"
+                   "END\n"))
+      (is (= "H 235 4 3 [subscripted operand is not table or array]\nF branch\nT2 4 []\nafter second error\nH 235 2 11 [subscripted operand is not table or array]\nnext 2\nG 1\ndone\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

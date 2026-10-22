@@ -14,7 +14,7 @@
   Statement-level trace (wildcard '*') prints each statement number + label.
   Pattern traces are handled in match.clj via *trace* dynamic var."
   (:require [SNOBOL4clojure.env   :refer [<STNO> <LABL> <CODE> <DISPNO>
-                                           &STCOUNT &STLIMIT &TRACE &STNO &LASTNO &ERRLIMIT &ERRTYPE &ERRTEXT
+                                           &STCOUNT &STLIMIT &TRACE &STNO &LASTNO &ERRLIMIT &ERRTYPE &ERRTEXT <SETEXIT>
                                            snobol-return! snobol-freturn!
                                            snobol-nreturn! snobol-end!
                                            snobol-steplimit!]]
@@ -33,19 +33,27 @@
     "NRETURN" (snobol-nreturn!)
     "END"     (snobol-end!)))
 
-;; An execution error under &ERRLIMIT not 0 is not fatal: &ERRLIMIT drops by one, &ERRTYPE and &ERRTEXT record the error, nothing is written, and the statement fails.
+;; An execution error under &ERRLIMIT not 0 is not fatal: &ERRLIMIT drops by one, &ERRTYPE and &ERRTEXT record the error, nothing is written, and control goes to the label
+;; SETEXIT armed (which is then disarmed, so a handler that wants the next error arms it again), or else the statement fails.
 ;; With &ERRLIMIT at 0 the error goes on up and ends the program.
+(defrecord Trapped [label ex])
+
 (defn- exec-body [body]
   (try
     (or (nil? body) (EVAL! body))
     (catch clojure.lang.ExceptionInfo e
       (let [n (:snobol/error (ex-data e))]
         (if (and n (pos? (long @&ERRLIMIT)))
-          (do (swap! &ERRLIMIT dec)
-              (reset! &ERRTYPE n)
-              (reset! &ERRTEXT (ex-message e))
-              false)
+          (let [h @<SETEXIT>]
+            (swap! &ERRLIMIT dec)
+            (reset! &ERRTYPE n)
+            (reset! &ERRTEXT (ex-message e))
+            (if h
+              (do (reset! <SETEXIT> nil) (->Trapped h e))
+              false))
           (throw e))))))
+
+(defn- label-name [tgt] (when (or (keyword? tgt) (string? tgt) (symbol? tgt)) (name tgt)))
 
 (defn RUN [at]
   (letfn
@@ -89,7 +97,7 @@
          tgt))]
     (reset! &STCOUNT 0)
     (try
-      (loop [current (saddr at)]
+      (loop [current (saddr at) err nil]
         (when-let [key (skey current)]
           ;; Special-label check (e.g. labelled RETURN/END)
           (when (special-targets key)
@@ -112,18 +120,27 @@
                   seqond (second stmt)
                   body   (if (map? ferst) seqond ferst)
                   goto   (if (map? ferst) ferst  seqond)]
-              (if (exec-body body)
-                ;; success branch — goto is nil or a map; guard contains? against non-maps
-                ;; nil body = no operation = unconditional success (pure-goto statement)
-                (let [tgt (computed-target (or (when (map? goto) (or (:G goto) (:S goto)))))]
-                  (if tgt
-                    (do (goto! tgt) (recur (saddr tgt)))
-                    (recur (saddr (inc (current 0))))))
-                ;; failure branch
-                (let [tgt (computed-target (or (when (map? goto) (or (:G goto) (:F goto)))))]
-                  (if tgt
-                    (do (goto! tgt) (recur (saddr tgt)))
-                    (recur (saddr (inc (current 0)))))))))))
+              (let [r (exec-body body)]
+                (if (instance? Trapped r)
+                  ;; control goes to the handler; CONTINUE and ABORT there refer back to the statement in error
+                  (recur (saddr (:label r)) {:at current :goto goto :ex (:ex r)})
+                  (let [g   (when (map? goto) goto)
+                        tgt (computed-target (if r (or (:G g) (:S g)) (or (:G g) (:F g))))
+                        nm  (label-name tgt)]
+                    (cond
+                      ;; CONTINUE resumes at the failure exit of the statement in error; ABORT lets the error end the program
+                      (and err (clojure.core/= nm "CONTINUE"))
+                      (let [g2   (:goto err)
+                            etgt (computed-target (when (map? g2) (or (:G g2) (:F g2))))]
+                        (if etgt
+                          (do (goto! etgt) (recur (saddr etgt) nil))
+                          (recur (saddr (inc ((:at err) 0))) nil)))
+                      (and err (clojure.core/= nm "ABORT"))
+                      (throw (:ex err))
+                      tgt
+                      (do (goto! tgt) (recur (saddr tgt) err))
+                      :else
+                      (recur (saddr (inc (current 0))) err)))))))))
       (catch clojure.lang.ExceptionInfo e
         (case (get (ex-data e) :snobol/signal)
           :end        nil          ; normal program end
