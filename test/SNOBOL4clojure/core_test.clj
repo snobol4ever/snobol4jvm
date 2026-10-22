@@ -2166,3 +2166,16 @@
                                          "end\n") "inc_main.sno" main)
              (with-out-str (-main main))))
       (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))
+
+;; A label in the subject field of the END statement is where execution begins: "If we place a statement label in the subject field of the END statement, execution
+;; will begin there" (SPITBOL manual ch. 14, The END Statement). The engine began at the first statement. The oracle, sbl -bf, wrote exactly this output.
+(deftest end-label-starts-the-program-at-label
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        OUTPUT = 'first statement'\n"
+                   "START   OUTPUT = 'started at START'\n"
+                   "        OUTPUT = 'and went on'\n"
+                   "END     START\n"))
+      (is (= "started at START\nand went on\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

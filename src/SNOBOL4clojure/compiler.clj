@@ -195,6 +195,13 @@
                        codes  (assoc CODES key code)]
                    (recur (rest stmts) (inc NO) codes nos labels blanks (conj before blanks) fold (conj poss here) pos'')))))))))))
 
+;; "If we place a statement label in the subject field of the END statement, execution will begin there" (manual ch. 14, The END Statement): END START starts the
+;; program at START. The label END is recognised in either case.
+(defn- end-entry [codes]
+  (let [b (first (or (get codes :END) (get codes :end)))]
+    (when (symbol? b)
+      (let [k (keyword (name b))] (when (@<STNO> k) k)))))
+
 ;; -- CODE — compile and load into the global statement store ------------------
 (defn CODE
   "Compile S and load into the global statement store.
@@ -209,9 +216,10 @@
        (if (> NO (count codes))
          (do
            (swap! BLANKS + (:total disp 0))
-           (if (and (@<LABL> start) (@<CODE> (@<LABL> start)))
-             (@<LABL> start)
-             (when (@<CODE> start) start)))
+           (or (end-entry codes)
+               (if (and (@<LABL> start) (@<CODE> (@<LABL> start)))
+                 (@<LABL> start)
+                 (when (@<CODE> start) start))))
          (do
            (swap! STNO inc)
            (swap! <DISPNO> assoc @STNO (+ @STNO base (get (:before disp) (dec NO) 0)))
