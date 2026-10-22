@@ -28,13 +28,19 @@
      (edn->ir s)                  — EDN string -> [codes nos labels]"
   (:require [clojure.string          :as string]
             [clojure.edn             :as edn]
-            [SNOBOL4clojure.env      :refer [STNO <STNO> <LABL> <CODE> <DISPNO> BLANKS]]
+            [SNOBOL4clojure.env      :refer [STNO <STNO> <LABL> <CODE> <DISPNO> BLANKS &CASE fold-case]]
             [SNOBOL4clojure.grammar  :refer [parse-statement]]
             [SNOBOL4clojure.emitter  :refer [emitter]]))
 
 ;; -- Source tokenizer ---------------------------------------------------------
 (defn- comment? [cmd] (re-find #"^\*" cmd))
 (defn- control? [cmd] (re-find #"^\-" cmd))
+;; A -CASE card sets whether the statements after it are compiled with lower case names folded to upper case: -CASE N folds when N is not 0, -CASE alone or -CASE 0 does not.
+;; The card's own name follows the mode: with folding on it may be written in any case, with folding off only as -CASE.
+(defn- case-card [fold command]
+  (when-let [[_ n] (re-find (if fold #"(?i)^-CASE(?:\s+(\d+))?\s*$" #"^-CASE(?:\s+(\d+))?\s*$") command)]
+    (boolean (and n (not (zero? (Long/parseLong n)))))))
+
 (defn- error-node [info] (list 'ERROR (:line info) (:column info) (:text info)))
 
 (defn- split-source
@@ -127,20 +133,20 @@
   ([S include-path]
    (let [expanded  (preprocess-includes (str S) include-path)
          raw-stmts (split-source expanded)]
-     (loop [stmts raw-stmts NO 1 CODES {} NOS {} LABELS {} blanks 0 before []]
+     (loop [stmts raw-stmts NO 1 CODES {} NOS {} LABELS {} blanks 0 before [] fold (not (zero? (long @&CASE)))]
        (if (empty? stmts)
          [CODES NOS LABELS {:before before :total blanks}]
          (let [command (first stmts)]
            (cond
-             (= command :blank) (recur (rest stmts) NO CODES NOS LABELS (inc blanks) before)
-             (comment? command) (recur (rest stmts) NO CODES NOS LABELS blanks before)
-             (control? command) (recur (rest stmts) NO CODES NOS LABELS blanks before)
+             (= command :blank) (recur (rest stmts) NO CODES NOS LABELS (inc blanks) before fold)
+             (comment? command) (recur (rest stmts) NO CODES NOS LABELS blanks before fold)
+             (control? command) (recur (rest stmts) NO CODES NOS LABELS blanks before (let [f (case-card fold command)] (if (nil? f) fold f)))
              :else
-             (let [stmt   (string/replace command #"\r" "")
+             (let [stmt   (cond-> (string/replace command #"\r" "") fold fold-case)
                    ast    (parse-statement stmt)
                    code   (emitter ast)]
                (if (and (map? code) (:reason code))
-                 (recur (rest stmts) (inc NO) (assoc CODES NO (error-node code)) NOS LABELS blanks (conj before blanks))
+                 (recur (rest stmts) (inc NO) (assoc CODES NO (error-node code)) NOS LABELS blanks (conj before blanks) fold)
                  (let [label  (:label code)
                        body   (:body  code)
                        goto   (:goto  code)
@@ -149,7 +155,7 @@
                        nos    (if (keyword? key) (assoc NOS   key NO) NOS)
                        labels (if (keyword? key) (assoc LABELS NO key) LABELS)
                        codes  (assoc CODES key code)]
-                   (recur (rest stmts) (inc NO) codes nos labels blanks (conj before blanks))))))))))))
+                   (recur (rest stmts) (inc NO) codes nos labels blanks (conj before blanks) fold)))))))))))
 
 ;; -- CODE — compile and load into the global statement store ------------------
 (defn CODE

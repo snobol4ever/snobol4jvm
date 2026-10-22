@@ -25,6 +25,7 @@
 ;; ── SNOBOL4 keywords (& variables) ───────────────────────────────────────────
 (def  &ALPHABET  (atom (apply str (map char (range 256)))))   ; the 256-character string, codes 0..255 in order
 (def  &ANCHOR    (atom 0))
+(def  &CASE      (atom 0))   ; not 0: CODE and EVAL fold lower case names to upper case (a program's own -CASE card governs its source)
 (def  &DIGITS    "0123456789")
 (def  &DUMP      (atom 0))  ; 1, 2, and 3 levels
 (def  &ERRLIMIT  (atom 0))
@@ -50,7 +51,7 @@
 
 ;; The value each settable keyword holds when a program starts.
 (def ^:private keyword-defaults
-  {#'&ANCHOR 0, #'&DUMP 0, #'&ERRLIMIT 0, #'&FTRACE 0, #'&FULLSCAN 0,
+  {#'&ANCHOR 0, #'&CASE 0, #'&DUMP 0, #'&ERRLIMIT 0, #'&FTRACE 0, #'&FULLSCAN 0,
    #'&MAXLNGTH 4194304, #'&PROFILE 0, #'&TRIM 1, #'&TRACE 0,
    #'&STLIMIT 2147483647, #'&IOCOMPAT :catspaw})
 
@@ -127,6 +128,18 @@
   (toString [this]   (str n)))
 
 (defrecord NameResult [target])   ; what a call that returned with NRETURN gives: the variable (a symbol) or element (T k...) it names; used as a value it is that variable's value
+
+;; Upper-case S outside its quoted strings: the names of source compiled with case folding on (-CASE 1, or &CASE not 0 for CODE and EVAL). Only ASCII letters change.
+(defn fold-case [^String s]
+  (let [sb (StringBuilder.)]
+    (loop [i 0 q nil]
+      (when (clojure.core/< i (count s))
+        (let [c (.charAt s i)]
+          (cond
+            q                      (do (.append sb c) (recur (inc i) (if (clojure.core/= c q) nil q)))
+            (or (clojure.core/= c \') (clojure.core/= c \")) (do (.append sb c) (recur (inc i) c))
+            :else                  (do (.append sb (if (and (clojure.core/>= (int c) 97) (clojure.core/<= (int c) 122)) (Character/toUpperCase c) c)) (recur (inc i) nil))))))
+    (str sb)))
 
 (defn name-string
   "The text of a name argument: a NAME (.F) is the name of its variable,

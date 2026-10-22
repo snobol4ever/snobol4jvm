@@ -9,7 +9,7 @@
               table? table-get table-set
               array? array-get array-set array-prototype assign-keyword! name-string
               snobol-return! snobol-freturn! snobol-nreturn!
-              <FUNS> <FDEFS> <CHANNELS> <OPSYN> &STNO &FNCLEVEL]]
+              <FUNS> <FDEFS> <CHANNELS> <OPSYN> &STNO &FNCLEVEL &CASE fold-case]]
             [SNOBOL4clojure.functions :refer
              [ASCII CHAR ORD DATE TIME REMDR ATAN CHOP COS EXP LN SIN SQRT TAN INTEGER integer-predicate REAL SETEXIT STRING SIZE TRIM DUPL REVERSE LPAD RPAD REPLACE SUBSTR
               ITEM PROTOTYPE CONVERT COPY FIELD SORT RSORT DATA
@@ -790,5 +790,5 @@
 
 (defn EVAL [X]
   (cond
-    (string? X) (EVAL! (first (emitter (parse-expression X))))
+    (string? X) (EVAL! (first (emitter (parse-expression (if (zero? (long @&CASE)) X (fold-case X))))))
     true        (EVAL! X)))

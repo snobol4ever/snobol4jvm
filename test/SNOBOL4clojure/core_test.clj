@@ -1583,3 +1583,56 @@
       (is (= "H 235 4 3 [subscripted operand is not table or array]\nF branch\nT2 4 []\nafter second error\nH 235 2 11 [subscripted operand is not table or array]\nnext 2\nG 1\ndone\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A -CASE N card (N not 0) folds the lower case names of the statements after it to upper case, and -CASE alone or -CASE 0 stops folding. The card's own name follows the mode: while
+;; folding is off only -CASE is a card (-case is ignored), while it is on any case is. The card leaves &CASE alone. The engine ignored every control card, so a lower case OUTPUT
+;; after -CASE 1 was a variable of its own (Budne's case1). The oracle, sbl -bf, wrote exactly this output.
+(deftest a-case-card-folds-the-names-after-it
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        OUTPUT = .a1\n"
+                   "-CASE 1\n"
+                   "        OUTPUT = .a2\n"
+                   "        output = .a3\n"
+                   "-CASE 0\n"
+                   "        OUTPUT = .a4\n"
+                   "        output = .a5\n"
+                   "-case 1\n"
+                   "        OUTPUT = .a6\n"
+                   "        output = .a7\n"
+                   "-CASE\n"
+                   "        OUTPUT = .a8\n"
+                   "-CASE 1\n"
+                   "        OUTPUT = &CASE\n"
+                   "        output = .a9\n"
+                   "-case 0\n"
+                   "        OUTPUT = .b1\n"
+                   "        output = .b2\n"
+                   "        OUTPUT = 'last'\n"
+                   "END\n"))
+      (is (= "a1\nA2\nA3\na4\na6\na8\n0\nA9\nb1\nlast\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
+;; &CASE is a keyword, 0 when a program starts under sbl -bf, and while it is not 0 EVAL and CODE fold the lower case names of their text to upper case. The engine raised ERROR 251
+;; on &CASE = 0 (Budne's case1). The oracle, sbl -bf, wrote exactly this output.
+(deftest case-keyword-folds-the-names-eval-and-code-read
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        OUTPUT = &CASE\n"
+                   "        abc = 'lower'\n"
+                   "        ABC = 'UPPER'\n"
+                   "        OUTPUT = EVAL('abc')\n"
+                   "        &CASE = 1\n"
+                   "        OUTPUT = &CASE ' ' EVAL('abc') ' ' EVAL('ABC')\n"
+                   "        C = CODE('        OUTPUT = .abc ;  :(BACK1)')\n"
+                   "        :<C>\n"
+                   "BACK1   &CASE = 0\n"
+                   "        OUTPUT = EVAL('abc')\n"
+                   "        C = CODE('        OUTPUT = .abc ;  :(BACK2)')\n"
+                   "        :<C>\n"
+                   "BACK2   OUTPUT = 'done'\n"
+                   "END\n"))
+      (is (= "0\nlower\n1 UPPER UPPER\nABC\nlower\nabc\ndone\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
