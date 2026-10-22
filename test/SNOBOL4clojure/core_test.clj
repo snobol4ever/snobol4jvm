@@ -3031,3 +3031,30 @@
                                          "\n") "dbal.sno" main)
              (with-out-str (-main main))))
       (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))
+
+;; The name of a field, .COUNT(A), names that field of that object: $ of it reads and assigns the field, and a function given it (DECR(.COUNT(X[K])), TPgm test6)
+;; assigns through it; OPSYN('QLINK','COUNT') makes QLINK the same field function. The engine kept the object in the name's form and, evaluating it again, turned it into
+;; the string "Yikes! What is E?", which COUNT refused with ERROR 41. The oracle, sbl -bf, wrote exactly this output.
+(deftest the-name-of-a-field-reads-and-assigns-that-field
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DATA('ITM(COUNT,TOP)')\n"
+                   "        A = ITM(5,'t')\n"
+                   "        OPSYN('QLINK','COUNT')\n"
+                   "        OUTPUT = 'read ' QLINK(A) ' ' COUNT(A)\n"
+                   "        QLINK(A) = 7\n"
+                   "        OUTPUT = 'after qlink= ' COUNT(A) ' ' QLINK(A)\n"
+                   "        N = .COUNT(A)\n"
+                   "        OUTPUT = 'name ' DATATYPE(N) ' ' $N\n"
+                   "        $N = 9\n"
+                   "        OUTPUT = 'through the name ' COUNT(A)\n"
+                   "        DEFINE('DECR(X)')                       :(DECR_END)\n"
+                   "DECR    $X = GT($X,1) $X - 1                    :S(RETURN)\n"
+                   "        $X = 0                                  :(FRETURN)\n"
+                   "DECR_END\n"
+                   "        DECR(.COUNT(A))\n"
+                   "        OUTPUT = 'decr ' COUNT(A)\n"
+                   "END\n"))
+      (is (= "read 5 5\nafter qlink= 7 7\nname NAME 7\nthrough the name 9\ndecr 8\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

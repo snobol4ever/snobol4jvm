@@ -865,7 +865,8 @@
                      (if opsyn-fn
                        (apply opsyn-fn args)
                        (apply INVOKE op args)))))))
-      true "Yikes! What is E?")))
+      ;; anything else is a value already (a DATA object, an array, a table, a NAME, code) that an IR form carries, as the name of a field .COUNT(A) does
+      true E)))
 
 ;; The IR of an expression in a string, or nil when the string is not a legal expression (folded to upper case while &CASE is not 0).
 (defn- compile-expression [^String s]
