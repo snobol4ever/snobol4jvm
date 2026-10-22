@@ -438,7 +438,7 @@
     TRIM    (TRIM   (first args))
     DUPL    (DUPL   (first args) (second args))
     REVERSE (REVERSE (first args))
-    ITEM      (ITEM      (first args) (second args))
+    ITEM      (apply ITEM args)
     item      (ITEM      (first args) (second args))
     PROTOTYPE (PROTOTYPE (first args))
     prototype (PROTOTYPE (first args))
@@ -733,6 +733,12 @@
           (let [[[_ X] R] parms]
             (when-some [v (EVAL! X)]
               (INVOKE '= (indirect-target v) (EVAL! R))))
+          ;; ITEM(container, key) = v: the element, as container<key> = v
+          (and (equal op '=) (list? (first parms)) (equal (first (first parms)) 'ITEM) (clojure.core/= 3 (count (first parms))))
+          (let [[_ container-expr key-expr] (first parms)]
+            (when-some [c (EVAL! container-expr)]
+              (when-some [k (EVAL! key-expr)]
+                (when-some [v (EVAL! (second parms))] (INVOKE '= (list c k) v)))))
           ;; F(args) = v, F a function that returns a name: the value goes to the name it returns
           (and (equal op '=) (call-form? (first parms)))
           (when-some [r (name-of-call (first parms))]

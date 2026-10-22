@@ -513,10 +513,13 @@
 
 ;; ── Table / array functions ───────────────────────────────────────────────────
 (defn ITEM
-  "ITEM(table, key) — subscript read/lvalue for TABLE.
-   Returns the value at key, or ε if absent."
-  [t k]
-  (SNOBOL4clojure.env/table-get t k))
+  "ITEM(container, key...) — the element of a TABLE or an ARRAY, as container<key...> reads it: the value at the key (ε if absent from a table), failure for
+   a subscript outside an array."
+  [c & ks]
+  (cond
+    (SNOBOL4clojure.env/table? c) (SNOBOL4clojure.env/table-get c (first ks))
+    (SNOBOL4clojure.env/array? c) (SNOBOL4clojure.env/array-get c (vec ks))
+    :else nil))
 
 (defn PROTOTYPE
   "PROTOTYPE(array-or-table) — return the dimension spec string.

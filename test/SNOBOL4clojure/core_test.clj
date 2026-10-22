@@ -1485,3 +1485,15 @@
                   "j: qval\n" "k: newq\n" "l: ok\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; ITEM(container, key) names an element of a table or an array, so it can be assigned: ITEM(PROP[RACK],HANGER) = COAT puts COAT in the table PROP[RACK] under HANGER,
+;; as PROP[RACK]<HANGER> = COAT does. The engine could read ITEM but treated it as a field accessor when assigned, and died with a ClassCastException (Budne's atn,
+;; whose PUT does exactly this). The oracle, sbl -bf, wrote exactly this output.
+(deftest item-names-an-element-that-can-be-assigned
+  (let [f (java.io.File/createTempFile "itemasn" ".sno")]
+    (try
+      (spit f (str " PROP = TABLE()\n PROP['r'] = TABLE()\n ITEM(PROP['r'],'h') = 'val'\n OUTPUT = 'a: ' ITEM(PROP['r'],'h')\n PROP['r']['h'] = 'v2'\n"
+                   " OUTPUT = 'b: ' PROP['r']['h']\n ITEM(PROP['r'],'h') = ITEM(PROP['r'],'h') '!'\n OUTPUT = 'c: ' ITEM(PROP['r'],'h')\n A = ARRAY(3)\n"
+                   " ITEM(A,2) = 'two'\n OUTPUT = 'd: ' A<2> ' ' ITEM(A,2)\n X = ITEM(A,3)\n OUTPUT = 'e: [' X ']'\nEND\n"))
+      (is (= "a: val\nb: v2\nc: v2!\nd: two two\ne: []\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
