@@ -2209,6 +2209,22 @@
     (is (= 38 (code "        X = 'LAB'\n        OUTPUT = 'b'   :(X)\nLAB     OUTPUT = 'c'\nEND\n")))
     (is (= :no-error (code "        X = 'LAB'\n        OUTPUT = 'd'   :($X)\nLAB     OUTPUT = 'e'\nEND\n")))))
 
+;; RETURN, FRETURN and NRETURN are special labels in capitals only while case-folding is off: "If case-folding is in effect, they may appear with any combination of
+;; upper- or lower-case letters" (SPITBOL manual ch. 16, Special names), so under sbl -bf :(return) goes to a label return of the program's own. The engine returned from
+;; the function. The oracle, sbl -bf, wrote exactly this output.
+(deftest lower-case-return-is-a-label-of-its-own-without-folding
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "	DEFINE('F()')	:(FE)\n"
+                   "F	OUTPUT = 'in F'	:(return)\n"
+                   "FE	F()\n"
+                   "	OUTPUT = 'after'\n"
+                   "return	OUTPUT = 'at the label return'\n"
+                   "END\n"))
+      (is (= "in F\nat the label return\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
 ;; END reached inside a function ends the program, and only RETURN, FRETURN and NRETURN end a call: "END ... A program should terminate execution by transferring to
 ;; label END" (SPITBOL manual ch. 16, Special names). The function wrapper took every signal for a return, so the program went on after the call. The oracle, sbl -bf, wrote
 ;; exactly this output.

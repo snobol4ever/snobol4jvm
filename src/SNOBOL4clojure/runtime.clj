@@ -21,10 +21,12 @@
             [SNOBOL4clojure.trace :refer [fire-label! statement-trace-active?]]
             [SNOBOL4clojure.operators :refer [EVAL!]]))
 
-;; Special goto targets that trigger control-flow signals rather than label jumps.
+;; Special goto targets that trigger control-flow signals rather than label jumps. "If case-folding is in effect, they may appear with any combination of upper- or
+;; lower-case letters" (manual ch. 16, Special names); without folding, as sbl -bf runs, RETURN, FRETURN and NRETURN are special in capitals only (:(return) is a label, or
+;; ERROR 038), and END as END or end. Folded source arrives in capitals.
 (def ^:private special-targets
-  #{"RETURN" "return" "FRETURN" "freturn" "NRETURN" "nreturn" "END" "end"
-    :RETURN :return :FRETURN :freturn :NRETURN :nreturn :END :end})
+  #{"RETURN" "FRETURN" "NRETURN" "END" "end"
+    :RETURN :FRETURN :NRETURN :END :end})
 
 (defn- dispatch-special! [target]
   (case (clojure.string/upper-case (name target))
