@@ -141,8 +141,9 @@
   (let [card (fn [re] (re-find (if fold (re-pattern (str "(?i)" re)) (re-pattern re)) command))]
     (cond
       (card "^-LINE\\s+\\d+")
-      (let [[_ n f] (re-find #"^-\S+\s+(\d+)(?:\s+\"([^\"]*)\")?" command)]
-        (assoc pos :file (or f (:file pos)) :revert nil :bp (inc pline) :bl (Long/parseLong n)))
+      ;; "-LINE line_number 'filename' ... The file name is optional, but must be quoted if it appears" (manual ch. 14): in single or double quotes
+      (let [[_ n f1 f2] (re-find #"^-\S+\s+(\d+)(?:\s+(?:\"([^\"]*)\"|'([^']*)'))?" command)]
+        (assoc pos :file (or f1 f2 (:file pos)) :revert nil :bp (inc pline) :bl (Long/parseLong n)))
       (card "^-FILE-ENTER\\s+\"")
       (let [[_ f] (re-find #"\"([^\"]*)\"" command)]
         (assoc pos :file f :bp (inc pline) :bl 1 :stack (conj (:stack pos) (assoc pos :card-line (+ (:bl pos) (- pline (:bp pos)))))))

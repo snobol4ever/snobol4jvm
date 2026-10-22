@@ -2129,3 +2129,19 @@
       (is (= "1\n5\n274 value assigned to keyword fullscan is zero 5\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; -LINE takes its file name in single quotes as well as double: "-LINE line_number 'filename' -- The file name is optional, but must be quoted if it appears"
+;; (SPITBOL manual ch. 14, Listing controls). The engine read only double quotes and kept the old name. The oracle, sbl -bf, wrote exactly this output.
+(deftest a-line-card-takes-a-single-quoted-file-name
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "-LINE 500 'single.sno'\n"
+                   "	OUTPUT = &FILE ':' &LINE\n"
+                   "-LINE 600 \"double.sno\"\n"
+                   "	OUTPUT = &FILE ':' &LINE\n"
+                   "-LINE 700\n"
+                   "	OUTPUT = &FILE ':' &LINE\n"
+                   "END\n"))
+      (is (= "single.sno:500\ndouble.sno:600\ndouble.sno:700\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
