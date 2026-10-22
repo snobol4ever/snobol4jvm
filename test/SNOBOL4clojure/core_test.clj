@@ -1407,3 +1407,15 @@
                    " (b ? '!' = '')  :F(NO)\n OUTPUT = 'b=' b\nNO\nEND\n"))
       (is (= "a=yes\na=aXc\nb=x\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; An input record is at most 1024 characters: a longer line is read as its first 1024 characters and the rest of the line is dropped, not read as the next
+;; record. The engine read the whole line (Budne's longrec reads a line of 2048 characters and prints 1024). The oracle, sbl -bf, wrote exactly this output
+;; for lines of 5000, 1030, 1024 and 1025 characters and a short one.
+(deftest an-input-record-is-at-most-1024-characters
+  (let [f  (java.io.File/createTempFile "longrec" ".sno")
+        in (str (apply str (repeat 5000 \a)) "\n" (apply str (repeat 1030 \b)) "\n" (apply str (repeat 1024 \c)) "\n" (apply str (repeat 1025 \d)) "\nshort\n")]
+    (try
+      (spit f "L1 L = INPUT                             :F(DONE)\n OUTPUT = SIZE(L) ' ' SUBSTR(L,1,3)    :(L1)\nDONE OUTPUT = 'eof'\nEND\n")
+      (is (= "1024 aaa\n1024 bbb\n1024 ccc\n1024 ddd\n5 sho\neof\n"
+             (binding [*in* (java.io.BufferedReader. (java.io.StringReader. in))] (with-out-str (-main (.getPath f))))))
+      (finally (.delete f)))))

@@ -254,9 +254,13 @@
   [N]
   (get @<VARS> (symbol (name N))))
 
-;; An input record as the program reads it: while &TRIM is not 0 the blanks and tabs at its end are dropped.
+;; An input record as the program reads it: at most 1024 characters, a longer line losing the rest of its length (it is not read as the next record), and
+;; while &TRIM is not 0 the blanks and tabs at its end dropped.
+(def ^:private record-length 1024)
+
 (defn input-record [line]
-  (let [s (str line)]
+  (let [s (str line)
+        s (if (clojure.core/> (count s) record-length) (subs s 0 record-length) s)]
     (if (zero? (long @&TRIM)) s (clojure.string/replace s #"[ \t]+$" ""))))
 
 (defn $$ [N]
