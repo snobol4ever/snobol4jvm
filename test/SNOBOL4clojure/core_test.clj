@@ -4006,3 +4006,40 @@
                    "0.685919432643687e+61\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; "261 Addition caused real overflow", "262 Division caused real overflow", "263 Multiplication caused real overflow", "264 Subtraction caused real overflow",
+;; "266 Exponentiation caused real overflow" (manual, Appendix D): a real result too large for a real is that error, as sbl -bf raises it. The engine gave an
+;; infinity and went on (X64T math_*: "division caused real overflow" read as Obs[inf]).
+(deftest real-arithmetic-that-overflows-is-an-error
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 20\n"
+                   "        B = 1.0e300 ; S = 1.0e-300 ; H = 1.7e308 ; Z = 0.0 ; ONE = 1.0\n"
+                   "        X = B * B\n"
+                   "        OUTPUT = 'mul ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = B / S\n"
+                   "        OUTPUT = 'div ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = H + H\n"
+                   "        OUTPUT = 'add ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = -H - H\n"
+                   "        OUTPUT = 'sub ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = B ** 2\n"
+                   "        OUTPUT = 'pow ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = ONE / Z\n"
+                   "        OUTPUT = 'div0 ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = -B * B\n"
+                   "        OUTPUT = 'neg ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        X = B * 10\n"
+                   "        OUTPUT = 'int ' &ERRTYPE ' ' &ERRLIMIT ' ' X\n"
+                   "END\n"))
+      (is (= (str "mul 263 multiplication caused real overflow\n"
+                   "div 262 division caused real overflow\n"
+                   "add 261 addition caused real overflow\n"
+                   "sub 264 subtraction caused real overflow\n"
+                   "pow 266 exponentiation caused real overflow\n"
+                   "div0 262 division caused real overflow\n"
+                   "neg 263 multiplication caused real overflow\n"
+                   "int 263 13 0.1e+302\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

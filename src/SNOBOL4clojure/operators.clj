@@ -98,6 +98,11 @@
 (defn- exact [exact-op a b code msg]
   (try (exact-op (long a) (long b)) (catch ArithmeticException _ (throw (ex-info msg {:snobol/error code})))))
 
+;; A real result too large for a real is the operator's error, "261 Addition caused real overflow" and its kin 262 to 264 and 266 (manual, Appendix D), as sbl -bf
+;; raises them.
+(defn- finite [r code msg]
+  (if (Double/isInfinite (double r)) (throw (ex-info msg {:snobol/error code})) r))
+
 ;; The numeric comparisons: "N1 and n2 must evaluate to integer or real values" (manual ch. 19, EQ and its kin), compared as numbers whatever their types, so EQ(2.0,2)
 ;; succeeds; an argument that is not numeric is the function's error (Appendix D: EQ 101/102, NE 149/150, LT 147/148, LE 118/119, GT 111/112, GE 109/110). An argument left
 ;; out is the null string, 0.
@@ -138,7 +143,7 @@
             (throw (ex-info "exponentiation caused integer overflow" {:snobol/error 17})))))
       (if (and (integer? x) (zero? x) (neg? y))
         0.0
-        (Math/pow (double x) (double y))))))
+        (finite (Math/pow (double x) (double y)) 266 "exponentiation caused real overflow")))))
 (defn !     ([_x]       η)
             ([x y]      (pow-fn x y)))
 (defn **    ([x y]      (pow-fn x y)))
@@ -243,7 +248,7 @@
                     b (operand (second args) 2 "addition right operand is not numeric")]
                 (if (and (integer? a) (integer? b))
                   (exact #(Math/addExact ^long %1 ^long %2) a b 3 "addition caused integer overflow")
-                  (clojure.core/+ a b))))
+                  (finite (clojure.core/+ a b) 261 "addition caused real overflow"))))
     -       (if (clojure.core/= 1 (count args))
               (let [a (operand (first args) 10 "negation operand is not numeric")]
                 (if (integer? a) (exact #(Math/subtractExact ^long %1 ^long %2) 0 a 11 "negation caused integer overflow") (clojure.core/- a)))
@@ -251,12 +256,12 @@
                     b (operand (second args) 33 "subtraction right operand is not numeric")]
                 (if (and (integer? a) (integer? b))
                   (exact #(Math/subtractExact ^long %1 ^long %2) a b 34 "subtraction caused integer overflow")
-                  (clojure.core/- a b))))
+                  (finite (clojure.core/- a b) 264 "subtraction caused real overflow"))))
     *       (let [a (operand (first args) 26 "multiplication left operand is not numeric")
                   b (operand (second args) 27 "multiplication right operand is not numeric")]
               (if (and (integer? a) (integer? b))
                 (exact #(Math/multiplyExact ^long %1 ^long %2) a b 28 "multiplication caused integer overflow")
-                (clojure.core/* a b)))
+                (finite (clojure.core/* a b) 263 "multiplication caused real overflow")))
     tilde   (let [v (first args)]       ; ~ negates success/failure
               (if (nil? v) ε nil))
     ;; a zero divisor is "14 Division caused integer overflow" between integers and "262 Division caused real overflow" otherwise, as sbl -bf reports them
@@ -268,7 +273,7 @@
                   (throw (ex-info "division caused integer overflow" {:snobol/error 14}))
                   (quot a b))
                 (zero? (double b)) (throw (ex-info "division caused real overflow" {:snobol/error 262}))
-                :else (clojure.core// (double a) (double b))))
+                :else (finite (clojure.core// (double a) (double b)) 262 "division caused real overflow")))
     **      (let [[x y] args] (pow-fn x y))
     ;; "(SUBJECT ? PATTERN) performs pattern matching and returns the substring matched, or failure as its value" (manual ch. 9, Binary operator extensions)
     ?       (let [[s p] args s (str s)] (when-let [[a b] (SEARCH s p)] (subs s a b)))
