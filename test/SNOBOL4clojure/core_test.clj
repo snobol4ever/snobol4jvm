@@ -1518,3 +1518,17 @@
                   "g: shared copy same next\nh: []\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; An execution error with &ERRLIMIT not 0 is not fatal: &ERRLIMIT drops by one, &ERRTYPE and &ERRTEXT record the error, no message is written, and the statement fails
+;; (its F branch is taken). Assigning to a subscript of a variable that holds no table or array is ERROR 235. The engine failed the statement but left the keywords as they
+;; were (Budne's err). The oracle, sbl -bf, wrote exactly this output.
+(deftest an-error-under-errlimit-fails-the-statement-and-sets-the-error-keywords
+  (let [f (java.io.File/createTempFile "errlimit" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 2\n" "        OUTPUT = &ERRTYPE ' ' &ERRLIMIT\n" "        a<1> = 'x'              :S(OK)F(NOPE)\n"
+                   "        OUTPUT = 'fell through'\n" "OK      OUTPUT = 'S branch'     :(NEXT)\n"
+                   "NOPE    OUTPUT = 'F branch ' &ERRTYPE ' ' &ERRLIMIT ' ' &ERRTEXT\n" "NEXT    a<2> =\n"
+                   "        OUTPUT = &ERRTYPE ' ' &ERRLIMIT ' ' &ERRTEXT\n" "END\n"))
+      (is (= (str "0 2\nF branch 235 1 subscripted operand is not table or array\n235 0 subscripted operand is not table or array\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

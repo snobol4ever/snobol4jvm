@@ -260,7 +260,8 @@
                     ;; DATA field setter: accessor(instance) = val assigns the field of the object in place (the instance is already evaluated)
                     (fn? container)
                     (when (container (first ks) r) r)
-                    :else nil))
+                    ;; a variable that holds no table, array or object cannot be subscripted: ERROR 235, as SPITBOL raises it
+                    :else (throw (ex-info "subscripted operand is not table or array" {:snobol/error 235}))))
                 ;; normal variable assignment
                 (clojure.core/contains? #{'OUTPUT 'TERMINAL 'INPUT} N)
                 (let [out-val (concat-value r)]

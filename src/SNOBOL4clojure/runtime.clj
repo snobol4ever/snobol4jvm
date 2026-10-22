@@ -14,7 +14,7 @@
   Statement-level trace (wildcard '*') prints each statement number + label.
   Pattern traces are handled in match.clj via *trace* dynamic var."
   (:require [SNOBOL4clojure.env   :refer [<STNO> <LABL> <CODE> <DISPNO>
-                                           &STCOUNT &STLIMIT &TRACE &STNO &LASTNO
+                                           &STCOUNT &STLIMIT &TRACE &STNO &LASTNO &ERRLIMIT &ERRTYPE &ERRTEXT
                                            snobol-return! snobol-freturn!
                                            snobol-nreturn! snobol-end!
                                            snobol-steplimit!]]
@@ -32,6 +32,20 @@
     "FRETURN" (snobol-freturn!)
     "NRETURN" (snobol-nreturn!)
     "END"     (snobol-end!)))
+
+;; An execution error under &ERRLIMIT not 0 is not fatal: &ERRLIMIT drops by one, &ERRTYPE and &ERRTEXT record the error, nothing is written, and the statement fails.
+;; With &ERRLIMIT at 0 the error goes on up and ends the program.
+(defn- exec-body [body]
+  (try
+    (or (nil? body) (EVAL! body))
+    (catch clojure.lang.ExceptionInfo e
+      (let [n (:snobol/error (ex-data e))]
+        (if (and n (pos? (long @&ERRLIMIT)))
+          (do (swap! &ERRLIMIT dec)
+              (reset! &ERRTYPE n)
+              (reset! &ERRTEXT (ex-message e))
+              false)
+          (throw e))))))
 
 (defn RUN [at]
   (letfn
@@ -98,7 +112,7 @@
                   seqond (second stmt)
                   body   (if (map? ferst) seqond ferst)
                   goto   (if (map? ferst) ferst  seqond)]
-              (if (or (nil? body) (EVAL! body))
+              (if (exec-body body)
                 ;; success branch — goto is nil or a map; guard contains? against non-maps
                 ;; nil body = no operation = unconditional success (pure-goto statement)
                 (let [tgt (computed-target (or (when (map? goto) (or (:G goto) (:S goto)))))]
