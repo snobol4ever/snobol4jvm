@@ -65,6 +65,7 @@
                 (flush [])))]
       (trace-register! "I" "VALUE")
       (prog-timeout 500
+        "        &TRACE = 100"
         "        I = 42"
         "END"))
     (is (some #(.contains % "42") @log)
@@ -96,6 +97,7 @@
                 (flush [])))]
       (trace-register! "MYLOOP" "LABEL")
       (prog-timeout 500
+        "        &TRACE = 100"
         "        I = 0"
         "MYLOOP  I = I + 1"
         "        LT(I,3)   :S(MYLOOP)"
@@ -114,6 +116,7 @@
                 (flush [])))]
       (trace-register! "DOUBLE" "CALL")
       (prog-timeout 500
+        "        &TRACE = 100"
         "        DEFINE('DOUBLE(X)')   :(DOUBLE_END)"
         "DOUBLE  DOUBLE = X + X        :(RETURN)"
         "DOUBLE_END"
@@ -132,6 +135,7 @@
                 (flush [])))]
       (trace-register! "DOUBLE" "RETURN")
       (prog-timeout 500
+        "        &TRACE = 100"
         "        DEFINE('DOUBLE(X)')   :(DOUBLE_END)"
         "DOUBLE  DOUBLE = X + X        :(RETURN)"
         "DOUBLE_END"
@@ -158,12 +162,13 @@
 
 ;; ── enable-full-trace! convenience ───────────────────────────────────────────
 
-(deftest enable-full-trace-sets-atrace
-  "enable-full-trace! registers 4 wildcard traces, setting &TRACE = 4."
+(deftest enable-full-trace-registers-the-wildcard-traces
+  "enable-full-trace! registers the wildcard label, value, call and return traces; &TRACE, the count the program sets, is not touched."
   (trace-enable-full!)
-  (is (= 4 @SNOBOL4clojure.env/&TRACE))
+  (is (= 0 @SNOBOL4clojure.env/&TRACE))
+  (is (every? #(SNOBOL4clojure.trace/active? "*" %) ["LABEL" "VALUE" "CALL" "RETURN"]))
   (trace-disable-full!)
-  (is (= 0 @SNOBOL4clojure.env/&TRACE)))
+  (is (not-any? #(SNOBOL4clojure.trace/active? "*" %) ["LABEL" "VALUE" "CALL" "RETURN"])))
 
 ;; ── Sprint 18C: snapshot! / run-to-step / probe-test ────────────────────────
 

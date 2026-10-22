@@ -47,12 +47,10 @@
 (def  &IOCOMPAT  (atom :catspaw))
 (def  &UCASE     "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
-;; The value each settable keyword holds when a program starts. &TRACE is
-;; settable too but is not reset: trace.clj keeps it at the size of the trace
-;; registry, which outlives a program.
+;; The value each settable keyword holds when a program starts.
 (def ^:private keyword-defaults
   {#'&ANCHOR 0, #'&DUMP 0, #'&ERRLIMIT 0, #'&FTRACE 0, #'&FULLSCAN 0,
-   #'&MAXLNGTH 4194304, #'&PROFILE 0, #'&TRIM 1,
+   #'&MAXLNGTH 4194304, #'&PROFILE 0, #'&TRIM 1, #'&TRACE 0,
    #'&STLIMIT 2147483647, #'&IOCOMPAT :catspaw})
 
 (defn reset-keywords!
@@ -89,6 +87,7 @@
 ;;   :arity 0 = function synonym (no-op on arity, just alias)
 ;;   :arity 1 = unary operator redefinition
 ;;   :arity 2 = binary operator redefinition
+(def <TRACES> (atom {}))   ; the TRACE registrations: [name kind] -> options; a program's own state, reset with the rest
 (def <OPSYN> (atom {}))
 
 ;; ── Runtime statement table (used by compiler + runtime) ─────────────────────
@@ -206,6 +205,7 @@
        (catch Exception _ nil)))
    (reset! <CHANNELS> {})
    (reset! <OPSYN>    {})
+   (reset! <TRACES>   {})
    (reset! STNO    0)
    (reset! <STNO>  {})
    (reset! <LABL>  {})

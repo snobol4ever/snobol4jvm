@@ -1275,3 +1275,20 @@
       (is (= "1\n2\n3\n3 4\n5\n6 8\nin F: 12 10\nafter: 11 12 13\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f))))
   (is (= 209 (try (RUN (CODE " &STNO = 5\nEND\n")) :no-error (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e)))))))
+
+;; A VALUE trace writes a line to the output when the variable is assigned: four asterisks and the statement number, filled with asterisks to 12 characters,
+;; two blanks, then the name, " = " and the value as a dump shows it (a string in quotes as it is, a NAME with a point, a real with its point). Names are
+;; read in the case they are written, so TRACE('foo') does not trace FOO. A trace line costs 1 of &TRACE, which the program sets and which stops the traces at
+;; 0; TRACE itself does not touch &TRACE. The type may be given in any case and by its first letters (V, VAL). The engine wrote "*** FOO = ..." to the
+;; error stream, folded the name and counted registrations in &TRACE. The oracle, sbl -bf, wrote exactly this output.
+(deftest a-value-trace-writes-the-statement-number-name-and-value
+  (let [f (java.io.File/createTempFile "trval" ".sno")]
+    (try
+      (spit f (str " &TRACE = 100\n TRACE('foo')\n foo = 1\n foo = 'str'\n foo = 2.5\n foo = ''\n foo = .bar\n X = foo\n TRACE('baz','VALUE')\n baz = 'a b'\n"
+                   " TRACE(.qux,'V')\n qux = 3\n STOPTR('foo')\n foo = 99\n OUTPUT = 'trace count: ' &TRACE\n &TRACE = 2\n baz = 'c'\n baz = 'd'\n baz = 'e'\n"
+                   " OUTPUT = 'trace count: ' &TRACE\n FOO = 5\n TRACE('FOO')\n &TRACE = 5\n foo = 6\n FOO = 7\nEND\n"))
+      (is (= (str "****3*******  foo = 1\n****4*******  foo = 'str'\n****5*******  foo = 2.5\n****6*******  foo = ''\n****7*******  foo = .bar\n"
+                  "****10******  baz = 'a b'\n****12******  qux = 3\ntrace count: 93\n****17******  baz = 'c'\n****18******  baz = 'd'\ntrace count: 0\n"
+                  "****25******  FOO = 7\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

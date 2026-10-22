@@ -1,84 +1,70 @@
 (ns SNOBOL4clojure.trace
-  "Complete SNOBOL4 TRACE / STOPTR / &TRACE / &FTRACE implementation.
-
-  ## Standard SNOBOL4 TRACE semantics (Gimpel §7, CSNOBOL4 manual §6)
+  "SNOBOL4 TRACE / STOPTR / &TRACE as SPITBOL (sbl -bf) does them.
 
   TRACE(name, type [, label [, fn]])
-    Register a trace trigger on `name` of the given `type`.
-    Optional `label` — go to this label when trace fires (instead of printing).
-    Optional `fn`    — call this user function when trace fires.
+    Register a trace trigger on `name`. The type is read in any case by its first letter:
+    V(ALUE) fires when the named variable is assigned a value. A name is read in the case it is written.
+    L(ABEL), C(ALL), R(ETURN), F(UNCTION = call and return), K(EYWORD) are registered too; a type that begins with
+    another letter is ERROR 199.
 
   STOPTR(name, type)
     Remove the trace registration for (name, type).
 
-  Trace types (case-insensitive in standard; we normalise to uppercase):
-    VALUE   — fires when the named variable is assigned a new value
-    LABEL   — fires when execution reaches the named label
-    CALL    — fires when the named user-defined function is called
-    RETURN  — fires when the named user-defined function returns
-    PATTERN — fires at each step of the pattern match engine (per-node trace)
-    KEYWORD — fires when a SNOBOL4 keyword (&VAR) is changed
-
   &TRACE  (env/&TRACE atom)
-    Number of currently active trace registrations.
-    Set to 0 to suppress all trace output without calling STOPTR.
-    When >0, trace output goes to *trace-output* (default *err*).
+    A count the program sets. A trace line is written only while it is above 0, and each line costs 1. TRACE and
+    STOPTR do not touch it.
 
-  &FTRACE (env/&FTRACE atom)
-    Function call trace budget. Decremented each time a CALL/RETURN trace
-    fires. When it reaches 0, function tracing stops automatically.
-    Set to N to trace the next N function call/return events.
-    Set to 0 to disable. Default: 0 (off).
+  ## Output
 
-  ## Output format (matches CSNOBOL4)
+  A trace line goes to the program's output (stdout):  four asterisks and the number of the statement, filled with
+  asterisks to 12 characters, two blanks, then the text. A VALUE trace's text is `name = value`, the value as a dump
+  shows it: a string in quotes exactly as it is, a NAME with a point, a real with its point, PATTERN for a pattern.
 
-    VALUE:   *** name = <newvalue>
-    LABEL:   *** label
-    CALL:    *** fn(arg1, arg2, ...)
-    RETURN:  *** fn => <returnvalue>  (or FRETURN/NRETURN)
-    PATTERN: (handled by engine_frame/animate — existing *trace* dynamic var)
-    KEYWORD: *** &name = <newvalue>
-
-  ## Integration points
-
-    runtime.clj  — call (trace-label! key) each statement, (trace-stcount! n)
-    operators.clj — call (trace-value! sym newval) on INVOKE '= branch
-    functions.clj — call (trace-call! fname args) / (trace-return! fname val)
-    match.clj     — bind *trace* true when PATTERN trace active for subject var
+  Other trace types keep the form they had until they are measured against the oracle.
   "
-  (:require [SNOBOL4clojure.env :refer [&TRACE &FTRACE $$]]))
+  (:require [SNOBOL4clojure.env :refer [&TRACE &FTRACE &STNO $$ real-str <TRACES>]])
+  (:import  [SNOBOL4clojure.env NAME]))
 
-;; ── Registry ──────────────────────────────────────────────────────────────────
-;; Maps [normalised-name normalised-type] -> {:label lbl :fn fn-name}
-;; Both keys are uppercase strings.
+;; ── Registry ───────────────────────────────────────────�
+;; Maps [name kind] -> {:label lbl :fn fn-name}. A name is kept as written; a kind is :value :label :call :return :keyword.
 
-(def ^:private registry (atom {}))
+(def ^:private registry <TRACES>)
 
-(defn- norm [x] (clojure.string/upper-case (str x)))
+(defn- trace-kinds
+  "The kinds a trace type registers, by its first letter in any case: V value, L label, C call, R return, F both of a function's, K keyword.
+   Any other letter is ERROR 199, trace second argument is not trace type."
+  [type]
+  (case (first (clojure.string/upper-case (str type)))
+    \V [:value]
+    \L [:label]
+    \C [:call]
+    \R [:return]
+    \F [:call :return]
+    \K [:keyword]
+    (throw (ex-info "trace second argument is not trace type" {:snobol/error 199}))))
 
-(defn- reg-key [name type] [(norm name) (norm type)])
+(defn- reg-key [name kind] [(str name) kind])
 
-;; ── Public registration API ───────────────────────────────────────────────────
+;; ── Public registration API ──────────────────────────────────────�
 
 (defn trace!
   "Register a trace. Called by INVOKE's TRACE branch.
-   name  — variable/label/function name (string or symbol)
-   type  — trace type string: VALUE LABEL CALL RETURN PATTERN KEYWORD
+   name  — variable/label/function name (a string, a symbol or a NAME)
+   type  — trace type: VALUE LABEL CALL RETURN FUNCTION KEYWORD, or by its first letter(s)
    label — optional goto label (string/keyword) when trace fires
    fn    — optional user function name to call when trace fires"
   ([name type]       (trace! name type nil nil))
   ([name type label] (trace! name type label nil))
   ([name type label user-fn]
-   (let [k (reg-key name type)]
-     (swap! registry assoc k {:label label :fn user-fn})
-     (reset! &TRACE (count @registry))
-     nil)))
+   (doseq [kind (trace-kinds type)]
+     (swap! registry assoc (reg-key name kind) {:label label :fn user-fn}))
+   nil))
 
 (defn stoptr!
   "Remove a trace registration. Called by INVOKE's STOPTR branch."
   [name type]
-  (swap! registry dissoc (reg-key name type))
-  (reset! &TRACE (count @registry))
+  (doseq [kind (trace-kinds type)]
+    (swap! registry dissoc (reg-key name kind)))
   nil)
 
 (defn clear-all-traces!
@@ -89,9 +75,9 @@
   nil)
 
 (defn active?
-  "True if any trace of the given type is registered for name."
+  "True if a trace of the given type is registered for name."
   [name type]
-  (contains? @registry (reg-key name type)))
+  (boolean (some #(contains? @registry (reg-key name %)) (trace-kinds type))))
 
 (defn any-active?
   "True if any trace of any type is currently registered."
@@ -101,14 +87,39 @@
 ;; ── Trace output ──────────────────────────────────────────────────────────────
 
 (def ^:dynamic *trace-output*
-  "Where trace output goes. Default: *err* (stderr), matching CSNOBOL4.
-   Rebind to *out* or a writer in tests to capture trace output."
+  "Where trace output goes. Default: the program's output (*out*), as in SPITBOL.
+   Rebind to a writer in tests to capture trace output."
   nil)
 
 (defn- trace-println [& args]
-  (let [w (or *trace-output* *err*)]
+  (let [w (or *trace-output* *out*)]
     (binding [*out* w]
       (println (apply str args)))))
+
+(defn- star-field
+  "Four asterisks and the number of the statement being executed, filled with asterisks to 12 characters."
+  []
+  (let [s (str "****" @&STNO)]
+    (str s (apply str (repeat (max 0 (- 12 (count s))) \*)))))
+
+(defn- trace-val
+  "A value as a dump shows it: a string in quotes exactly as it is, a NAME with a point, a real with its point, PATTERN for a pattern."
+  [v]
+  (cond
+    (nil? v)                  "''"
+    (string? v)               (str "'" v "'")
+    (instance? NAME v)        (str "." (.n ^NAME v))
+    (integer? v)              (str v)
+    (double? v)               (real-str v)
+    (and (or (list? v) (vector? v)) (= "PATTERN" (SNOBOL4clojure.env/DATATYPE v))) "PATTERN"
+    :else                     (str v)))
+
+(defn- emit-line!
+  "Write one trace line if &TRACE is above 0, and charge it 1."
+  [text]
+  (when (pos? @&TRACE)
+    (swap! &TRACE dec)
+    (trace-println (star-field) "  " text)))
 
 ;; ── Fire helpers — called from runtime / operators / functions ────────────────
 
@@ -116,22 +127,16 @@
   "Fire VALUE trace for `sym` being assigned `new-val`.
    Called from operators.clj INVOKE '= after the assignment."
   [sym new-val]
-  (when (pos? @&TRACE)
-    (when-let [entry (@registry (reg-key sym "VALUE"))]
-      (if (:label entry)
-        ;; Goto-label trace: the runtime must handle this; we return the label.
-        ;; (Label-goto traces are unusual; we emit output AND return label.)
-        (do (trace-println "*** " (norm sym) " = " (pr-str new-val))
-            (:label entry))
-        (do (trace-println "*** " (norm sym) " = " (pr-str new-val))
-            nil)))))
+  (when-let [entry (@registry (reg-key sym :value))]
+    (emit-line! (str sym " = " (trace-val new-val)))
+    (:label entry)))
 
 (defn fire-keyword!
   "Fire KEYWORD trace for `kw-sym` (&VAR) being set to `new-val`."
   [kw-sym new-val]
   (when (pos? @&TRACE)
-    (when (@registry (reg-key kw-sym "KEYWORD"))
-      (trace-println "*** &" (norm kw-sym) " = " (pr-str new-val)))))
+    (when (@registry (reg-key kw-sym :keyword))
+      (trace-println "*** &" kw-sym " = " (pr-str new-val)))))
 
 (defn fire-label!
   "Fire LABEL trace when execution reaches `label-key`.
@@ -140,8 +145,8 @@
   [label-key]
   (when (pos? @&TRACE)
     (let [lname (if (keyword? label-key) (name label-key) (str label-key))]
-      (when (@registry (reg-key lname "LABEL"))
-        (trace-println "*** " (norm lname))))))
+      (when (@registry (reg-key lname :label))
+        (trace-println "*** " lname)))))
 
 (defn fire-call!
   "Fire CALL trace when user function `fname` is called with `args`.
@@ -150,12 +155,12 @@
   [fname args]
   (when (pos? @&FTRACE)
     (swap! &FTRACE dec)
-    (when (@registry (reg-key fname "CALL"))
-      (trace-println "*** " (norm fname)
+    (when (@registry (reg-key fname :call))
+      (trace-println "*** " fname
                      "(" (clojure.string/join ", " (map pr-str args)) ")")))
   (when (pos? @&TRACE)
-    (when (@registry (reg-key fname "CALL"))
-      (trace-println "*** " (norm fname)
+    (when (@registry (reg-key fname :call))
+      (trace-println "*** " fname
                      "(" (clojure.string/join ", " (map pr-str args)) ")"))))
 
 (defn fire-return!
@@ -163,20 +168,20 @@
    signal is :return :freturn or :nreturn."
   [fname val signal]
   (when (or (pos? @&FTRACE) (pos? @&TRACE))
-    (when (@registry (reg-key fname "RETURN"))
+    (when (@registry (reg-key fname :return))
       (let [tag (case signal
                   :freturn " [FRETURN]"
                   :nreturn " [NRETURN]"
                   "")]
-        (trace-println "*** " (norm fname) " => " (pr-str val) tag)))))
+        (trace-println "*** " fname " => " (pr-str val) tag)))))
 
 (defn pattern-trace-active?
   "True if PATTERN trace is registered for `subject-var` (or globally via \"*\").
    Used by match.clj to decide whether to bind *trace* true."
   [subject-var]
   (and (pos? @&TRACE)
-       (or (@registry (reg-key subject-var "PATTERN"))
-           (@registry (reg-key "*" "PATTERN")))))
+       (or (@registry (reg-key subject-var :pattern))
+           (@registry (reg-key "*" :pattern)))))
 
 ;; ── &TRACE as a simple on/off toggle (convenience, non-standard extension) ────
 ;; Setting &TRACE = 1 with no registrations enables a default statement trace.
@@ -187,7 +192,7 @@
    is registered. This is our extension for full statement-by-statement tracing."
   []
   (and (pos? @&TRACE)
-       (@registry (reg-key "*" "LABEL"))))
+       (@registry (reg-key "*" :label))))
 
 (defn enable-full-trace!
   "Convenience: register a global statement+value trace. Sets &TRACE > 0.
