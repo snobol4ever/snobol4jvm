@@ -40,6 +40,16 @@
 (defn- same-output? [expected actual]
   (clojure.core/= (clojure.string/replace (str expected) #"\n+$" "") (clojure.string/replace (str actual) #"\n+$" "")))
 
+;; A program that names its own file (&FILE, &LINE) or includes another is run from a file: the files are written to a scratch directory, the first is run as the program, and the
+;; output has that directory taken out of the names it prints, as the refs have them.
+(defn- run-files [files]
+  (let [dir (.toFile (java.nio.file.Files/createTempDirectory "csnobol4-files" (make-array java.nio.file.attribute.FileAttribute 0)))]
+    (try
+      (doseq [[f text] files] (spit (java.io.File. dir ^String f) text :encoding "ISO-8859-1"))
+      (let [main (str dir "/" (ffirst files))]
+        (clojure.string/replace (with-out-str (-main main)) (str dir "/") ""))
+      (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))
+
 ;; ── FENCE crosscheck tests (058–067) ───────────────────────────────────────
 
 (deftest fence-058-pat-fence-keyword
@@ -3749,25 +3759,29 @@ end
 " (:stdout r)))))
 
 (deftest csnobol4-include
-  "Budne suite: include.sno"
-  (let [r (run-with-timeout "	output = &file ':' &line
--include \"line2.sno\"
-	output = &file ':' &line
--include \"line2.sno \"
-	output = &file ':' &line
--include \"line2.sno\"
-	output = &file ':' &line
-end
-" 2000)]
-    (is (= "include.sno:1
+  "Budne suite: include.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [out (run-files [["include.sno" "	OUTPUT = &FILE ':' &LINE
+-INCLUDE \"line2.sno\"
+	OUTPUT = &FILE ':' &LINE
+-INCLUDE \"line2.sno \"
+	OUTPUT = &FILE ':' &LINE
+-INCLUDE \"line2.sno\"
+	OUTPUT = &FILE ':' &LINE
+END
+"]
+                      ["line2.sno" "	OUTPUT = &LASTFILE ':' &LASTLINE ' (last)'
+	OUTPUT = &FILE ':' &LINE ' (line2)'
+*
+"]])]
+    (is (same-output? "include.sno:1
 include.sno:1 (last)
 line2.sno:2 (line2)
-include.sno:3
-include.sno:3 (last)
+line2.sno:3
+line2.sno:3 (last)
 line2.sno:2 (line2)
-include.sno:5
+line2.sno:5
 include.sno:7
-" (:stdout r)))))
+" out))))
 
 (deftest csnobol4-include2
   "Budne suite: include2.sno"
@@ -4345,32 +4359,36 @@ END
 " (:stdout r)))))
 
 (deftest csnobol4-line
-  "Budne suite: line.sno"
-  (let [r (run-with-timeout "	output = &file ':' &line
--include \"line2.sno\"
-	output = &file ':' &line
--line 1234 \"foo\"
-	output = &file ':' &line
--line 2000 \"foo\"
-	output = &file ':' &line
--include \"line2.sno \"
-	output = &file ':' &line
+  "Budne suite: line.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [out (run-files [["line.sno" "	OUTPUT = &FILE ':' &LINE
+-INCLUDE \"line2.sno\"
+	OUTPUT = &FILE ':' &LINE
+-LINE 1234 \"foo\"
+	OUTPUT = &FILE ':' &LINE
+-LINE 2000 \"foo\"
+	OUTPUT = &FILE ':' &LINE
+-INCLUDE \"line2.sno \"
+	OUTPUT = &FILE ':' &LINE
 * test multiple includes 02/22/02
--include \"line2.sno\"
-	output = &file ':' &line
-end
-" 2000)]
-    (is (= "line.sno:1
+-INCLUDE \"line2.sno\"
+	OUTPUT = &FILE ':' &LINE
+END
+"]
+                      ["line2.sno" "	OUTPUT = &LASTFILE ':' &LASTLINE ' (last)'
+	OUTPUT = &FILE ':' &LINE ' (line2)'
+*
+"]])]
+    (is (same-output? "line.sno:1
 line.sno:1 (last)
 line2.sno:2 (line2)
-line.sno:3
+line2.sno:3
 foo:1234
 foo:2000
 foo:2000 (last)
 line2.sno:2 (line2)
-foo:2002
+line2.sno:2002
 foo:2005
-" (:stdout r)))))
+" out))))
 
 (deftest csnobol4-loaderr
   "Budne suite: loaderr.sno"
