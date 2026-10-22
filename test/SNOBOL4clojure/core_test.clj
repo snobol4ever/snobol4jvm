@@ -1103,3 +1103,15 @@
                    " TRACE('V','VALUE')\n 'q' LEN(1) . V\n OUTPUT = 'V=' V\nEND\n"))
       (is (= "a\nb\nc\n--\nx\n--\n\na\nab\n--\nV=q\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; Conditional assignments are made in the order the pattern matched them, so the last capture into a variable is the one that stays: 'hello' LEN(2) . V
+;; LEN(1) . V leaves V = l, and a capture into OUTPUT writes he and then l. The matcher committed them last first, so the first capture stayed. The oracle,
+;; sbl -bf, wrote exactly this output.
+(deftest conditional-captures-are-assigned-in-match-order
+  (let [f (java.io.File/createTempFile "capord" ".sno")]
+    (try
+      (spit f (str " 'hello' LEN(2) . V LEN(1) . V\n OUTPUT = 'V=' V\n"
+                   " 'abcd' LEN(1) . W LEN(1) . W LEN(1) . W\n OUTPUT = 'W=' W\n"
+                   " 'hello' LEN(2) . OUTPUT LEN(1) . OUTPUT\nEND\n"))
+      (is (= "V=l\nW=c\nhe\nl\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

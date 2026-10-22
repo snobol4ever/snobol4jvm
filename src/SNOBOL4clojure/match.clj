@@ -551,9 +551,9 @@
 (defn- commit-pending!
   "Commit all pending conditional (.) assignments to their variables.
    Called by SEARCH/MATCH/FULLMATCH when the engine returns success.
-   Mirrors CSNOBOL4/v311 NMD procedure that walks the NAMICL name list."
+   They are made in the order the pattern matched them, so the last capture into a variable is the one that stays (sbl -bf)."
   []
-  (doseq [[var-sym text] (reverse @*pending-cond*)]
+  (doseq [[var-sym text] @*pending-cond*]
     (assign! var-sym text)))
 
 (defn SEARCH
