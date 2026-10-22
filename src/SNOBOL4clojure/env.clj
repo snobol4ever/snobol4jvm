@@ -380,7 +380,9 @@
         ;; ("These variables contain the primitive patterns of the same name", manual ch. 18: ABORT, ARB, BAL, FAIL, FENCE, REM, SUCCEED)
         (let [resolved (ns-resolve (find-ns 'SNOBOL4clojure.core) sym)
               v        (when (instance? clojure.lang.Var resolved) (var-get resolved))]
-          (if (or (nil? v) (and (fn? v) (not= sym 'FENCE))) ε v))))))
+          (if (or (nil? v) (and (fn? v) (not= sym 'FENCE)))
+            ε
+            v))))))
 
 ;; ── Variable snapshot ────────────────────────────────────────────────────────
 (defn snapshot!

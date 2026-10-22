@@ -24,7 +24,7 @@
     (env/array? v)        (str "ARRAY(" (dims-text (:dims v)) ") #" (:serial v))
     (env/table? v)        (str "TABLE(" (:size (meta v) 11) ") #" (:serial (meta v)))
     (instance? DataObj v) (str (.type-name ^DataObj v) " #" (.serial ^DataObj v))
-    (:defer-var (meta v)) (str "*" (:defer-var (meta v)))
+    (symbol? (:defer-var (meta v))) (str "*" (:defer-var (meta v)))   ; *NAME for a variable, EXPRESSION for anything larger
     :else (env/DATATYPE v)))
 
 (defn- variables []

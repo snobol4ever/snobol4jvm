@@ -2920,3 +2920,59 @@
       (is (= "y b a z\nyy bb\nrson of clunk: 41 field function argument is wrong datatype\nval of a string: 41\nrson(clunk) = : 41\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; In a dump an unevaluated expression of a variable reads *NAME and any larger one EXPRESSION, as sbl -bf writes it; the engine wrote the IR of the larger ones
+;; (*["ABC" "DEF"], TPgm test1). The oracle, sbl -bf, wrote exactly this output.
+(deftest a-dump-writes-a-compound-expression-as-expression
+  (let [dir  (.toFile (java.nio.file.Files/createTempDirectory "srcpos" (make-array java.nio.file.attribute.FileAttribute 0)))
+        main (str dir "/dex.sno")]
+    (try
+      (spit (str dir "/dex.sno") (str "	Q = 'q'\n"
+                  "	X = *('A' 'B')\n"
+                  "	Y = *Q\n"
+                  "	F = *IDENT(1,2)\n"
+                  "	&DUMP = 1\n"
+                  "END\n"))
+      (is (= (clojure.string/replace (str "\n"
+                                         "\n"
+                                         "\n"
+                                         "dump of natural variables\n"
+                                         "\n"
+                                         "F = EXPRESSION\n"
+                                         "Q = 'q'\n"
+                                         "X = EXPRESSION\n"
+                                         "Y = *Q\n"
+                                         "\n"
+                                         "\n"
+                                         "dump of keyword values\n"
+                                         "\n"
+                                         "&ANCHOR = 0\n"
+                                         "&CASE = 0\n"
+                                         "&CODE = 0\n"
+                                         "&DUMP = 1\n"
+                                         "&ERRLIMIT = 0\n"
+                                         "&ERRTEXT = ''\n"
+                                         "&ERRTYPE = 0\n"
+                                         "&FILE = 'dex.sno'\n"
+                                         "&FNCLEVEL = 0\n"
+                                         "&FTRACE = 0\n"
+                                         "&FULLSCAN = 1\n"
+                                         "&INPUT = 1\n"
+                                         "&LASTFILE = 'dex.sno'\n"
+                                         "&LASTLINE = 5\n"
+                                         "&LASTNO = 5\n"
+                                         "&LINE = 6\n"
+                                         "&MAXLNGTH = 16777216\n"
+                                         "&OUTPUT = 1\n"
+                                         "&PROFILE = 0\n"
+                                         "&RTNTYPE = ''\n"
+                                         "&STCOUNT = 6\n"
+                                         "&STLIMIT = 2147483647\n"
+                                         "&STNO = 6\n"
+                                         "&TRACE = 0\n"
+                                         "&TRIM = 1\n"
+                                         "\n"
+                                         "\n"
+                                         "\n") "dex.sno" main)
+             (with-out-str (-main main))))
+      (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))
