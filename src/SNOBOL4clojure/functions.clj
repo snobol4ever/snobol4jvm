@@ -19,8 +19,7 @@
     (cond
       (clojure.core/= t "") 0.0
       (re-matches #"[+-]?(\d+\.?\d*|\.\d+)([eEdD][+-]?\d+)?" t)
-      (let [d (Double/parseDouble (clojure.string/replace t #"[dD]" "e"))]
-        (when-not (Double/isInfinite d) d))
+      (env/parse-real t)
       :else nil)))
 
 (defn- real->integer

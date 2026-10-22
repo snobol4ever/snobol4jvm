@@ -3963,3 +3963,46 @@
                    "12 [5] 8\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; "The real number is converted to its standard representation. If an exponent is produced, it will always be signed. In all cases, the string will have a decimal
+;; point" (manual ch. 17, Real to string), and a string's real is read with "Leading and trailing blanks ... ignored" (String to real). The oracle does both with
+;; its own arithmetic (sbl.min gtnum, gtstg): the digits before the point are an integer while it fits in 64 bits, the rest go in as r*10 + digit, the value is
+;; scaled by steps of 10**10 and a table entry, each step rounded; printing scales into [0.1, 1) the same way, adds 0.5e-15 and truncates 15 digits. About one
+;; real in twenty then reads or prints otherwise than correct rounding gives, as sbl -bf prints these. The engine rounded correctly (X64T math_*).
+(deftest reals-convert-to-and-from-text-as-spitbol-converts-them
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        OUTPUT = 19218651386513.25\n"
+                   "        OUTPUT = 68591943264.36865e50\n"
+                   "        OUTPUT = 922711.6936792523\n"
+                   "        OUTPUT = 99890222345.85585e48\n"
+                   "        OUTPUT = 9892340730.957035e-183\n"
+                   "        OUTPUT = 5.e25 / 24.8e-48\n"
+                   "        OUTPUT = 4.666458214470560e-16 + 5812.5399e-14\n"
+                   "        OUTPUT = 6072199082.18459e-30 * 853755.80252888536550e-10\n"
+                   "        OUTPUT = 48978842645.92452 / 5.\n"
+                   "        OUTPUT = 21.1107871625603e-13 - 87506637320.839853040e5\n"
+                   "        OUTPUT = 2.6308364999025599e-307 / 2.8564306137267162e-277\n"
+                   "        OUTPUT = 21.0 ' ' 0.1 ' ' 2.718281828459045 ' ' 1.0e15 ' ' 0.0 ' ' -1.5 ' ' 123456789012345.\n"
+                   "        OUTPUT = '922711.6936792523' + 0\n"
+                   "        OUTPUT = CONVERT('19218651386513.25', 'REAL')\n"
+                   "        OUTPUT = CONVERT(' 68591943264.36865D50 ', 'REAL')\n"
+                   "END\n"))
+      (is (= (str "19218651386513.3\n"
+                   "0.685919432643687e+61\n"
+                   "922711.693679253\n"
+                   "0.998902223458559e+59\n"
+                   "0.989234073095704e-173\n"
+                   "0.201612903225807e+73\n"
+                   "0.581258656458215e-10\n"
+                   "0.518417520052567e-24\n"
+                   "9795768529.18491\n"
+                   "-0.875066373208399e+16\n"
+                   "0.92102237220815e-30\n"
+                   "21. 0.1 2.71828182845905 0.1e+16 0. -1.5 123456789012345.\n"
+                   "922711.693679253\n"
+                   "19218651386513.3\n"
+                   "0.685919432643687e+61\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

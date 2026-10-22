@@ -169,6 +169,43 @@
   [x]
   (if (instance? NAME x) (str (.n ^NAME x)) (str x)))
 
+;; ── SPITBOL's real conversion ─────────────────────────────────────────────────
+;; The oracle reads and writes reals with its own arithmetic (sbl.min gtnum and gtstg; the x64 build computes in SSE doubles, rounding to nearest, with results
+;; below the least normal flushed to zero, MXCSR 0x9fc0), and about one real in twenty then reads or prints otherwise than correct rounding gives. These two
+;; follow it step for step; on 8,944 random literals and products they print what sbl -bf prints.
+(def ^:private ten-powers (double-array [1.0 1e1 1e2 1e3 1e4 1e5 1e6 1e7 1e8 1e9 1e10]))   ; reav1 .. reatt, the powers of ten table
+(def ^:private gts-scale (reduce (fn [a _] (clojure.core/* a 10.0)) 1.0 (range 15)))                  ; gtssc, 10**cfp_s, cfp_s = 15 significant digits
+(def ^:private gts-round (clojure.core// 0.5 gts-scale))                                             ; gtsrn, the rounding bias
+(defn- ftz ^double [^double x] (if (< (Math/abs x) Double/MIN_NORMAL) (clojure.core/* x 0.0) x))
+
+(defn parse-real
+  "The real sbl.min gtnum makes of s (an optional sign, digits with or without a point, an optional exponent marked e, E, d or D, blanks at the ends), or nil
+   when s has no digits or a step overflows. The digits before the point are an integer while it fits in 64 bits, the rest go in as r*10 + digit, and the
+   value is scaled by steps of 10**10 and then a powers-of-ten table entry, each step rounded."
+  [s]
+  (when-let [[_ sg ^String ip fp ex] (re-matches #"\s*([+-]?)(\d*)(?:\.(\d*))?(?:[eEdD]([+-]?\d+))?\s*" (str s))]
+    (let [^String fp (or fp "")
+          ;; the integer part, gathered negative as cvm does, until a digit would overflow it
+          [n i] (loop [i 0 n 0]
+                  (if (< i (.length ip))
+                    (if-some [m (try (Math/subtractExact (Math/multiplyExact (long n) 10) (long (clojure.core/- (int (.charAt ip i)) 48))) (catch ArithmeticException _ nil))]
+                      (recur (inc i) m)
+                      [n i])
+                    [n i]))
+          digit (fn [^double r ^Character c] (clojure.core/+ (clojure.core/* r 10.0) (double (clojure.core/- (int c) 48))))
+          r     (reduce digit (clojure.core/- (double n)) (concat (subs ip i) fp))
+          sc    (try (clojure.core/- (.length fp) (Long/parseLong (or ex "0"))) (catch NumberFormatException _ nil))]
+      (when (and sc (pos? (clojure.core/+ (.length ip) (.length fp))))
+        (let [r (loop [r (double r) sc (long sc)]
+                  (cond
+                    (or (Double/isInfinite r) (zero? r)) r
+                    (> sc 10)  (recur (ftz (clojure.core// r 1e10)) (clojure.core/- sc 10))
+                    (< sc -10) (recur (clojure.core/* r 1e10) (clojure.core/+ sc 10))
+                    (pos? sc)  (ftz (clojure.core// r (aget ^doubles ten-powers sc)))
+                    (neg? sc)  (clojure.core/* r (aget ^doubles ten-powers (clojure.core/- sc)))
+                    :else      r))]
+          (when-not (Double/isInfinite r) (if (clojure.core/= "-" sg) (clojure.core/- r) r)))))))
+
 ;; ── Numeric conversion ────────────────────────────────────────────────────────
 (defn num [x]
   (cond
@@ -180,6 +217,7 @@
              0                            ; empty string = 0 in arithmetic context
              (or (try (Long/parseLong s)  ; try integer parse first
                    (catch NumberFormatException _ nil))
+                 (parse-real s)
                  (try (Double/parseDouble s)
                    (catch NumberFormatException _ ##NaN)))))))
 
@@ -188,25 +226,30 @@
 
 ;; ── SNOBOL4 string conversion ────────────────────────────────────────────────
 (defn real-str
-  "A real as SPITBOL prints it: rounded to 15 significant digits with trailing
-   zeros stripped; fixed point for 0.1 <= |x| < 1e15, with a trailing \".\" when
-   integral (2.0 -> \"2.\"); otherwise 0.<digits>e<sign><exponent> (1e20 ->
-   \"0.1e+21\", 0.001 -> \"0.1e-2\"); zero is \"0.\"."
+  "A real as sbl.min gtstg prints it: its absolute value scaled into [0.1, 1) by steps of 10**10 and a powers-of-ten table entry, 0.5e-15 added, and 15 digits
+   truncated from it, trailing zeros dropped; fixed point when the exponent is 0 to 15, with a trailing \".\" when integral (2.0 -> \"2.\"), otherwise
+   0.<digits>e<sign><exponent> (1e20 -> \"0.1e+21\", 0.001 -> \"0.1e-2\"); zero is \"0.\"."
   [x]
   (let [x (double x)]
     (cond
       (or (Double/isNaN x) (Double/isInfinite x)) (str x)
       (zero? x) "0."
       :else
-      (let [bd (.stripTrailingZeros
-                 (.round (java.math.BigDecimal. x)
-                         (java.math.MathContext. 15 java.math.RoundingMode/HALF_EVEN)))
-            e  (clojure.core/- (.precision bd) (.scale bd))]
-        (if (clojure.core/<= 0 e 15)
-          (let [p (.toPlainString bd)]
-            (if (clojure.string/includes? p ".") p (str p ".")))
-          (str (when (neg? (.signum bd)) "-") "0." (.abs (.unscaledValue bd))
-               "e" (if (neg? e) "-" "+") (Math/abs (long e))))))))
+      (let [[a e] (loop [a (Math/abs x) e 0] (if (< a 0.1) (recur (clojure.core/* a 1e10) (clojure.core/- e 10)) [a e]))
+            [a e] (if (< (double a) 1.0)
+                    [a e]
+                    (let [[a e] (loop [a (double a) e (long e)] (if (>= a 1e10) (recur (clojure.core// a 1e10) (clojure.core/+ e 10)) [a e]))
+                          k     (loop [k 1] (if (>= (double a) (aget ^doubles ten-powers k)) (recur (inc k)) k))]
+                      [(clojure.core// (double a) (aget ^doubles ten-powers k)) (clojure.core/+ (long e) k)]))
+            a     (clojure.core/+ (double a) (double gts-round))
+            [a e] (if (< a 1.0) [a e] [(clojure.core// a 10.0) (inc (long e))])
+            n     (long (clojure.core/* (double a) (double gts-scale)))
+            e     (long e)
+            fixed (clojure.core/<= 0 e 15)
+            nd    (if fixed (clojure.core/- 15 e) 15)
+            p     (long (Math/pow 10.0 nd))
+            frac  (if (zero? nd) "" (clojure.string/replace (format (str "%0" nd "d") (rem n p)) #"0+$" ""))]
+        (str (when (neg? x) "-") (quot n p) "." frac (when-not fixed (str "e" (if (neg? e) "-" "+") (Math/abs e))))))))
 
 (defn sstr
   "A SNOBOL4 value as the text it becomes in output and concatenation:
