@@ -2643,3 +2643,24 @@
       (is (= "cdef cdef [] bcd\n text\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; HOST(0) is the text of the -u option, the null string when there is none, and a selector this SPITBOL has not is ERROR 254, erroneous argument for host (SPITBOL
+;; manual ch. 19, HOST; sbl -bf). HOST() describes the system, a line X32T's host masks. The engine had no HOST and raised ERROR 022. The oracle, sbl -bf, wrote exactly
+;; this output.
+(deftest host-zero-and-an-unknown-host-selector
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "	&ERRLIMIT = 10\n"
+                   "	OUTPUT = '[' HOST(0) ']'\n"
+                   "	X = HOST(99)\n"
+                   "	OUTPUT = 'h99 ' &ERRTYPE ' ' &ERRTEXT ' [' X ']'\n"
+                   "	X = HOST('a')\n"
+                   "	OUTPUT = 'ha ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "END\n"))
+      (is (= "[]\nh99 254 erroneous argument for host []\nha 254 erroneous argument for host\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
+;; HOST() is "a 'host-information' string describing the system on which SPITBOL is executing", computer type:operating system:version (SPITBOL manual ch. 19, HOST).
+(deftest host-describes-the-system
+  (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))

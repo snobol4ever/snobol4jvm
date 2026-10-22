@@ -517,7 +517,25 @@
 
 ;; ── Program control stubs ─────────────────────────────────────────────────────
 (defn EXIT    [] nil)
-(defn HOST    [] nil)
+;; HOST() is "a 'host-information' string describing the system on which SPITBOL is executing", of the form computer type:operating system:version; HOST(0) is the
+;; text of the -u option or the command-line arguments, none of which reach a program on this engine (manual ch. 19, HOST). Another selector is ERROR 254, erroneous
+;; argument for host, as sbl -bf raises it for the sub-functions this engine does not have.
+(defn HOST
+  ([] (str "jvm:" (System/getProperty "os.name") ":SNOBOL4clojure 0.2.0"))
+  ([i & _]
+   (let [n (SNOBOL4clojure.env/num i)]
+     (if (and (number? n) (not (and (double? n) (Double/isNaN n))) (zero? n))
+       ""
+       (throw (ex-info "erroneous argument for host" {:snobol/error 254}))))))
+;; SETEXIT(label) arms the label (a string or a NAME) as the error handler and returns the handler it replaces, as a NAME, or the null string when there was none.
+;; The null string, or no argument, disarms.
+(defn SETEXIT
+  ([] (SETEXIT ε))
+  ([label]
+   (let [prev @env/<SETEXIT>
+         s    (if (nil? label) "" (env/name-string label))]
+     (reset! env/<SETEXIT> (when-not (clojure.string/blank? s) (keyword s)))
+     (if prev (SNOBOL4clojure.env.NAME. (symbol (name prev))) ε))))
 (defn STOPTR  [] nil)
 (defn TRACE   [] nil)
 
