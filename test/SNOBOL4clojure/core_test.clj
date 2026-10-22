@@ -4405,3 +4405,28 @@
                    "5 Wow  3\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; The name of an element or of a call, .A<I> or .APPLY(F, X), takes its subscripts or arguments now, and when one of them fails the name fails, as any expression
+;; does with a failed operand (sbl -bf: .A<DIFFER(1, 1)> fails). The engine put the failure into the name as nil and went on, so Gimpel's FLD returned a name of
+;; APPLY with no function where it should fail, and the program died on it (Gimpel fld).
+(deftest a-name-fails-when-its-subscripts-fail
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        A = ARRAY(3) ; A<1> = 'one'\n"
+                   "        X = .A<DIFFER(1, 1)>                   :S(S1)\n"
+                   "        OUTPUT = '1 fails'                     :(N1)\n"
+                   "S1      OUTPUT = '1 ok'\n"
+                   "N1      DATA('FOO(P,Q)')\n"
+                   "        Y = FOO('p', 'q')\n"
+                   "        N = .APPLY(FIELD('FOO', 3), Y)         :S(S2)\n"
+                   "        OUTPUT = '2 fails'                     :(N2)\n"
+                   "S2      OUTPUT = '2 ok'\n"
+                   "N2      N = .A<1>\n"
+                   "        OUTPUT = '3 ' $N\n"
+                   "END\n"))
+      (is (= (str "1 fails\n"
+                   "2 fails\n"
+                   "3 one\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

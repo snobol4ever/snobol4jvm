@@ -814,12 +814,14 @@
               ;; The name of an element, .A<k>, is that element of the table or array A holds now, its subscripts taken now: the table or array rides on the
               ;; name as its :container, so a function that returns it by NRETURN gives the element even after its own A is restored (sbl -bf), while the
               ;; name still reads .A<k>; a field F(x) keeps its function's name.
+              ;; A subscript or argument that fails fails the name (sbl -bf: .A<DIFFER(1, 1)> fails).
               (let [x (first parms)]
-                (NAME. (if (and (list? x) (>= (count x) 2))
-                         (let [v (when (symbol? (first x)) (reference (first x)))]
-                           (cond-> (apply list (first x) (map EVAL! (rest x)))
-                             (or (table? v) (array? v)) (with-meta {:container v})))
-                         x)))
+                (if (and (list? x) (>= (count x) 2))
+                  (when-some [ks (eval-operands (rest x))]
+                    (let [v (when (symbol? (first x)) (reference (first x)))]
+                      (NAME. (cond-> (apply list (first x) ks)
+                               (or (table? v) (array? v)) (with-meta {:container v})))))
+                  (NAME. x)))
               ;; Binary P . V — CAPTURE-COND (conditional assignment on match success).
               (let [[P N] parms] (INVOKE '. (EVAL! P) (capture-target N)))))
           ;; Unary @V — cursor assignment. The matcher assigns the cursor to V by
