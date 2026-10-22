@@ -557,7 +557,43 @@
         (.flush   wtr)
         val))))
 
-(defn BACKSPACE [] ε)
+;; "The file associated with the channel is positioned backwards one record. If the file is a binary (raw-mode) file, the file position is decremented by the record
+;; size ... If an end-of-line character is found immediately preceding the current file position, it is ignored. The file is then scanned in reverse until another
+;; end-of-line character is found. The file is then positioned just forward of the end-of-line character. BACKSPACE stops at beginning-of-file" (manual ch. 19,
+;; BACKSPACE). As sbl -bf has it, an output file is positioned the same way and the next record written replaces the last, nothing cut off after it; a null
+;; argument is "316 backspace argument is not a suitable name", a unit no INPUT or OUTPUT opened "317 backspace file does not exist", and a channel on standard
+;; input or output "318 backspace file does not permit backspace".
+(defn BACKSPACE
+  ([] (BACKSPACE nil))
+  ([unit]
+   (let [fail (fn [n m] (throw (ex-info m {:snobol/error n})))
+         _    (when (or (nil? unit) (clojure.core/= "" unit)) (fail 316 "backspace argument is not a suitable name"))
+         u    (cond (integer? unit) unit
+                    (string? unit)  (let [t (clojure.string/trim unit)] (when (re-matches #"[+-]?\d+" t) (Long/parseLong t))))
+         ch   (when u (get @<CHANNELS> u))
+         _    (when-not ch (fail 317 "backspace file does not exist"))
+         f    (when (:file ch) (channel-file (:file ch)))
+         back (fn [p]
+                (if-let [n (:raw ch)]
+                  (max 0 (clojure.core/- p n))
+                  (let [^bytes b (java.nio.file.Files/readAllBytes (.toPath ^java.io.File f))
+                        eol?     (fn [i] (clojure.core/== 10 (aget b (dec i))))]
+                    (loop [i (if (and (pos? p) (eol? p)) (dec p) p)] (if (and (pos? i) (not (eol? i))) (recur (dec i)) i)))))]
+     (cond
+       (and (clojure.core/= :input (:type ch)) f)
+       (let [to  (back @(:at ch))
+             in  (java.io.FileInputStream. ^java.io.File f)
+             _   (.skip in to)
+             ch' (assoc ch :reader (java.io.BufferedReader. (java.io.InputStreamReader. in "ISO-8859-1")) :at (atom to))]
+         (try (.close ^java.io.BufferedReader (:reader ch)) (catch Exception _ nil))
+         (swap! <CHANNELS> assoc (:var ch) ch' (:unit ch) ch')
+         ε)
+       (:stream ch)
+       (let [fc (.getChannel ^java.io.FileOutputStream (:stream ch))]
+         (.flush ^java.io.PrintWriter (:writer ch))
+         (.position fc (long (back (.position fc))))
+         ε)
+       :else (fail 318 "backspace file does not permit backspace")))))
 (defn DETACH
   "DETACH(var) — disassociate var from its I/O channel."
   ([] ε)

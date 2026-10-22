@@ -3825,3 +3825,53 @@
       (is (= "a [1][2][]\nb [1][2][]\nc [1][][]\nfirst\nd [STRING][STRING][]\ne []\nf []\ng [r]\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; "The file associated with the channel is positioned backwards one record. ... If an end-of-line character is found immediately preceding the current file
+;; position, it is ignored. The file is then scanned in reverse until another end-of-line character is found. The file is then positioned just forward of the
+;; end-of-line character. BACKSPACE stops at beginning-of-file" (manual ch. 19, BACKSPACE). As sbl -bf has it, an output file is positioned the same way and the
+;; next record written replaces the last (nothing is cut off after it), a null argument is "316 backspace argument is not a suitable name", a unit no INPUT or
+;; OUTPUT opened "317 backspace file does not exist", and a channel on standard input "318 backspace file does not permit backspace". The engine's BACKSPACE did
+;; nothing (SnoRungs ladder__rung29_backspace).
+(deftest backspace-positions-a-file-back-one-record
+  (let [dir (.toFile (java.nio.file.Files/createTempDirectory "bsp" (make-array java.nio.file.attribute.FileAttribute 0)))
+        f   (java.io.File. dir "bs.sno")]
+    (try
+      (spit (java.io.File. dir "f.txt") "one\ntwo\nthree\n")
+      (spit f (str "        &ERRLIMIT = 10\n"
+                        "        INPUT(.I, 4, 'f.txt')\n"
+                        "        OUTPUT = 'a ' BACKSPACE(4) ' [' I ']'\n"
+                        "        OUTPUT = 'b [' I ']'\n"
+                        "        BACKSPACE(4)\n"
+                        "        BACKSPACE('4')\n"
+                        "        OUTPUT = 'c [' I ']'\n"
+                        "        OUTPUT = 'd [' I '][' I ']'\n"
+                        "        BACKSPACE(4)\n"
+                        "        OUTPUT = 'e [' I ']'\n"
+                        "        OUTPUT(.O, 6, 'g.txt')\n"
+                        "        O = 'x'\n"
+                        "        O = 'long'\n"
+                        "        BACKSPACE(6)\n"
+                        "        O = 'z'\n"
+                        "        ENDFILE(6)\n"
+                        "        INPUT(.G, 7, 'g.txt')\n"
+                        "        OUTPUT = 'f [' G '][' G '][' G ']'\n"
+                        "        BACKSPACE()\n"
+                        "        OUTPUT = 'g ' &ERRTYPE ' ' &ERRTEXT\n"
+                        "        BACKSPACE(9)\n"
+                        "        OUTPUT = 'h ' &ERRTYPE ' ' &ERRTEXT\n"
+                        "        INPUT(.K, 8, '[-f0]')\n"
+                        "        BACKSPACE(8)\n"
+                        "        OUTPUT = 'i ' &ERRTYPE ' ' &ERRTEXT\n"
+                        "END\n"))
+      (is (= (str "a  [one]\n"
+                   "b [two]\n"
+                   "c [one]\n"
+                   "d [two][three]\n"
+                   "e [three]\n"
+                   "f [x][z][ng]\n"
+                   "g 316 backspace argument is not a suitable name\n"
+                   "h 317 backspace file does not exist\n"
+                   "i 318 backspace file does not permit backspace\n")
+             (binding [SNOBOL4clojure.env/*file-dir* (.getPath dir)] (with-out-str (-main (.getPath f))))))
+      (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))
