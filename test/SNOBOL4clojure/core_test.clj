@@ -2730,3 +2730,38 @@
       (is (= "(a . (b . (c . nil)))\n((a . b) . c)\n(x . y)z\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; CONVERT(s,'EXPRESSION') compiles the string into its expression ("String to expression: The string must represent a legal SPITBOL expression. The compiler is used
+;; to convert the string into its equivalent expression", SPITBOL manual ch. 17) and fails for one that is not legal; a number converts to an expression of itself. EVAL
+;; of an unevaluated expression evaluates it, of a number returns it, of a string compiles and evaluates it and fails on a syntax error (ch. 19, EVAL). The engine had no
+;; conversion to EXPRESSION and EVAL of *(1 + 2) was ERROR 022 (aisnobol TEST's EVALCODE). The oracle, sbl -bf, wrote exactly this output.
+(deftest convert-to-expression-and-eval-of-an-expression
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        X = CONVERT('1 + 2','EXPRESSION')       :F(F1)\n"
+                   "        OUTPUT = DATATYPE(X) ' ' EVAL(X)        :(N2)\n"
+                   "F1      OUTPUT = 'convert 1 failed'\n"
+                   "N2      DEFINE('ABS(N)')                        :(ABS_END)\n"
+                   "ABS     ABS = LT(N,0) -N                        :S(RETURN)\n"
+                   "        ABS = N                                 :(RETURN)\n"
+                   "ABS_END\n"
+                   "        Y = CONVERT('ABS(-15.9999)','EXPRESSION')       :F(F2)\n"
+                   "        OUTPUT = DATATYPE(Y) ' ' EVAL(Y)        :(N3)\n"
+                   "F2      OUTPUT = 'convert 2 failed'\n"
+                   "N3      Z = CONVERT('1 +','EXPRESSION')         :F(F3)\n"
+                   "        OUTPUT = 'converted a bad one'          :(END)\n"
+                   "F3      OUTPUT = 'bad expression fails'\n"
+                   "        X = *(1 + 2)\n"
+                   "        OUTPUT = DATATYPE(X) ' ' EVAL(X)\n"
+                   "        Y = *ABSV\n"
+                   "        ABSV = 'v'\n"
+                   "        OUTPUT = EVAL(Y)\n"
+                   "        OUTPUT = EVAL(42) ' ' DATATYPE(EVAL(4.5))\n"
+                   "        OUTPUT = DATATYPE(CONVERT(7,'EXPRESSION')) ' ' EVAL(CONVERT(7,'EXPRESSION'))\n"
+                   "        EVAL('1 +')                             :S(BADOK)\n"
+                   "        OUTPUT = 'EVAL of a syntax error fails'\n"
+                   "BADOK\n"
+                   "END\n"))
+      (is (= "EXPRESSION 3\nEXPRESSION 15.9999\nbad expression fails\nEXPRESSION 3\nv\n42 REAL\nEXPRESSION 7\nEVAL of a syntax error fails\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

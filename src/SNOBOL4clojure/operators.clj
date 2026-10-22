@@ -162,7 +162,7 @@
 (def ^:private op-spelling {'at "@", 'sharp "#", 'tilde "~"})
 
 ;; ── INVOKE ────────────────────────────────────────────────────────────────────
-(declare EVAL!)
+(declare EVAL! compile-expression deferred? expression-of)
 
 ;; A concatenation evaluates to (SEQ v ...). It is a string when every part is
 ;; a string, a number or a NAME (text: its variable's name), and otherwise a
@@ -484,7 +484,15 @@
     item      (ITEM      (first args) (second args))
     PROTOTYPE (apply PROTOTYPE args)
     prototype (PROTOTYPE (first args))
-    CONVERT   (CONVERT   (first args) (second args))
+    ;; "String to expression: The string must represent a legal SPITBOL expression. The compiler is used to convert the string into its equivalent expression"; an integer
+    ;; or a real becomes "an EXPRESSION which when evaluated yields the original" value (manual ch. 17)
+    CONVERT   (let [[x t] args]
+                (if (clojure.core/= "EXPRESSION" (clojure.string/upper-case (str t)))
+                  (cond (deferred? x) x
+                        (string? x)   (when-some [ir (compile-expression x)] (expression-of ir))
+                        (number? x)   (expression-of x)
+                        :else         (CONVERT x t))
+                  (CONVERT x t)))
     convert   (CONVERT   (first args) (second args))
     COPY      (COPY      (first args))
     copy      (COPY      (first args))
@@ -845,7 +853,20 @@
                        (apply INVOKE op args)))))))
       true "Yikes! What is E?")))
 
+;; The IR of an expression in a string, or nil when the string is not a legal expression (folded to upper case while &CASE is not 0).
+(defn- compile-expression [^String s]
+  (let [p (parse-expression (if (zero? (long @&CASE)) s (fold-case s)))]
+    (when-not (instance? instaparse.gll.Failure p) (first (emitter p)))))
+
+;; An unevaluated expression, the value *X makes: DATATYPE EXPRESSION, evaluated by EVAL.
+(defn- deferred? [x] (and (seq? x) (clojure.core/= 'DEFER! (first x)) (fn? (second x))))
+(defn- expression-of [ir] (list 'DEFER! (fn [] (EVAL! ir))))
+
+;; EVAL(s) compiles the expression s and evaluates it, failing when s is not a legal expression; EVAL(n) of a number is n; "If the argument is an unevaluated expression,
+;; it is evaluated, and the result returned" (manual ch. 19, EVAL). sbl -bf also sets &ERRTEXT and &ERRTYPE (221 and kin) for the syntax error; this engine does not yet.
 (defn EVAL [X]
   (cond
-    (string? X) (EVAL! (first (emitter (parse-expression (if (zero? (long @&CASE)) X (fold-case X))))))
-    true        (EVAL! X)))
+    (deferred? X) ((second X))
+    (string? X)   (let [ir (compile-expression X)] (when-not (nil? ir) (EVAL! ir)))
+    (number? X)   X
+    true          (EVAL! X)))
