@@ -2112,3 +2112,20 @@
       (is (= "[my own text]\n[42] STRING\n[]\n[subscripted operand is not table or array]\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; &FULLSCAN takes any value but 0: "Set non-zero to enable exhaustive pattern scanning (the default). Setting &FULLSCAN to 0 is an error -- the 'Quickscan'
+;; heuristics of older SNOBOL4 systems are not supported" (SPITBOL manual ch. 16); sbl -bf raises ERROR 274 and leaves the value as it was. The engine set it to 0.
+;; The oracle, sbl -bf, wrote exactly this output.
+(deftest fullscan-zero-is-error-274
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "	OUTPUT = &FULLSCAN\n"
+                   "	&FULLSCAN = 5\n"
+                   "	OUTPUT = &FULLSCAN\n"
+                   "	&ERRLIMIT = 1\n"
+                   "	&FULLSCAN = 0\n"
+                   "	OUTPUT = &ERRTYPE ' ' &ERRTEXT ' ' &FULLSCAN\n"
+                   "END\n"))
+      (is (= "1\n5\n274 value assigned to keyword fullscan is zero 5\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

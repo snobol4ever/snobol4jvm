@@ -281,6 +281,9 @@
         (cond
           (clojure.core/= kw "ERRTYPE")
           (throw (ex-info (str "error " n) {:snobol/error n}))
+          ;; "Setting &FULLSCAN to 0 is an error" (manual ch. 16): the Quickscan heuristics are not supported
+          (and (clojure.core/= kw "FULLSCAN") (zero? n))
+          (throw (ex-info "value assigned to keyword fullscan is zero" {:snobol/error 274}))
           (or (contains? keyword-defaults vr) (clojure.core/= vr #'&TRACE))
           (do (reset! @vr n) n)
           :else
