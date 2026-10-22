@@ -1219,3 +1219,14 @@
       (is (= (str "a: aborted\nb: PATTERN\nc: aborted\nd: matched\ne: PATTERN PATTERN\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; The pattern primitives that take no argument are all PATTERNs: DATATYPE(REM) read EXPRESSION, because the list of pattern nodes DATATYPE knows left out
+;; REM! and the capture, cursor, conjunction and deferred nodes. The oracle, sbl -bf, wrote exactly this output.
+(deftest the-argument-free-pattern-primitives-are-patterns
+  (let [f (java.io.File/createTempFile "patdt" ".sno")]
+    (try
+      (spit f (str " OUTPUT = DATATYPE(ARB) ' ' DATATYPE(REM) ' ' DATATYPE(BAL) ' ' DATATYPE(FAIL) ' ' DATATYPE(SUCCEED) ' ' DATATYPE(ABORT) ' ' DATATYPE(FENCE)\n"
+                   " OUTPUT = DATATYPE(LEN(1) . X) ' ' DATATYPE(LEN(1) $ X) ' ' DATATYPE(@X) ' ' DATATYPE(*X) ' ' DATATYPE(SPAN('a') FENCE)\n"
+                   "END\n"))
+      (is (= "PATTERN PATTERN PATTERN PATTERN PATTERN PATTERN PATTERN\nPATTERN PATTERN PATTERN EXPRESSION PATTERN\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

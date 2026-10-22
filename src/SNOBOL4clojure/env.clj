@@ -411,10 +411,10 @@
 (defmethod DATATYPE "class clojure.lang.PersistentVector"         [_] "PATTERN")
 (defmethod DATATYPE "class clojure.lang.Symbol"                   [_] "NAME")
 (defmethod DATATYPE "class clojure.lang.PersistentList"           [X]
-  (if ('#{SEQ ALT CAPTURE
-          ANY$ NOTANY$ SPAN$ BREAK$ BREAKX$
-          LEN# POS# RPOS# TAB# RTAB#
-          FENCE! ARBNO! ARB! BAL! ABORT!
+  (if ('#{SEQ ALT CAPTURE CAPTURE-IMM CAPTURE-COND CURSOR-IMM! CONJ! COLLECT!
+          ANY$ NOTANY$ SPAN$ NSPAN$ BREAK$ BREAKX$
+          LEN# POS# RPOS# TAB# RTAB# BOL# EOL#
+          FENCE! ARBNO! ARB! BAL! REM! ABORT!
           SUCCEED! FAIL! X} (first X))
     "PATTERN"
     "EXPRESSION"))
