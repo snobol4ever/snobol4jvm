@@ -365,7 +365,10 @@
                               (case outcome
                                 :return  result
                                 :freturn nil    ; nil → statement failure → :F branch
-                                :nreturn nil
+                                ;; NRETURN returns a name: the NAME the function variable holds, or the variable a string spells
+                                :nreturn (cond (instance? NAME result) (SNOBOL4clojure.env/->NameResult (.n ^NAME result))
+                                               (and (string? result) (seq result)) (SNOBOL4clojure.env/->NameResult (symbol result))
+                                               :else nil)
                                 result)))))]   ; fall-through = return
                 ;; The function lives in <FUNS>, not in the variable of its name: a function and a variable are two things (sbl -bf).
                 (swap! <FUNS>  assoc fname the-fn)
@@ -628,6 +631,27 @@
         (when-not (nil? v) (recur (next ops) (conj vals v))))
       vals)))
 
+;; A call that returned a name (NRETURN) is a NameResult. Used as a value it is the value of the variable or element it names; used as the target of an assignment
+;; or a capture it is that variable or element.
+(defn- name-value [target]
+  (if (symbol? target) ($$ target) (apply INVOKE (first target) (rest target))))
+
+(defn- deref-result [r]
+  (if (instance? SNOBOL4clojure.env.NameResult r) (name-value (:target r)) r))
+
+(defn- call-form?
+  "True for a form F(args) that calls a function the program DEFINEd (and not a subscript of a table or an array of that name)."
+  [X]
+  (and (list? X) (symbol? (first X)) (contains? @<FUNS> (name (first X)))
+       (let [v (reference (first X))] (not (or (table? v) (array? v))))))
+
+(defn- name-of-call
+  "Call the DEFINEd function of the form F(args) and return the name it returned (a NameResult), or nil."
+  [X]
+  (when-some [args (eval-operands (rest X))]
+    (let [r (apply INVOKE (first X) args)]
+      (when (instance? SNOBOL4clojure.env.NameResult r) r))))
+
 ;; The target of . $ and @ says where the matcher puts a value, as a function of the value. A plain variable is assigned as a statement assigns it. An element
 ;; T<I> takes its subscripts now, a variable named by a string ($V) takes its name now, and a deferred expression (*T<I>) takes its subscripts when the assignment
 ;; is made, so a loop that moves I fills a different element each time.
@@ -643,6 +667,10 @@
     (and (list? N) (equal (first N) '$) (clojure.core/= 2 (count N)))
     (when-some [v (EVAL! (second N))]
       (let [t (indirect-target v)] (fn [x] (assign-to t x))))
+    ;; *F(args), F a function that returns a name: called when the assignment is made, the value goes to the name it returns
+    (and (list? N) (equal (first N) '*) (clojure.core/= 2 (count N)) (call-form? (second N)))
+    (let [X (second N)]
+      (fn [x] (when-some [r (name-of-call X)] (assign-to (:target r) x))))
     (and (list? N) (equal (first N) '*) (clojure.core/= 2 (count N)))
     (let [X (second N)]
       (fn [x] (assign-to (if (list? X) (element-target X) X) x)))
@@ -705,6 +733,10 @@
           (let [[[_ X] R] parms]
             (when-some [v (EVAL! X)]
               (INVOKE '= (indirect-target v) (EVAL! R))))
+          ;; F(args) = v, F a function that returns a name: the value goes to the name it returns
+          (and (equal op '=) (call-form? (first parms)))
+          (when-some [r (name-of-call (first parms))]
+            (when-some [v (EVAL! (second parms))] (INVOKE '= (:target r) v)))
           (equal op '=)     (let [[N R]   parms
                                   ;; If N is a subscript call (container key...),
                                   ;; evaluate the keys — EXCEPT for PDD field setters
@@ -751,9 +783,10 @@
                      ;; and arity (opsyn-key). Check before the built-in INVOKE table.
                      opsyn-fn (get @<FUNS> (opsyn-key (get op-spelling op (str op)) (count parms)))]
                  (when args
-                   (if opsyn-fn
-                     (apply opsyn-fn args)
-                     (apply INVOKE op args))))))
+                   (deref-result
+                     (if opsyn-fn
+                       (apply opsyn-fn args)
+                       (apply INVOKE op args)))))))
       true "Yikes! What is E?")))
 
 (defn EVAL [X]

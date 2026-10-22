@@ -125,6 +125,8 @@
   (hashCode [this]   (hash n))
   (toString [this]   (str n)))
 
+(defrecord NameResult [target])   ; what a call that returned with NRETURN gives: the variable (a symbol) or element (T k...) it names; used as a value it is that variable's value
+
 (defn name-string
   "The text of a name argument: a NAME (.F) is the name of its variable,
    anything else its string."

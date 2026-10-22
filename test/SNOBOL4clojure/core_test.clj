@@ -1453,3 +1453,35 @@
                   "done\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A function that returns with NRETURN returns a name: the variable its own name holds a NAME of (NM = .TGT then :(NRETURN)). Used as a value the call is the value of
+;; that variable; used as the target of an assignment, NM() = v, or of a capture, P . *NM() and P $ *NM(), it is the variable itself, and the target of a capture is
+;; evaluated when the assignment is made. The engine read NRETURN as a failure, so nothing could be assigned through a function (Budne's atn builds every network
+;; with $ *S_(...)). A string returned by NRETURN names the variable it spells. The oracle, sbl -bf, wrote exactly this output.
+(deftest a-function-may-return-a-name-to-be-assigned
+  (let [f (java.io.File/createTempFile "nreturn" ".sno")]
+    (try
+      (spit f (str "        DEFINE('NM()')                        :(NE)\n" "NM      NM = .TGT                             :(NRETURN)\n"
+                  "NE      'abc' LEN(2) . *NM()\n" "        OUTPUT = 'a: ' TGT\n"
+                  "        'abc' LEN(1) $ *NM()\n" "        OUTPUT = 'b: ' TGT\n"
+                  "        NM() = 'direct'\n" "        OUTPUT = 'c: ' TGT\n"
+                  "        NM() = NM() 'x'\n" "        OUTPUT = 'd: ' TGT\n"
+                  "        OUTPUT = 'e: ' NM()\n" "        OUTPUT = 'f: ' DATATYPE(NM())\n"
+                  "        X = NM()\n" "        OUTPUT = 'g: ' DATATYPE(X) ' ' X\n"
+                  "        P = (NULL $ *NM()) FENCE\n" "        DEFINE('NULL()')                      :(NLE)\n"
+                  "NULL                                          :(RETURN)\n" "NLE     'zz' P\n"
+                  "        OUTPUT = 'h: [' TGT ']'\n" "        DEFINE('FN()')                        :(FNE)\n"
+                  "FN      FN = 'plain'                          :(RETURN)\n" "FNE     OUTPUT = 'i: ' FN()\n"
+                  "        DEFINE('NA()')                        :(NAE)\n" "NA      NA = .Q                               :(NRETURN)\n"
+                  "NAE     Q = 'qval'\n" "        OUTPUT = 'j: ' NA()\n"
+                  "        NA() = 'newq'\n" "        OUTPUT = 'k: ' Q\n"
+                  "        DEFINE('NB()')                        :(NBE)\n" "NB      NB = 'notaname'                       :(NRETURN)\n"
+                  "NBE     NB() = 'oops'                         :S(OK)F(NO)\n" "OK      OUTPUT = 'l: ok'                      :(DONE)\n"
+                  "NO      OUTPUT = 'l: fail'\n" "DONE\n"
+                  "END\n"))
+      (is (= (str "a: ab\n" "b: a\n" "c: direct\n"
+                  "d: directx\n" "e: directx\n" "f: STRING\n"
+                  "g: STRING directx\n" "h: []\n" "i: plain\n"
+                  "j: qval\n" "k: newq\n" "l: ok\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
