@@ -661,6 +661,10 @@
     (or (and (string? v) (not= "" v)) (number? v)) (symbol (sstr v))
     :else (throw (ex-info "indirection operand is not name" {:snobol/error 239}))))
 
+(def ^:private pattern-keywords
+  {"ABORT" (fn [] ABORT) "ARB" (fn [] SNOBOL4clojure.patterns/ARB) "BAL" (fn [] BAL) "FAIL" (fn [] FAIL) "FENCE" (fn [] (FENCE))
+   "REM" (fn [] SNOBOL4clojure.patterns/REM) "SUCCEED" (fn [] SNOBOL4clojure.patterns/SUCCEED)})
+
 (defn- eval-operands
   "Evaluate the operands left to right. The first one that fails (nil) fails the
    whole expression, and the operands after it are not evaluated, so a call among
@@ -801,6 +805,9 @@
                                        N)]
                               (when N' (INVOKE '= N' (EVAL! R))))
           (equal op '?=)    (let [[N P R] parms] (INVOKE '?= N (EVAL! P) R))
+          ;; the protected keywords &ABORT, &ARB, &BAL, &FAIL, &FENCE, &REM and &SUCCEED hold "the primitive pattern" of their name (manual ch. 16)
+          (and (equal op '&) (pattern-keywords (str (first parms))))
+          ((pattern-keywords (str (first parms))))
           (equal op '&)     (let [[N]     parms
                                   kw-sym  (symbol (str "&" N))
                                   ;; &-keywords are defs in env.clj; fall back to user ns

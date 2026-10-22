@@ -2468,3 +2468,28 @@
       (is (= "EQ real int\nEQ string real\nLT real int\nGE int real\nEQ blanks\nEQ null zero\nEQ L 101 eq first argument is not numeric\nEQ R 102 eq second argument is not numeric\nNE L 149 ne first argument is not numeric\nGT R 112 gt second argument is not numeric\nLE L 118 le first argument is not numeric\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; The protected keywords &ARB, &REM, &BAL, &FAIL, &FENCE, &ABORT and &SUCCEED hold the primitive pattern of their name (SPITBOL manual ch. 16, Protected keywords:
+;; "&ARB The primitive pattern ARB" and the rest). The engine read them as the null string (SnoRungs fence_bal_arb_replace_branch_1, this program). The oracle, sbl -bf,
+;; wrote exactly this output.
+(deftest the-pattern-keywords-hold-their-patterns
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "	&ANCHOR = 0\n"
+                   "	S = 'abcdef'\n"
+                   "	S ? &ARB . X 'cd'					:F(FARB)\n"
+                   "	OUTPUT = 'ARB-match=' X\n"
+                   "	S ? 'cd' &REM . Y					:F(FREM)\n"
+                   "	OUTPUT = 'REM-match=' Y\n"
+                   "	OUTPUT = 'BAL-read=' DATATYPE(&BAL)\n"
+                   "	OUTPUT = 'FAIL-read=' DATATYPE(&FAIL)\n"
+                   "	OUTPUT = 'FENCE-read=' DATATYPE(&FENCE)\n"
+                   "	OUTPUT = 'ABORT-read=' DATATYPE(&ABORT)\n"
+                   "	OUTPUT = 'SUCCEED-read=' DATATYPE(&SUCCEED)\n"
+                   "	OUTPUT = 'PATTERN-KEYWORDS-OK'				:(END)\n"
+                   "FARB	OUTPUT = 'FAIL: &ARB did not match'			:(END)\n"
+                   "FREM	OUTPUT = 'FAIL: &REM did not match'			:(END)\n"
+                   "END\n"))
+      (is (= "ARB-match=ab\nREM-match=ef\nBAL-read=PATTERN\nFAIL-read=PATTERN\nFENCE-read=PATTERN\nABORT-read=PATTERN\nSUCCEED-read=PATTERN\nPATTERN-KEYWORDS-OK\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
