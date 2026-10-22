@@ -533,7 +533,7 @@
                                (instance? SNOBOL4clojure.env.NAME name-arg)
                                (symbol (str (.n ^SNOBOL4clojure.env.NAME name-arg)))
                                :else (symbol (str name-arg)))]
-                (open-input-channel! var-sym (long (or unit 0)) filename))
+                (open-input-channel! var-sym (long (or unit 0)) filename (not= 4 (count args))))
     input     (apply INVOKE 'INPUT args)
     OUTPUT    (let [name-arg (first args)
                     unit     (second args)
@@ -547,7 +547,7 @@
                                (instance? SNOBOL4clojure.env.NAME name-arg)
                                (symbol (str (.n ^SNOBOL4clojure.env.NAME name-arg)))
                                :else (symbol (str name-arg)))]
-                (open-output-channel! var-sym (long (or unit 0)) filename))
+                (open-output-channel! var-sym (long (or unit 0)) filename (not= 4 (count args))))
     output    (apply INVOKE 'OUTPUT args)
     ENDFILE   (close-channel! (first args))
     endfile   (apply INVOKE 'ENDFILE args)

@@ -384,51 +384,70 @@
       (java.io.File. (str env/*file-dir*) file-str)
       f)))
 
+;; A SPITBOL file argument is a name and, in square brackets after it, options separated by blanks or commas (measured against sbl -bf): -f<n> names an open file
+;; descriptor (0 standard input, 1 standard output, 2 standard error), -r<n> is raw mode (a read takes up to n characters, end-of-line characters among them, and fails only
+;; when it gets none), -l<n> line mode with records of at most n characters (the rest of a longer line is dropped), -a appends to the file. Other options are accepted and
+;; change nothing here. Returns {:name "" :opts {\f 0 ...}}; an options-only argument has the null string for its name.
+(defn file-spec [s]
+  (let [[_ nm opts] (re-matches #"(?s)(.*?)\s*(?:\[([^\]]*)\])?\s*" (str s))
+        opts (for [o (clojure.string/split (or opts "") #"[\s,]+")
+                   :let [[_ k n] (re-matches #"-([A-Za-z])(\d*)" o)]
+                   :when k]
+               [(Character/toLowerCase (.charAt ^String k 0)) (when (seq n) (Long/parseLong n))])]
+    {:name (clojure.string/trim (or nm "")) :opts (into {} opts)}))
+
 (defn open-input-channel!
   "Register var-sym as an input channel on unit.
    filename nil or empty → stdin sentinel (reads via read-line, :file stored as nil).
    filename provided     → open file as BufferedReader.
-   A pipe spec (\"|cmd\") or a file that cannot be opened is ERROR 116, as
-   SPITBOL raises it. Returns ε on success."
-  [var-sym unit filename]
-  (let [file-str (when (and filename (not (clojure.string/blank? (str filename))))
-                   (str filename))
+   A pipe spec (\"|cmd\") is ERROR 116, as SPITBOL raises it; so is a file that cannot be opened when it came as the fourth argument (quietly is false).
+   A file named by the third argument that cannot be opened fails, as in sbl -bf. Returns ε on success, nil on failure."
+  ([var-sym unit filename] (open-input-channel! var-sym unit filename true))
+  ([var-sym unit filename quietly]
+  (let [{nm :name opts :opts} (file-spec (or filename ""))
+        file-str (when-not (clojure.string/blank? nm) nm)
+        bad      #(throw (ex-info "inappropriate file specification for input" {:snobol/error 116}))
         rdr (if file-str
-              (or (when-not (clojure.string/starts-with? file-str "|")
-                    (try (java.io.BufferedReader. (java.io.InputStreamReader. (java.io.FileInputStream. (channel-file file-str)) "ISO-8859-1"))
-                         (catch Exception _ nil)))
-                  (throw (ex-info "inappropriate file specification for input"
-                                  {:snobol/error 116})))
+              (if (clojure.string/starts-with? file-str "|")
+                (bad)
+                (or (try (java.io.BufferedReader. (java.io.InputStreamReader. (java.io.FileInputStream. (channel-file file-str)) "ISO-8859-1"))
+                         (catch Exception _ nil))
+                    (if quietly nil (bad))))
               ;; stdin: wrap *in* but mark :file nil so close-channel! won't close it
               (java.io.BufferedReader. *in*))]
     (when rdr
-      (let [ch {:type :input :unit unit :var var-sym :reader rdr :file file-str}]
+      (let [ch (cond-> {:type :input :unit unit :var var-sym :reader rdr :file file-str}
+                 (get opts \r) (assoc :raw (get opts \r))
+                 (get opts \c) (assoc :raw 1)
+                 (get opts \l) (assoc :maxlen (get opts \l)))]
         (swap! <CHANNELS> assoc var-sym ch)
         (swap! <CHANNELS> assoc unit    ch)
-        ε))))
+        ε)))))
 
 (defn open-output-channel!
   "Register var-sym as an output channel on unit.
    filename nil or empty → stdout (writes via PrintWriter, :file stored as nil).
    filename provided     → open file as PrintWriter.
-   A pipe spec (\"|cmd\") or a file that cannot be opened is ERROR 160, as
-   SPITBOL raises it. Returns ε on success."
-  [var-sym unit filename]
-  (let [file-str (when (and filename (not (clojure.string/blank? (str filename))))
-                   (str filename))
+   A pipe spec (\"|cmd\") is ERROR 160, as SPITBOL raises it; so is a file that cannot be opened when it came as the fourth argument (quietly is false).
+   A file named by the third argument that cannot be opened fails, as in sbl -bf. Returns ε on success, nil on failure."
+  ([var-sym unit filename] (open-output-channel! var-sym unit filename true))
+  ([var-sym unit filename quietly]
+  (let [{nm :name opts :opts} (file-spec (or filename ""))
+        file-str (when-not (clojure.string/blank? nm) nm)
+        bad      #(throw (ex-info "inappropriate file specification for output" {:snobol/error 160}))
         wtr (if file-str
-              (or (when-not (clojure.string/starts-with? file-str "|")
-                    (try (java.io.PrintWriter. (java.io.OutputStreamWriter. (java.io.FileOutputStream. (channel-file file-str)) "ISO-8859-1"))
-                         (catch Exception _ nil)))
-                  (throw (ex-info "inappropriate file specification for output"
-                                  {:snobol/error 160})))
-              ;; stdout: wrap *out* but mark :file nil so close-channel! won't close it
-              (java.io.PrintWriter. *out* true))]
+              (if (clojure.string/starts-with? file-str "|")
+                (bad)
+                (or (try (java.io.PrintWriter. (java.io.OutputStreamWriter. (java.io.FileOutputStream. (channel-file file-str) (contains? opts \a)) "ISO-8859-1"))
+                         (catch Exception _ nil))
+                    (if quietly nil (bad))))
+              ;; stdout (or, with -f2, stderr): wrap the stream but mark :file nil so close-channel! won't close it
+              (java.io.PrintWriter. ^java.io.Writer (if (clojure.core/= 2 (get opts \f)) *err* *out*) true))]
     (when wtr
       (let [ch {:type :output :unit unit :var var-sym :writer wtr :file file-str}]
         (swap! <CHANNELS> assoc var-sym ch)
         (swap! <CHANNELS> assoc unit    ch)
-        ε))))
+        ε)))))
 
 (defn close-channel!
   "Close and deregister a channel by unit number or var symbol."

@@ -299,10 +299,22 @@
 ;; while &TRIM is not 0 the blanks and tabs at its end dropped.
 (def ^:private record-length 1024)
 
-(defn input-record [line]
+(defn input-record
+  ([line] (input-record line nil))
+  ([line maxlen]
   (let [s (str line)
-        s (if (clojure.core/> (count s) record-length) (subs s 0 record-length) s)]
-    (if (zero? (long @&TRIM)) s (clojure.string/replace s #"[ \t]+$" ""))))
+        n (or maxlen record-length)
+        s (if (clojure.core/> (count s) n) (subs s 0 n) s)]
+    (if (zero? (long @&TRIM)) s (clojure.string/replace s #"[ \t]+$" "")))))
+
+;; A raw-mode read (-r<n>): up to n characters as they come, end-of-line characters among them; nil (failure) only when none are left.
+(defn- read-raw [^java.io.Reader rdr n]
+  (let [buf (char-array n)]
+    (loop [k 0]
+      (if (clojure.core/< k n)
+        (let [r (.read rdr buf k (clojure.core/- n k))]
+          (if (neg? r) (when (pos? k) (String. buf 0 k)) (recur (clojure.core/+ k r))))
+        (String. buf 0 k)))))
 
 (defn $$ [N]
   (let [sym (symbol (name N))]
@@ -311,8 +323,10 @@
       (clojure.core/= :input (:type (get @<CHANNELS> sym)))
       (let [ch  (get @<CHANNELS> sym)
             rdr ^java.io.BufferedReader (:reader ch)
-            line (try (.readLine rdr) (catch Exception _ nil))]
-        (if (nil? line) nil (input-record line)))   ; nil = EOF = statement fails (:F branch)
+            line (try (if-let [n (:raw ch)] (read-raw rdr n) (.readLine rdr)) (catch Exception _ nil))]
+        (cond (nil? line) nil                       ; nil = EOF = statement fails (:F branch)
+              (:raw ch)   line                      ; a raw read is the data as it is
+              :else       (input-record line (:maxlen ch))))
 
       ;; Plain INPUT variable (no channel): read from *in* (stdin)
       (clojure.core/= sym 'INPUT)

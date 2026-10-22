@@ -1964,3 +1964,67 @@
       (is (= "a\nb\nc\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A file argument may carry SPITBOL's options in square brackets after the name, or be options alone: [-f0] is standard input, [-f1] standard output, -r<n> reads up to n
+;; characters at a time, end-of-line characters among them, and -l<n> reads lines of at most n characters. The engine took '[-f0 -r4194304]' for a file name and raised
+;; ERROR 116 (SnoRungs benchmark_calculator-1, which reads its whole input in one raw read). The oracle, sbl -bf, wrote exactly this output from this input.
+(deftest a-raw-read-takes-the-input-as-it-comes
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        INPUT(.IN, 9, '[-f0 -r4194304]')\n"
+                   "        S = IN\n"
+                   "        OUTPUT = SIZE(S)\n"
+                   "        OUTPUT = S\n"
+                   "        S = IN                                  :F(EOF)\n"
+                   "        OUTPUT = 'second read ' SIZE(S)         :(END)\n"
+                   "EOF     OUTPUT = 'eof'\n"
+                   "END\n"))
+      (is (= "10\nab\ncdefgh\n\neof\n"
+             (with-out-str (binding [*in* (java.io.BufferedReader. (java.io.StringReader. "ab\ncdefgh\n"))] (-main (.getPath f))))))
+      (finally (.delete f)))))
+
+;; The -r<n> and -l<n> options cut the input in records of n characters and lines of at most n. The oracle, sbl -bf, wrote exactly this output.
+(deftest raw-and-line-length-options-cut-the-input-as-sbl-does
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        INPUT(.IN, 9, '[-f0 -r3]')\n"
+                   "LOOP    S = IN                                  :F(EOF)\n"
+                   "        OUTPUT = '[' S ']'                      :(LOOP)\n"
+                   "EOF     OUTPUT = 'eof'\n"
+                   "END\n"))
+      (is (= "[ab\n]\n[cde]\n[fgh]\n[\n]\neof\n"
+             (with-out-str (binding [*in* (java.io.BufferedReader. (java.io.StringReader. "ab\ncdefgh\n"))] (-main (.getPath f))))))
+      (finally (.delete f)))))
+
+;; -l<n> keeps n characters of a longer line, and OUTPUT(.O,7,"[-f1]") writes standard output. The oracle, sbl -bf, wrote exactly this output.
+(deftest a-line-length-option-and-an-options-only-output-file
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        INPUT(.IN, 9, '[-f0 -l4]')\n"
+                   "LOOP    S = IN                                  :F(EOF)\n"
+                   "        OUTPUT = '[' S ']'                      :(LOOP)\n"
+                   "EOF     OUTPUT = 'eof'\n"
+                   "        OUTPUT(.O, 7, '[-f1]')\n"
+                   "        O = 'to stdout'\n"
+                   "END\n"))
+      (is (= "[ab]\n[cdef]\neof\nto stdout\n"
+             (with-out-str (binding [*in* (java.io.BufferedReader. (java.io.StringReader. "ab\ncdefgh\n"))] (-main (.getPath f))))))
+      (finally (.delete f)))))
+
+;; A file that INPUT or OUTPUT names by its third argument and cannot open makes the call fail, as sbl -bf does; the engine raised ERROR 116 or 160, which sbl keeps for
+;; a pipe and for the fourth-argument form (SnoRungs user_function_arbno_span_replace_branch_3 branches on that failure). The oracle, sbl -bf, wrote exactly this output.
+(deftest a-file-that-cannot-be-opened-makes-input-and-output-fail
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        INPUT(.R, 8, 'no_such_file.dat')        :S(OPENED)F(FAILED)\n"
+                   "OPENED  OUTPUT = 'opened'                       :(N2)\n"
+                   "FAILED  OUTPUT = 'failed'\n"
+                   "N2      INPUT(.R, 8, 'no_such_file.dat')\n"
+                   "        OUTPUT = 'after a failing INPUT without a branch'\n"
+                   "        OUTPUT(.W, 9, 'no_such_dir/x.dat')      :S(OK3)F(F3)\n"
+                   "OK3     OUTPUT = 'output opened'                :(END)\n"
+                   "F3      OUTPUT = 'output failed'\n"
+                   "END\n"))
+      (is (= "failed\nafter a failing INPUT without a branch\noutput failed\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
