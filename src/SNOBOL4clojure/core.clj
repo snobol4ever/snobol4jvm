@@ -57,7 +57,7 @@
 (def DATATYPE    env/DATATYPE)
 (def ARRAY       env/ARRAY)
 (def TABLE       env/TABLE)
-(def SET         env/SET)
+(def SET         fns/SET)   ; SPITBOL's SET(channel, offset, whence); env/SET is the engine's own set constructor
 (def $$          env/$$)
 (def equal       env/equal)
 (def not-equal   env/not-equal)

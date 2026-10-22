@@ -149,7 +149,7 @@
   (is (= (DATATYPE '(+ 1 2))                              "EXPRESSION"))
   (is (= (DATATYPE (CODE "what year = 2021"))             "CODE"))
   (is (= (DATATYPE #{})                                   "SET"))
-  (is (= (DATATYPE (SET))                                 "SET"))
+  (is (= (DATATYPE (SNOBOL4clojure.env/SET))              "SET"))
   (is (= (DATATYPE #"^[A-Z]+$")                           "REGEX"))
   (is (= (DATA "tree(t,v,n,c)")                           ""))
   ;; TODO: custom DATA datatype dispatch once DATA is fully wired:
@@ -3515,4 +3515,80 @@
                     "\n")
                (mask out)))
         (is (= 231 @rc)))
+      (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))
+
+;; "SET(channel, offset, whence) ... SET repositions the file attached to this channel and returns the new position as the result. The next read or write operation will
+;; take place at that position in the file. ... If whence is 0, the file pointer is set to offset bytes from the beginning of the file. If whence is 1, the file pointer is
+;; set to its current position plus offset ... SET(channel, 0, 1) simply returns the current file position without changing it. If whence is 2, the pointer is set to the
+;; current size of the file plus offset" (manual ch. 19, SET). As sbl -bf has it: a position counts each record's end of line; it stays within the file; a write after a
+;; SET overwrites; a null channel is 292, one no INPUT or OUTPUT opened 295 (a real names none), an offset or whence that is not an integer 293, a whence other than 0, 1
+;; and 2 is 297. The engine's SET was a Clojure set constructor (AIS BUILDLIB.sno, which indexes its library by SET(1,0,1), died with an ArityException).
+(deftest set-positions-a-file
+  (let [dir (.toFile (java.nio.file.Files/createTempDirectory "set" (make-array java.nio.file.attribute.FileAttribute 0)))
+        f   (java.io.File. dir "set.sno")]
+    (try
+      (spit (java.io.File. dir "f.txt") "abc\ndefgh\nij\n")
+      (spit f (str "        INPUT(.IN,1,'f.txt')\n"
+                        "        OUTPUT = SET(1,0,1)\n"
+                        "        L = IN\n"
+                        "        OUTPUT = L ' ' SET(1,0,1)\n"
+                        "        L = IN\n"
+                        "        OUTPUT = L ' ' SET(1,0,1)\n"
+                        "        OUTPUT = SET(1,0,0)\n"
+                        "        L = IN\n"
+                        "        OUTPUT = L ' ' SET(1,0,1)\n"
+                        "        OUTPUT = SET(1,-2,2)\n"
+                        "        L = IN\n"
+                        "        OUTPUT = L ' ' SET(1,0,1)\n"
+                        "        OUTPUT = SET(1,1,0)\n"
+                        "        L = IN\n"
+                        "        OUTPUT = L\n"
+                        "        OUTPUT = SET(1,99,0) ' ' SET(1,-99,1) ' ' SET('1',0,1) ' ' SET(1,'2',)\n"
+                        "        L = IN\n"
+                        "        OUTPUT = L\n"
+                        "        OUTPUT(.O,2,'o.txt')\n"
+                        "        O = 'hello'\n"
+                        "        OUTPUT = 'o ' SET(2,0,1)\n"
+                        "        OUTPUT = 'o ' SET(2,1,0)\n"
+                        "        O = 'X'\n"
+                        "        ENDFILE(2)\n"
+                        "        INPUT(.R,3,'o.txt')\n"
+                        "        OUTPUT = R\n"
+                        "        OUTPUT = R\n"
+                        "        &ERRLIMIT = 10\n"
+                        "        OUTPUT = SET(9,0,1)\n"
+                        "        OUTPUT = 'e ' &ERRTYPE ' ' &ERRTEXT\n"
+                        "        OUTPUT = SET('',0,1)\n"
+                        "        OUTPUT = 'e ' &ERRTYPE ' ' &ERRTEXT\n"
+                        "        OUTPUT = SET(1.0,0,1)\n"
+                        "        OUTPUT = 'e ' &ERRTYPE ' ' &ERRTEXT\n"
+                        "        OUTPUT = SET(1,1.5,0)\n"
+                        "        OUTPUT = 'e ' &ERRTYPE ' ' &ERRTEXT\n"
+                        "        OUTPUT = SET(1,0,'Z')\n"
+                        "        OUTPUT = 'e ' &ERRTYPE ' ' &ERRTEXT\n"
+                        "        OUTPUT = SET(1,0,3)\n"
+                        "        OUTPUT = 'e ' &ERRTYPE ' ' &ERRTEXT\n"
+                        "END\n"))
+      (is (= (str "0\n"
+                   "abc 4\n"
+                   "defgh 10\n"
+                   "0\n"
+                   "abc 4\n"
+                   "11\n"
+                   "j 13\n"
+                   "1\n"
+                   "bc\n"
+                   "13 0 0 2\n"
+                   "c\n"
+                   "o 6\n"
+                   "o 1\n"
+                   "hX\n"
+                   "lo\n"
+                   "e 295 set file does not exist\n"
+                   "e 292 set first argument is null\n"
+                   "e 295 set file does not exist\n"
+                   "e 293 inappropriate second argument to set\n"
+                   "e 293 inappropriate second argument to set\n"
+                   "e 297 set caused non-recoverable i/o error\n")
+             (binding [SNOBOL4clojure.env/*file-dir* (.getPath dir)] (with-out-str (-main (.getPath f))))))
       (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))

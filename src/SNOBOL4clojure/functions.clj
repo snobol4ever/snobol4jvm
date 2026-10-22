@@ -440,7 +440,8 @@
               ;; stdin: wrap *in* but mark :file nil so close-channel! won't close it
               (env/stdin-reader))]
     (when rdr
-      (let [ch (cond-> {:type :input :unit unit :var var-sym :reader rdr :file file-str}
+      ;; :at is the position of the next read, which SET answers and moves
+      (let [ch (cond-> {:type :input :unit unit :var var-sym :reader rdr :file file-str :at (atom 0)}
                  (get opts \r) (assoc :raw (get opts \r))
                  (get opts \c) (assoc :raw 1)
                  (get opts \l) (assoc :maxlen (get opts \l)))]
@@ -456,11 +457,55 @@
       (nil? ch) (throw (ex-info "rewind file does not exist" {:snobol/error 174}))
       (and (clojure.core/= :input (:type ch)) (:file ch))
       (let [rdr (java.io.BufferedReader. (java.io.InputStreamReader. (java.io.FileInputStream. (channel-file (:file ch))) "ISO-8859-1"))
-            ch' (assoc ch :reader rdr)]
+            ch' (assoc ch :reader rdr :at (atom 0))]
         (try (.close ^java.io.BufferedReader (:reader ch)) (catch Exception _ nil))
         (swap! <CHANNELS> assoc (:var ch) ch' (:unit ch) ch')
         ε)
       :else ε)))
+
+;; "SET(channel, offset, whence) ... SET repositions the file attached to this channel and returns the new position as the result. The next read or write operation will
+;; take place at that position in the file. ... If whence is 0, the file pointer is set to offset bytes from the beginning of the file. If whence is 1, the file pointer is
+;; set to its current position plus offset ... SET(channel, 0, 1) simply returns the current file position without changing it. If whence is 2, the pointer is set to the
+;; current size of the file plus offset" (manual ch. 19, SET). As sbl -bf has it: the channel is a unit number or a numeric string; a null one is "292 SET first argument
+;; is null", one no INPUT or OUTPUT opened (a real names none) "295 SET file does not exist"; an offset or a whence that is not an integer (a numeric string is one, the
+;; null string 0) is "293 Inappropriate second argument to SET", for the whence too; a whence other than 0, 1 and 2 is "297 SET caused non-recoverable I/O error". The
+;; position stays within the file. A channel on standard input or output answers where it is and moves nowhere, "296 SET file does not permit setting file pointer".
+(defn SET
+  ([] (SET nil nil nil))
+  ([unit] (SET unit nil nil))
+  ([unit offset] (SET unit offset nil))
+  ([unit offset whence]
+   (let [fail   (fn [n] (throw (ex-info (env/error-message n) {:snobol/error n})))
+         int-of (fn [x] (cond (or (nil? x) (clojure.core/= "" x)) 0
+                              (integer? x)                        x
+                              (string? x)                         (let [t (clojure.string/trim x)] (when (re-matches #"[+-]?\d+" t) (Long/parseLong t)))))
+         _      (when (or (nil? unit) (clojure.core/= "" unit)) (fail 292))
+         ch     (get @<CHANNELS> (when (or (integer? unit) (string? unit)) (int-of unit)))
+         _      (when-not ch (fail 295))
+         off    (or (int-of offset) (fail 293))
+         wh     (or (int-of whence) (fail 293))
+         _      (when-not (#{0 1 2} wh) (fail 297))
+         f      (when (:file ch) (channel-file (:file ch)))
+         target (fn [cur size] (max 0 (min size (case (long wh) 0 off 1 (clojure.core/+ cur off) 2 (clojure.core/+ size off)))))]
+     (cond
+       (and (clojure.core/= :input (:type ch)) f)
+       (let [cur @(:at ch)]
+         (if (and (zero? off) (clojure.core/= 1 wh))
+           cur
+           (let [to  (target cur (.length ^java.io.File f))
+                 in  (java.io.FileInputStream. f)
+                 _   (.skip in to)
+                 ch' (assoc ch :reader (java.io.BufferedReader. (java.io.InputStreamReader. in "ISO-8859-1")) :at (atom to))]
+             (try (.close ^java.io.BufferedReader (:reader ch)) (catch Exception _ nil))
+             (swap! <CHANNELS> assoc (:var ch) ch' (:unit ch) ch')
+             to)))
+       (:stream ch)
+       (let [fc (.getChannel ^java.io.FileOutputStream (:stream ch))]
+         (.flush ^java.io.PrintWriter (:writer ch))
+         (let [to (target (.position fc) (.size fc))] (.position fc (long to)) to))
+       (and (zero? off) (clojure.core/= 1 wh))
+       (if-let [at (:at ch)] @at 0)
+       :else (fail 296)))))
 
 (defn open-output-channel!
   "Register var-sym as an output channel on unit.
@@ -473,16 +518,17 @@
   (let [{nm :name opts :opts} (file-spec (or filename ""))
         file-str (when-not (clojure.string/blank? nm) nm)
         bad      #(throw (ex-info "inappropriate file specification for output" {:snobol/error 160}))
+        ;; a file's stream is kept, for SET to move
+        out (when (and file-str (not (clojure.string/starts-with? file-str "|")))
+              (try (java.io.FileOutputStream. (channel-file file-str) (contains? opts \a)) (catch Exception _ nil)))
         wtr (if file-str
               (if (clojure.string/starts-with? file-str "|")
                 (bad)
-                (or (try (java.io.PrintWriter. (java.io.OutputStreamWriter. (java.io.FileOutputStream. (channel-file file-str) (contains? opts \a)) "ISO-8859-1"))
-                         (catch Exception _ nil))
-                    (if quietly nil (bad))))
+                (if out (java.io.PrintWriter. (java.io.OutputStreamWriter. ^java.io.OutputStream out "ISO-8859-1")) (if quietly nil (bad))))
               ;; stdout (or, with -f2, stderr): wrap the stream but mark :file nil so close-channel! won't close it
               (java.io.PrintWriter. ^java.io.Writer (if (clojure.core/= 2 (get opts \f)) *err* *out*) true))]
     (when wtr
-      (let [ch {:type :output :unit unit :var var-sym :writer wtr :file file-str}]
+      (let [ch (cond-> {:type :output :unit unit :var var-sym :writer wtr :file file-str} out (assoc :stream out))]
         (swap! <CHANNELS> assoc var-sym ch)
         (swap! <CHANNELS> assoc unit    ch)
         ε)))))

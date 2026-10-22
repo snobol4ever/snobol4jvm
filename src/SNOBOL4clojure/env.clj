@@ -361,6 +361,29 @@
           (if (neg? r) (when (pos? k) (String. buf 0 k)) (recur (clojure.core/+ k r))))
         (String. buf 0 k)))))
 
+;; A line as BufferedReader.readLine reads it (ended by \n, \r or \r\n, none of them part of it; nil at the end of the input), adding to the channel's position the
+;; characters it takes, its end among them. A file is read one byte to a character, so the count is the byte position SET answers.
+(defn- read-line-counted [^java.io.BufferedReader rdr at]
+  (let [sb (StringBuilder.)]
+    (loop [n 0]
+      (let [c (.read rdr)]
+        (cond
+          (neg? c)               (do (swap! at clojure.core/+ n) (when (pos? n) (str sb)))
+          (clojure.core/== c 10) (do (swap! at clojure.core/+ n 1) (str sb))
+          (clojure.core/== c 13) (do (.mark rdr 1)
+                                     (if (clojure.core/== (.read rdr) 10) (swap! at clojure.core/+ n 2) (do (.reset rdr) (swap! at clojure.core/+ n 1)))
+                                     (str sb))
+          :else                  (do (.append sb (char c)) (recur (inc n))))))))
+
+(defn channel-read
+  "The next record of input channel ch, as it comes (nil at its end), counted into the channel's position (:at) when it keeps one."
+  [ch]
+  (let [rdr ^java.io.BufferedReader (:reader ch)
+        at  (:at ch)]
+    (if-let [n (:raw ch)]
+      (let [s (read-raw rdr n)] (when (and s at) (swap! at clojure.core/+ (count s))) s)
+      (if at (read-line-counted rdr at) (.readLine rdr)))))
+
 ;; What a name calls: the program's own variable or, failing that, the engine's built-in of that name (a function among them). INVOKE resolves a call with it.
 (declare $$)
 (defn $$fn [N]
@@ -376,8 +399,7 @@
       ;; Named input channel: var registered → read from its BufferedReader
       (clojure.core/= :input (:type (get @<CHANNELS> sym)))
       (let [ch  (get @<CHANNELS> sym)
-            rdr ^java.io.BufferedReader (:reader ch)
-            line (try (if-let [n (:raw ch)] (read-raw rdr n) (.readLine rdr)) (catch Exception _ nil))
+            line (try (channel-read ch) (catch Exception _ nil))
             v    (cond (nil? line) nil                       ; nil = EOF = statement fails (:F branch)
                        (:raw ch)   line                      ; a raw read is the data as it is
                        :else       (input-record line (:maxlen ch)))]
