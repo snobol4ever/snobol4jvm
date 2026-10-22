@@ -929,3 +929,29 @@
                   "e: a<b>c\nf: 1xy\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; An integer or a real in a pattern is its text: S N with N = 1 looks for "1",
+;; S 12 for "12", S R with R = 2.5 for "2.5". The matcher had no clause for a
+;; number and died on any pattern that held one (Gimpel's SPELL, N ARB . SPELL ',').
+;; The oracle, sbl -bf, wrote exactly this output.
+(deftest a-number-in-a-pattern-is-its-text
+  (let [f (java.io.File/createTempFile "numpat" ".sno")]
+    (try
+      (spit f (str " N = 1\n S = 'x1y'\n S N . V1\n OUTPUT = 'a: V1=' V1\n"
+                   " R = 2.5\n S2 = 'x2.5y'\n S2 R . V2\n OUTPUT = 'b: V2=' V2\n"
+                   " S3 = 'ab12cd'\n S3 12 . V3                    :S(Y3)F(N3)\n"
+                   "Y3 OUTPUT = 'c: V3=' V3          :(C3)\n"
+                   "N3 OUTPUT = 'c: failed'\n"
+                   "C3 S4 = ('1ONE,2TWO,3THREE,' '4FOUR,')\n N = 3\n S4 N ARB . V4 ','\n"
+                   " OUTPUT = 'd: V4=' V4\n"
+                   " S5 = 'abc'\n S5 5                          :S(Y5)F(N5)\n"
+                   "Y5 OUTPUT = 'e: matched'         :(C5)\n"
+                   "N5 OUTPUT = 'e: failed'\n"
+                   "C5 S6 = 'a-3-b'\n S6 -3 . V6                    :S(Y6)F(N6)\n"
+                   "Y6 OUTPUT = 'f: V6=' V6          :(C6)\n"
+                   "N6 OUTPUT = 'f: failed'\n"
+                   "C6 S7 = 'a1b'\n S7 LEN(1) 1 . V7 'b'\n OUTPUT = 'g: V7=' V7\n"
+                   "END\n"))
+      (is (= "a: V1=1\nb: V2=2.5\nc: V3=12\nd: V4=THREE\ne: failed\nf: V6=-3\ng: V7=1\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

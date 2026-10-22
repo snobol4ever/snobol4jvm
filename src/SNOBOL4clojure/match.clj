@@ -20,7 +20,7 @@
   nil means the pattern did not match.
 
   Tracing: bind *trace* to true to enable per-step animation output."
-  (:require [SNOBOL4clojure.env        :refer [ε equal out $$ snobol-set! &ANCHOR]]
+  (:require [SNOBOL4clojure.env        :refer [ε equal out $$ snobol-set! sstr &ANCHOR]]
             [SNOBOL4clojure.primitives :refer
              [LIT$ ANY$ NOTANY$ SPAN$ NSPAN$ BREAK$ BREAKX$
               POS# RPOS# LEN# TAB# RTAB# BOL# EOL#
@@ -57,6 +57,7 @@
     (list?       ζ)  (first ζ)        ; raw list node on Ω (e.g. COND-UNDO!)
     (nil?    (ζΠ ζ)) nil
     (string? (ζΠ ζ)) 'LIT$
+    (number? (ζΠ ζ)) 'LIT$   ; an integer or a real in a pattern is its text
     (symbol? (ζΠ ζ)) (ζΠ ζ)
     (vector? (ζΠ ζ)) 'SEQ    ; vector = inline SEQ (e.g. CAPTURE-COND expansion)
     (list?   (ζΠ ζ)) (first (ζΠ ζ))
@@ -165,7 +166,7 @@
         (case action
           :proceed
           (let [[Σ Δ _ _ Π] ζ
-                [σ δ]        (LIT$ Σ Δ Π)]
+                [σ δ]        (LIT$ Σ Δ (if (string? Π) Π (sstr Π)))]
             (if (>= δ 0)
               (recur :succeed (ζ↑ ζ σ δ) Ω)
               (recur :fail    (ζ↑ ζ Σ Δ) Ω))))
