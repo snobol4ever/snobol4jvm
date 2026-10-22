@@ -2049,3 +2049,30 @@
       (is (= "[1||3]\n[|2|]\n[1|2|]\n[||]\nbcdef\n[  x]\n[x  ]\nabab\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; REWIND(unit) starts an input file again from its first record, and a unit no INPUT or OUTPUT opened is ERROR 174, which SETEXIT catches. The engine tried to reset the reader
+;; (which did nothing) and failed the statement for an unopened unit (SnoRungs keyword_replace_5). The files are written in a scratch directory. The oracle, sbl -bf, wrote exactly
+;; this output.
+(deftest rewind-starts-a-file-again-and-an-unopened-unit-is-error-174
+  (let [dir (.toFile (java.nio.file.Files/createTempDirectory "rewind" (make-array java.nio.file.attribute.FileAttribute 0)))
+        f   (java.io.File. dir "rw.sno")]
+    (try
+      (spit f (str "        OUTPUT(.W, 11, 'rewind_fixture.txt')\n"
+                     "        W = 'alpha'\n"
+                     "        W = 'beta'\n"
+                     "        ENDFILE(11)\n"
+                     "        INPUT(.R, 12, 'rewind_fixture.txt')\n"
+                     "        OUTPUT = 'open1 ' R\n"
+                     "        REWIND(12)\n"
+                     "        OUTPUT = 'open2 ' R\n"
+                     "        &ERRLIMIT = 1\n"
+                     "        SETEXIT(.CAUGHT)\n"
+                     "        REWIND(13)\n"
+                     "        OUTPUT = 'UNOPENED REWIND SILENTLY SUCCEEDED'      :(FIN)\n"
+                     "CAUGHT  OUTPUT = 'unopened ' &ERRTYPE\n"
+                     "        SETEXIT()                                          :(FIN)\n"
+                     "FIN     OUTPUT = 'done'\n"
+                     "END\n"))
+      (is (= "open1 alpha\nopen2 alpha\nunopened 174\ndone\n"
+             (binding [SNOBOL4clojure.env/*file-dir* dir] (with-out-str (-main (.getPath f))))))
+      (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))

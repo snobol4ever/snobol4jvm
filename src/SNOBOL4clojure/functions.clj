@@ -424,6 +424,20 @@
         (swap! <CHANNELS> assoc unit    ch)
         ε)))))
 
+;; REWIND(unit): an input file starts again from its first record. A unit no INPUT or OUTPUT opened is ERROR 174, as sbl -bf raises it (standard input among them).
+(defn rewind-channel! [unit]
+  (let [u  (if (integer? unit) unit (long (env/num unit)))
+        ch (get @<CHANNELS> u)]
+    (cond
+      (nil? ch) (throw (ex-info "rewind file does not exist" {:snobol/error 174}))
+      (and (clojure.core/= :input (:type ch)) (:file ch))
+      (let [rdr (java.io.BufferedReader. (java.io.InputStreamReader. (java.io.FileInputStream. (channel-file (:file ch))) "ISO-8859-1"))
+            ch' (assoc ch :reader rdr)]
+        (try (.close ^java.io.BufferedReader (:reader ch)) (catch Exception _ nil))
+        (swap! <CHANNELS> assoc (:var ch) ch' (:unit ch) ch')
+        ε)
+      :else ε)))
+
 (defn open-output-channel!
   "Register var-sym as an output channel on unit.
    filename nil or empty → stdout (writes via PrintWriter, :file stored as nil).

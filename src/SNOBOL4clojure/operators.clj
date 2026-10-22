@@ -13,7 +13,7 @@
             [SNOBOL4clojure.functions :refer
              [ASCII CHAR ORD DATE TIME REMDR ATAN CHOP COS EXP LN SIN SQRT TAN INTEGER integer-predicate REAL SETEXIT STRING SIZE TRIM DUPL REVERSE LPAD RPAD REPLACE SUBSTR
               ITEM PROTOTYPE CONVERT COPY FIELD SORT RSORT DATA
-              open-input-channel! open-output-channel! close-channel! write-to-channel!]]
+              open-input-channel! open-output-channel! close-channel! write-to-channel! rewind-channel!]]
             [SNOBOL4clojure.match     :refer [MATCH SEARCH FULLMATCH]]
             [SNOBOL4clojure.patterns  :refer
              [ANY BREAK BREAKX NOTANY SPAN ARBNO FENCE
@@ -558,11 +558,7 @@
                           :else (symbol (str v)))]
                 (close-channel! sym))
     detach    (apply INVOKE 'DETACH args)
-    REWIND    (let [ch (get @<CHANNELS> (first args))]
-                (when ch
-                  (try (.reset ^java.io.BufferedReader (:reader ch))
-                       (catch Exception _ nil))
-                  ε))
+    REWIND    (rewind-channel! (first args))
     rewind    (apply INVOKE 'REWIND args)
     ;; CODE(src) — compile and execute a SNOBOL4 source fragment in the current env.
     ;; Returns nil on success; :F branch taken on compile/runtime error.
