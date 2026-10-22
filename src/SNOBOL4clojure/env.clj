@@ -24,20 +24,24 @@
 
 ;; ── SNOBOL4 keywords (& variables) ───────────────────────────────────────────
 (def  &ALPHABET  (atom (apply str (map char (range 256)))))   ; the 256-character string, codes 0..255 in order
+(def  &ABEND     (atom 0))
 (def  &ANCHOR    (atom 0))
 (def  &CASE      (atom 0))   ; not 0: CODE and EVAL fold lower case names to upper case (a program's own -CASE card governs its source)
 (def  &DIGITS    "0123456789")
 (def  &DUMP      (atom 0))  ; 1, 2, and 3 levels
+(def  &COMPARE    (atom 0))
 (def  &ERRLIMIT  (atom 0))
 (def  &ERRTEXT   (atom ε))
 (def  &ERRTYPE   (atom 0))
 (def  &FTRACE    (atom 0))
-(def  &FULLSCAN  (atom 0))
+(def  &FULLSCAN  (atom 1))
 (def  &LASTNO    (atom 0))   ; the number of the statement executed before the current one
 (def  &STNO      (atom 0))   ; the number of the statement being executed
 (def  &FNCLEVEL  (atom 0))   ; how many user functions are active
 (def  &LCASE     "abcdefghijklmnopqrstuvwxyz")
-(def  &MAXLNGTH  (atom 4194304))
+(def  &INPUT      (atom 1))   ; 0 switches the INPUT variable off: a read gives the null string
+(def  &MAXLNGTH  (atom 16777216))
+(def  &OUTPUT     (atom 1))   ; 0 suppresses what is assigned to OUTPUT
 (def  &PROFILE   (atom 0))
 (def  &TRACE     (atom 0))
 (def  &TRIM      (atom 1))   ; 1 when a program starts, as in SPITBOL: input records lose their trailing blanks and tabs
@@ -51,8 +55,8 @@
 
 ;; The value each settable keyword holds when a program starts.
 (def ^:private keyword-defaults
-  {#'&ANCHOR 0, #'&CASE 0, #'&DUMP 0, #'&ERRLIMIT 0, #'&FTRACE 0, #'&FULLSCAN 0,
-   #'&MAXLNGTH 4194304, #'&PROFILE 0, #'&TRIM 1, #'&TRACE 0,
+  {#'&ABEND 0, #'&ANCHOR 0, #'&CASE 0, #'&COMPARE 0, #'&DUMP 0, #'&ERRLIMIT 0, #'&FTRACE 0, #'&FULLSCAN 1, #'&INPUT 1,
+   #'&MAXLNGTH 16777216, #'&OUTPUT 1, #'&PROFILE 0, #'&TRIM 1, #'&TRACE 0,
    #'&STLIMIT 2147483647, #'&IOCOMPAT :catspaw})
 
 (defn reset-keywords!
@@ -292,8 +296,10 @@
 
       ;; Plain INPUT variable (no channel): read from *in* (stdin)
       (clojure.core/= sym 'INPUT)
-      (let [line (try (read-line) (catch Exception _ nil))]
-        (if (nil? line) nil (input-record line)))   ; nil = EOF = statement fails, as SPITBOL does
+      (if (zero? (long @&INPUT))
+        ε                                                   ; &INPUT = 0 switches the variable off: a read gives the null string
+        (let [line (try (read-line) (catch Exception _ nil))]
+          (if (nil? line) nil (input-record line))))   ; nil = EOF = statement fails, as SPITBOL does
 
       :else
       ;; Scope chain: user <VARS> first, then engine builtins (read-only).

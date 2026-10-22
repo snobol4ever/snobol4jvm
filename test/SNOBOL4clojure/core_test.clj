@@ -1636,3 +1636,55 @@
       (is (= "0\nlower\n1 UPPER UPPER\nABC\nlower\nabc\ndone\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; The keywords start as SPITBOL has them: &FULLSCAN 1, &MAXLNGTH 16777216, &INPUT 1, &OUTPUT 1, and &ABEND and &COMPARE exist (0, settable). The engine started &FULLSCAN at 0 and
+;; &MAXLNGTH at 4194304, had no &INPUT, &OUTPUT, &ABEND or &COMPARE, and raised ERROR 251 on assigning them. The oracle, sbl -bf, wrote exactly this output.
+(deftest the-keywords-start-as-spitbol-has-them
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        OUTPUT = '&ABEND=' &ABEND ' &COMPARE=' &COMPARE ' &FULLSCAN=' &FULLSCAN\n"
+                   "        OUTPUT = '&INPUT=' &INPUT ' &OUTPUT=' &OUTPUT ' &MAXLNGTH=' &MAXLNGTH\n"
+                   "        &ABEND = 7\n"
+                   "        &COMPARE = 5\n"
+                   "        OUTPUT = &ABEND ' ' &COMPARE\n"
+                   "END\n"))
+      (is (= "&ABEND=0 &COMPARE=0 &FULLSCAN=1\n&INPUT=1 &OUTPUT=1 &MAXLNGTH=16777216\n7 5\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
+;; &OUTPUT = 0 suppresses what is assigned to OUTPUT until it is 1 again, and &INPUT = 0 switches the INPUT variable off, so a read of it gives the null string. The oracle, sbl -bf, wrote exactly this output.
+(deftest output-and-input-keywords-switch-the-two-variables-off
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        OUTPUT = 'output on'\n"
+                   "        &OUTPUT = 0\n"
+                   "        OUTPUT = 'this line is suppressed'\n"
+                   "        &OUTPUT = 1\n"
+                   "        OUTPUT = 'output back on'\n"
+                   "        &INPUT = 0\n"
+                   "        LINE = INPUT            :S(GOT)F(NONE)\n"
+                   "GOT     OUTPUT = 'read [' LINE ']'      :(DONE)\n"
+                   "NONE    OUTPUT = 'input fails'\n"
+                   "DONE    OUTPUT = &INPUT\n"
+                   "END\n"))
+      (is (= "output on\noutput back on\nread []\n0\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
+;; A negative &STLIMIT is unlimited execution, and &STCOUNT then stops counting; the engine took -1 for a limit it had already passed and stopped with a step-limit error
+;; (SnoRungs keyword_28). The oracle, sbl -bf, wrote exactly this output.
+(deftest a-negative-stlimit-is-unlimited-and-stcount-stops-counting
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        N1 = &STCOUNT\n"
+                   "        &STLIMIT = -1\n"
+                   "        X = 1\n"
+                   "        Y = 2\n"
+                   "        Z = 3\n"
+                   "        N2 = &STCOUNT\n"
+                   "        OUTPUT = 'before ' N1\n"
+                   "        OUTPUT = 'after ' N2\n"
+                   "END\n"))
+      (is (= "before 1\nafter 2\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

@@ -9,7 +9,7 @@
               table? table-get table-set
               array? array-get array-set array-prototype assign-keyword! name-string
               snobol-return! snobol-freturn! snobol-nreturn!
-              <FUNS> <FDEFS> <CHANNELS> <OPSYN> &STNO &FNCLEVEL &CASE fold-case]]
+              <FUNS> <FDEFS> <CHANNELS> <OPSYN> &STNO &FNCLEVEL &CASE &OUTPUT fold-case]]
             [SNOBOL4clojure.functions :refer
              [ASCII CHAR ORD DATE TIME REMDR ATAN CHOP COS EXP LN SIN SQRT TAN INTEGER integer-predicate REAL SETEXIT STRING SIZE TRIM DUPL REVERSE LPAD RPAD REPLACE SUBSTR
               ITEM PROTOTYPE CONVERT COPY FIELD SORT RSORT DATA
@@ -265,7 +265,7 @@
                 ;; normal variable assignment
                 (clojure.core/contains? #{'OUTPUT 'TERMINAL 'INPUT} N)
                 (let [out-val (concat-value r)]
-                  (when (clojure.core/= N 'OUTPUT)   (println (output-text out-val)))
+                  (when (and (clojure.core/= N 'OUTPUT) (not (zero? (long @&OUTPUT)))) (println (output-text out-val)))
                   (when (clojure.core/= N 'TERMINAL) (binding [*out* *err*] (println (output-text out-val))))
                   out-val)
                 ;; Named output channel: var is registered as :output → write to channel writer

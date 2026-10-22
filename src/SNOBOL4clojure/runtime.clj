@@ -106,8 +106,9 @@
             ;; ── &STCOUNT / &STLIMIT ──────────────────────────────────────────
             (reset! &LASTNO @&STNO)
             (reset! &STNO (get @<DISPNO> (first current) (first current)))
-            (let [n (swap! &STCOUNT inc)]
-              (when (> n @&STLIMIT)
+            ;; a negative &STLIMIT is unlimited execution, and &STCOUNT stops counting
+            (let [n (if (neg? (long @&STLIMIT)) @&STCOUNT (swap! &STCOUNT inc))]
+              (when (and (not (neg? (long @&STLIMIT))) (> n @&STLIMIT))
                 (snobol-steplimit! n))
               ;; ── LABEL trace ────────────────────────────────────────────────
               (when (pos? @&TRACE)
