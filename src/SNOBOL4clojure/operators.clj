@@ -64,7 +64,7 @@
 (defn =     ([_x]       η)                         ; unary  — programmable
             ([n x]      (list '= n x)))             ; binary — assignment
 (defn ?     ([x]        (annihilate x))             ; unary  — interrogation
-            ([s p]      (let [s (str s)] (when-let [[a b] (SEARCH s p)] (subs s a b))))   ; binary — match, returns the text matched or nil
+            ([s p]      (let [s (sstr s)] (when-let [[a b] (SEARCH s p)] (subs s a b))))   ; binary — match, returns the text matched or nil
             ([n s p]    (match-replace n s p)))     ; ternary — match+replace
 (defn ?=    ([n s p]    (match-replace n s p)))
 (defn &     ([_n]       nil)                     ; unary  — keyword
@@ -279,7 +279,8 @@
                 :else (finite (clojure.core// (double a) (double b)) 262 "division caused real overflow")))
     **      (let [[x y] args] (pow-fn x y))
     ;; "(SUBJECT ? PATTERN) performs pattern matching and returns the substring matched, or failure as its value" (manual ch. 9, Binary operator extensions)
-    ?       (let [[s p] args s (str s)] (when-let [[a b] (SEARCH s p)] (subs s a b)))
+    ;; the subject is a string, a real its SPITBOL text (0.0 is 0.)
+    ?       (let [[s p] args s (sstr s)] (when-let [[a b] (SEARCH s p)] (subs s a b)))
     =       (let [[N r] args]
               ;; nil replacement = sub-expression failure → statement fails
               (when-not (nil? r)
@@ -331,12 +332,12 @@
                   (fire-value! N v)
                   v))))
     ?=      (let [[n p R] args
-                  subject (str (or ($$ n) ""))
+                  subject (sstr ($$ n))
                   pat     p]                      ; already evaluated by EVAL! dispatch
               (when-let [[start end] (SEARCH subject pat)]
                 ;; The replacement is evaluated after the match, so it sees the
                 ;; variables the match assigned (S RTAB(N) . S REM . S1 = S1 S).
-                (let [repl   (str (or (EVAL! R) ""))
+                (let [repl   (sstr (EVAL! R))
                       result (str (subs subject 0 start)
                                   repl
                                   (subs subject end))]

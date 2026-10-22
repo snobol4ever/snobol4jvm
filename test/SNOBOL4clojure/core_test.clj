@@ -4090,3 +4090,39 @@
                    "d 0. 0.23e-307\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; A pattern match reads its subject as a string, and a replacement is a string: a real is its SPITBOL text there, "converted to its standard representation"
+;; (manual ch. 17, Real to string), so 0.0 is matched as 0., 1.0E20 as 0.1e+21, and 2.0 replaces as 2., as sbl -bf has them. The engine read Java's text, 0.0
+;; and 1.0E20 (X64T math_limits*: EVAL's 0. result never matched POS(0) '0.' RPOS(0)).
+(deftest a-real-is-its-spitbol-text-to-a-pattern-match
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        X = 0.0\n"
+                   "        X POS(0) '0.' RPOS(0)          :S(A1)\n"
+                   "        OUTPUT = '1 no' :(A2)\n"
+                   "A1      OUTPUT = '1 yes'\n"
+                   "A2      Y = 2.5\n"
+                   "        Y '2.5' RPOS(0)                :S(B1)\n"
+                   "        OUTPUT = '2 no' :(B2)\n"
+                   "B1      OUTPUT = '2 yes'\n"
+                   "B2      Z = 1.0E20\n"
+                   "        Z 'e+21' . V                   :S(C1)\n"
+                   "        OUTPUT = '3 no' :(C2)\n"
+                   "C1      OUTPUT = '3 yes ' V\n"
+                   "C2      OUTPUT = '4 ' ('1.5' ? '1.5') ' ' (1.5 ? '.5') ' ' SIZE(1.5) ' ' REPLACE(2.5, '.', ',')\n"
+                   "        R = 1.0E20\n"
+                   "        R \"e+\" = \"E+\"\n"
+                   "        OUTPUT = \"5 \" R\n"
+                   "        Q = \"xay\"\n"
+                   "        Q \"a\" = 2.0\n"
+                   "        OUTPUT = \"6 \" Q\n"
+                   "END\n"))
+      (is (= (str "1 yes\n"
+                   "2 yes\n"
+                   "3 yes e+21\n"
+                   "4 1.5 .5 3 2,5\n"
+                   "5 0.1E+21\n"
+                   "6 x2.y\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
