@@ -1067,3 +1067,26 @@
                    "END\n"))
       (is (= "a: at T1\nb: at WANG.A.NOT\nc: at F.ONE\nd: yes no\ne: at E1\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A function's result variable belongs to one activation, as its locals do: a call that returns without assigning it returns the null string, and a
+;; recursive call leaves the caller's result as it was. The wrapper set the variable to the function object on every return, so W(2) below came back
+;; as the function itself (a PATTERN in a concatenation) and V(2), which sets its result before it recurses, lost it. Wang's prover returns through
+;; RETURN without assigning WANG, so every valid formula came back as the function object. The oracle, sbl -bf, wrote exactly this output.
+(deftest a-functions-result-variable-is-saved-per-call
+  (let [f (java.io.File/createTempFile "resslot" ".sno")]
+    (try
+      (spit f (str " DEFINE('W(N)')                        :(WEND)\n"
+                   "W GT(N,0)                               :F(RETURN)\n W(N - 1)                              :(RETURN)\n"
+                   "WEND OUTPUT = 'a: [' W(2) '] ' DATATYPE(W(2))\n"
+                   " DEFINE('V(N)X')                       :(VEND)\n"
+                   "V V = 'v' N\n GT(N,0)                               :F(RETURN)\n X = V(N - 1)\n :(RETURN)\n"
+                   "VEND OUTPUT = 'b: ' V(2) ' ' V(0)\n"
+                   " DEFINE('U(N)X')                       :(UEND)\n"
+                   "U U = 'u' N\n GT(N,0)                               :F(RETURN)\n U = U '-' U(N - 1)                    :(RETURN)\n"
+                   "UEND OUTPUT = 'c: ' U(2)\n"
+                   " DEFINE('Y(N)')                        :(YEND)\n"
+                   "Y Y = 'y'\n LT(N,3)                               :F(RETURN)\n Y = NE(N,0) Y '+' Y(N + 1)            :(RETURN)\n"
+                   "YEND OUTPUT = 'd: ' Y(1)\n"
+                   "END\n"))
+      (is (= "a: [] STRING\nb: v2 v0\nc: u2-u1-u0\nd: y+y+y\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

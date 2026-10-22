@@ -317,7 +317,10 @@
                   all-saved (into params locals)]
               (letfn [(the-fn [& call-args]
                         ;; Save current values of params + locals
-                        (let [saved (zipmap all-saved (map #($$ (symbol %)) all-saved))]
+                        ;; The result variable is saved with the params and locals: it belongs to one activation, so a recursive call must not
+                        ;; leave the function object, or its own result, in the caller's.
+                        (let [saved   (zipmap all-saved (map #($$ (symbol %)) all-saved))
+                              f-saved ($$ f-sym)]
                           ;; Bind parameters to call arguments
                           (doseq [i (range (count params))]
                             (snobol-set! (symbol (params i))
@@ -343,8 +346,8 @@
                               ;; Restore saved values
                               (doseq [[k v] saved]
                                 (snobol-set! (symbol k) v))
-                              ;; Restore fn reference
-                              (snobol-set! f-sym the-fn)
+                              ;; Restore the caller's result variable (the function object itself outside any call)
+                              (snobol-set! f-sym f-saved)
                               ;; Dispatch on outcome
                               (case outcome
                                 :return  result
