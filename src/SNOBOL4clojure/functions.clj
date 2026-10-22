@@ -391,7 +391,7 @@
                    (str filename))
         rdr (if file-str
               (or (when-not (clojure.string/starts-with? file-str "|")
-                    (try (java.io.BufferedReader. (java.io.FileReader. (channel-file file-str)))
+                    (try (java.io.BufferedReader. (java.io.InputStreamReader. (java.io.FileInputStream. (channel-file file-str)) "ISO-8859-1"))
                          (catch Exception _ nil)))
                   (throw (ex-info "inappropriate file specification for input"
                                   {:snobol/error 116})))
@@ -414,7 +414,7 @@
                    (str filename))
         wtr (if file-str
               (or (when-not (clojure.string/starts-with? file-str "|")
-                    (try (java.io.PrintWriter. (java.io.FileWriter. (channel-file file-str)))
+                    (try (java.io.PrintWriter. (java.io.OutputStreamWriter. (java.io.FileOutputStream. (channel-file file-str)) "ISO-8859-1"))
                          (catch Exception _ nil)))
                   (throw (ex-info "inappropriate file specification for output"
                                   {:snobol/error 160})))

@@ -1324,3 +1324,23 @@
                   "****13******  R(1)\n****3******* i R(0)\n****2******* i RETURN R = ''\n****3*******  RETURN R = ''\nboth: ftrace 4 trace 96\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A program, its input and its output are bytes. A character above 127 in the source, in INPUT or from CHAR is one byte that goes through unchanged, whatever the
+;; locale: CHAR(233) is the single byte E9, SIZE('café') is 5 because the source holds UTF-8, and a line read is written back exactly as it came. The launcher read
+;; and wrote UTF-8 in the locale's charset, so under LC_ALL=C every byte above 127 became a question mark (Budne's 8bit and alph print &ALPHABET). The oracle,
+;; sbl -bf, wrote exactly these bytes. The test starts the launcher, SNOBOL4clojure.main, as a process, because the bytes are decided at the process's edge.
+(deftest the-launcher-passes-bytes-above-127-through-unchanged
+  (let [f  (java.io.File/createTempFile "bytes" ".sno")
+        pb (doto (ProcessBuilder. ["java" "-cp" (System/getProperty "java.class.path") "clojure.main" "-m" "SNOBOL4clojure.main" (.getPath f)])
+             (.redirectErrorStream true))]
+    (try
+      (spit f (str "        OUTPUT = CHAR(233) CHAR(255) CHAR(128) CHAR(10)\n        OUTPUT = 'café üñ'\n        OUTPUT = SIZE('café')\n"
+                   "        OUTPUT = SIZE(&ALPHABET)\n        L = INPUT\n        OUTPUT = SIZE(L) ' ' L\nEND\n")
+            :encoding "UTF-8")
+      (.put (.environment pb) "LC_ALL" "C")
+      (let [p (.start pb)]
+        (with-open [o (.getOutputStream p)] (.write o (.getBytes "naïve été\n" "UTF-8")))
+        (let [out (String. (.readAllBytes (.getInputStream p)) "ISO-8859-1")]
+          (.waitFor p)
+          (is (= (str "éÿ\u0080\n\ncafÃ© Ã¼Ã±\n5\n256\n12 naÃ¯ve Ã©tÃ©\n") out))))
+      (finally (.delete f)))))

@@ -108,7 +108,7 @@
                               ;; Recursively expand the included file
                               (string/split-lines
                                 (preprocess-includes
-                                  (slurp found)
+                                  (slurp found :encoding "ISO-8859-1")
                                   ;; Add the include file's own directory to path
                                   (distinct (cons (.getParent found) search-path))
                                   (conj seen-files abs)))))))
