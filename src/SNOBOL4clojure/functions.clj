@@ -248,8 +248,11 @@
       (real-error code (str fname " argument not numeric"))
       (double n))))
 
+;; a result too large is the function's error, one below the least normal real zero (the oracle treats a denormal as zero, MXCSR 0x9fc0)
 (defn- finite-or [^double d code msg]
-  (if (Double/isInfinite d) (real-error code msg) d))
+  (cond (Double/isInfinite d)              (real-error code msg)
+        (< (Math/abs d) Double/MIN_NORMAL) (clojure.core/* d 0.0)
+        :else                              d))
 
 (defn ATAN [x] (Math/atan (real-arg x 301 "ATAN")))
 (defn CHOP

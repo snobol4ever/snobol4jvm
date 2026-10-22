@@ -99,9 +99,12 @@
   (try (exact-op (long a) (long b)) (catch ArithmeticException _ (throw (ex-info msg {:snobol/error code})))))
 
 ;; A real result too large for a real is the operator's error, "261 Addition caused real overflow" and its kin 262 to 264 and 266 (manual, Appendix D), as sbl -bf
-;; raises them.
+;; raises them; one below the least normal real is zero, as the oracle's SSE arithmetic flushes it (MXCSR 0x9fc0).
 (defn- finite [r code msg]
-  (if (Double/isInfinite (double r)) (throw (ex-info msg {:snobol/error code})) r))
+  (let [r (double r)]
+    (cond (Double/isInfinite r)               (throw (ex-info msg {:snobol/error code}))
+          (< (Math/abs r) Double/MIN_NORMAL)  (clojure.core/* r 0.0)
+          :else                               r)))
 
 ;; The numeric comparisons: "N1 and n2 must evaluate to integer or real values" (manual ch. 19, EQ and its kin), compared as numbers whatever their types, so EQ(2.0,2)
 ;; succeeds; an argument that is not numeric is the function's error (Appendix D: EQ 101/102, NE 149/150, LT 147/148, LE 118/119, GT 111/112, GE 109/110). An argument left

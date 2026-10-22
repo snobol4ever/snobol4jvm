@@ -4070,3 +4070,23 @@
                    "expa 304 exp argument not numeric\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; The oracle computes reals in SSE with MXCSR 0x9fc0 (sbl's int.asm: flush to zero, denormals are zero): a result below the least normal real is zero, and a
+;; denormal a library function returns (EXP(-720)) prints as 0. and is zero to arithmetic and to EQ, as sbl -bf runs them. The engine kept the denormals
+;; (X64T math_div: 2.6308364999025599e-307 / 2.0245099534068279e+03 is Obs[0.] under sbl).
+(deftest a-real-result-below-the-least-normal-is-zero
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        S = 1.0e-300 ; T = 1.0e10 ; E8 = 1.0e8 ; A1 = 2.3e-308 ; M = 2.3e-308 ; C1 = 1.0e-200 ; C2 = 1.0e-110 ; N = -720\n"
+                   "        OUTPUT = 'a ' (S * S) ' ' (S / T) ' ' (S / E8) ' ' (-S / T)\n"
+                   "        OUTPUT = 'b ' (C1 * C2) ' ' (A1 - (M / 2)) ' ' (A1 / 2)\n"
+                   "        OUTPUT = 'c ' EXP(N) ' ' (EXP(N) * 1.0e300) ' ' EQ(EXP(N) * 1, 0)\n"
+                   "        OUTPUT = 'd ' (S ** 2) ' ' (A1 + 0.0)\n"
+                   "END\n"))
+      (is (= (str "a 0. 0. 0. 0.\n"
+                   "b 0. 0.23e-307 0.\n"
+                   "c 0. 0. \n"
+                   "d 0. 0.23e-307\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
