@@ -1230,3 +1230,17 @@
                    "END\n"))
       (is (= "PATTERN PATTERN PATTERN PATTERN PATTERN PATTERN PATTERN\nPATTERN PATTERN PATTERN EXPRESSION PATTERN\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; DATA keeps the case of the names it is given: DATA('node(val,next)') defines the constructor node and the field functions val and next, DATATYPE of an
+;; instance is node, and FIELD answers val and next. The engine folded the type and field names to upper case, so a call of node was an undefined function
+;; (Budne's sudoku, DATA("c(index,z1,z2,z3)")). The oracle, sbl -bf, wrote exactly this output.
+(deftest data-keeps-the-case-of-its-names
+  (let [f (java.io.File/createTempFile "datacase" ".sno")]
+    (try
+      (spit f (str " DATA('node(val,next)')\n n = node(1,2)\n OUTPUT = 'a: ' DATATYPE(n) ' ' val(n) ' ' next(n)\n next(n) = 5\n OUTPUT = 'b: ' next(n)\n"
+                   " OUTPUT = 'c: ' FIELD('node',1) ' ' FIELD('node',2)\n DATA('Item(Weight,Size)')\n m = Item(3,4)\n"
+                   " OUTPUT = 'd: ' DATATYPE(m) ' ' Weight(m) ' ' Size(m)\n"
+                   " OUTPUT = 'e: ' IDENT(DATATYPE(m),'Item') 'is-Item' ' ' IDENT(DATATYPE(n),'node') 'is-node'\n"
+                   " OUTPUT = 'f: ' DATATYPE(m) ' ' DATATYPE(.m)\nEND\n"))
+      (is (= "a: node 1 2\nb: 5\nc: val next\nd: Item 3 4\ne: is-Item is-node\nf: Item NAME\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

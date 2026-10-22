@@ -287,7 +287,7 @@
 ;; Constructor and accessor functions are stored as Clojure fns in the SNOBOL
 ;; namespace so INVOKE can find them via the normal ($$ op) fallthrough.
 
-;; Global registry: type-name-str → vector of field name strings (upper-case)
+;; Global registry: type-name-str → vector of field name strings, as written (sbl -bf folds no name)
 (def data-type-registry (atom {}))
 
 (defn- parse-data-spec
@@ -311,9 +311,9 @@
    Returns a do-form that installs constructor + accessor fns in the active ns."
   [S]
   (when-let [[type-name fields] (parse-data-spec S)]
-    ;; Upcase for case-insensitive SNOBOL4 compatibility
-    (let [tname  (clojure.string/upper-case type-name)
-          fnames (mapv clojure.string/upper-case fields)]
+    ;; The names are kept as written: sbl -bf folds none, so DATA('node(val,next)') defines node, val and next.
+    (let [tname  type-name
+          fnames fields]
       ;; Register in the global registry
       (swap! data-type-registry assoc tname fnames)
       ;; Build constructor: (TYPE f1 f2 ...) → {:__type__ "TYPE" "F1" f1 ...}
@@ -344,7 +344,7 @@
   "FIELD(type-name, n) — return the nth field name of the program-defined type.
    n is 1-based. Returns nil on out-of-range."
   [type-name n]
-  (let [tname  (clojure.string/upper-case (str type-name))
+  (let [tname  (str type-name)
         fields (get @data-type-registry tname)]
     (when (and fields (>= (long n) 1) (<= (long n) (count fields)))
       (nth fields (dec (long n))))))
@@ -498,7 +498,7 @@
    Returns nil (statement failure) if fname unknown or n out of range."
   [fname n]
   (when-let [meta (get @SNOBOL4clojure.env/<FDEFS>
-                       (clojure.string/upper-case (str fname)))]
+                       (str fname))]
     (when-some [p (nth (:params meta) (dec (long n)) nil)]
       (SNOBOL4clojure.env.NAME. (symbol p)))))
 
@@ -507,7 +507,7 @@
    Returns nil (statement failure) if fname unknown or n out of range."
   [fname n]
   (when-let [meta (get @SNOBOL4clojure.env/<FDEFS>
-                       (clojure.string/upper-case (str fname)))]
+                       (str fname))]
     (when-some [p (nth (:locals meta) (dec (long n)) nil)]
       (SNOBOL4clojure.env.NAME. (symbol p)))))
 
