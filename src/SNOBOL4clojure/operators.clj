@@ -245,7 +245,8 @@
                 (and (list? N) (>= (count N) 2))
                 (let [[container-sym & ks] N
                       r (concat-value r)
-                      raw-container ($$ container-sym)
+                      ;; the container is a variable's name, or the table or array itself when it came from a subscript (tt['blue']['green'])
+                      raw-container (if (symbol? container-sym) ($$ container-sym) container-sym)
                       ;; NAME indirect reference — dereference to the actual array/table
                       container (if (instance? NAME raw-container)
                                   ($$ (symbol (str (.n raw-container))))
@@ -577,7 +578,7 @@
                     (throw (ex-info (.getMessage e) {:snobol/signal :error})))))
     code      (apply INVOKE 'CODE args)
     quote   ($$ (second op))
-            (let [raw-f ($$ op)
+            (let [raw-f (if (symbol? op) ($$ op) op)   ; op is the container itself when it came from a subscript
                   ;; NAME indirect reference — dereference to actual array/table
                   f (if (instance? NAME raw-f)
                       ($$ (symbol (str (.n raw-f))))
@@ -709,14 +710,16 @@
                                   N' (if (and (list? N) (>= (count N) 2)
                                               (not (clojure.core/= (first N) '&)))
                                        (let [container-sym (first N)
-                                             container-val  ($$ container-sym)]
-                                         (if (fn? container-val)
+                                             ;; a subscript on a subscript: the container is whatever the inner one names
+                                             container-val (if (list? container-sym) (EVAL! container-sym) ($$ container-sym))]
+                                         (cond
+                                           (nil? container-val) nil
                                            ;; PDD setter: keep keys as raw symbols
-                                           N
+                                           (fn? container-val)  N
                                            ;; TABLE/ARRAY: evaluate keys
-                                           (apply list container-sym (map EVAL! (rest N)))))
+                                           :else (apply list (if (list? container-sym) container-val container-sym) (map EVAL! (rest N)))))
                                        N)]
-                              (INVOKE '= N' (EVAL! R)))
+                              (when N' (INVOKE '= N' (EVAL! R))))
           (equal op '?=)    (let [[N P R] parms] (INVOKE '?= N (EVAL! P) R))
           (equal op '&)     (let [[N]     parms
                                   kw-sym  (symbol (str "&" N))
@@ -734,6 +737,8 @@
           (and (equal op '*) (clojure.core/= (count parms) 1))
           (let [sym (first parms)]
             (list 'DEFER! (fn [] (EVAL! sym))))
+          ;; a subscript on a subscript, tt['blue']['green']: the operator is the inner subscript, whose value is the container
+          (list? op) (when-some [container (EVAL! op)] (when-some [args (eval-operands parms)] (apply INVOKE container args)))
           true (let [;; ~X negates success and failure, so it takes a failed operand
                      ;; as its input; any other operator or function fails with it.
                      args     (if (equal op 'tilde)

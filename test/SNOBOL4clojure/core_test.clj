@@ -1357,3 +1357,15 @@
                    "        D = 1 +\n+       2\n        OUTPUT = &STNO ' ' &LASTNO ' ' &STCOUNT\n\n        &TRACE = 5\n        TRACE('X')\n\n        X = 1\nEND\n"))
       (is (= "7 5 3\n8 7 4\n10 9 6\n12 11 8\n****17******  X = 1\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A subscript may follow a subscript: tt['blue']['green'] is the element 'green' of the table that is the element 'blue' of tt, to read and to assign, and
+;; a table or an array may be an element of either. The evaluator took the first element of a subscripted name to be a variable, so a name that was itself a
+;; subscripted name threw a ClassCastException (Budne's spit, which tests the SPITBOL operators). The oracle, sbl -bf, wrote exactly this output.
+(deftest a-subscript-may-follow-a-subscript
+  (let [f (java.io.File/createTempFile "nestsub" ".sno")]
+    (try
+      (spit f (str " tt = TABLE()\n tt['blue'] = TABLE()\n tt['blue']['green'] = 'cyan'\n OUTPUT = tt['blue']['green']\n a = ARRAY('2,3')\n a<1,2> = TABLE()\n"
+                   " a<1,2>['k'] = 'v'\n OUTPUT = a<1,2>['k']\n t2 = TABLE()\n t2['x'] = ARRAY(3)\n t2['x']<2> = 'arr'\n OUTPUT = t2['x']<2>\n"
+                   " t2['x']<3> = t2['x']<2> '!'\n OUTPUT = t2['x']<3>\n OUTPUT = IDENT(.tt['blue']['green'],.tt['blue']['green']) 'same'\nEND\n"))
+      (is (= "cyan\nv\narr\narr!\nsame\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
