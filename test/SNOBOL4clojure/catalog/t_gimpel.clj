@@ -227,32 +227,34 @@ DONE2
 
 (deftest gimpel_bsort_bubble_sort
   "BSORT (ch.13.1) bubble-sorts an array in ascending lexical order."
+  ;; the lines are literal strings: prog-steplimit is a macro that joins its
+  ;; arguments' source text, so a (str ...) form here was run as the text "(str ...)"
   (prog-steplimit 5000 2000
-    (str "-INCLUDE '" GDIR "/BSORT.INC'\n"
-         "        A = ARRAY(5)\n"
-         "        A<1> = 'dog'\n"
-         "        A<2> = 'cat'\n"
-         "        A<3> = 'ant'\n"
-         "        A<4> = 'bee'\n"
-         "        A<5> = 'emu'\n"
-         "        BSORT(A,1,5)\n"
-         "     END"))
+    "-INCLUDE 'corpus/gimpel/SNOBOL4/BSORT.INC'"
+    "        A = ARRAY(5)"
+    "        A<1> = 'dog'"
+    "        A<2> = 'cat'"
+    "        A<3> = 'ant'"
+    "        A<4> = 'bee'"
+    "        A<5> = 'emu'"
+    "        BSORT(A,1,5)"
+    "     END")
   (is (= "ant" (SNOBOL4clojure.env/array-get ($$ 'A) [1])))
-  (is (= "dog" (SNOBOL4clojure.env/array-get ($$ 'A) [5]))))
+  (is (= "emu" (SNOBOL4clojure.env/array-get ($$ 'A) [5]))))   ; sbl -bf: ant bee cat dog emu
 
 (deftest gimpel_hsort_quicksort
   "HSORT (ch.13.2) Hoare quicksort — depends on SWAP."
   (prog-steplimit 5000 2000
-    (str "-INCLUDE '" GDIR "/HSORT.INC'\n"
-         "        A = ARRAY(6)\n"
-         "        A<1> = 'fox'\n"
-         "        A<2> = 'ant'\n"
-         "        A<3> = 'zoo'\n"
-         "        A<4> = 'bee'\n"
-         "        A<5> = 'cat'\n"
-         "        A<6> = 'dog'\n"
-         "        HSORT(A,1,6)\n"
-         "     END"))
+    "-INCLUDE 'corpus/gimpel/SNOBOL4/HSORT.INC'"
+    "        A = ARRAY(6)"
+    "        A<1> = 'fox'"
+    "        A<2> = 'ant'"
+    "        A<3> = 'zoo'"
+    "        A<4> = 'bee'"
+    "        A<5> = 'cat'"
+    "        A<6> = 'dog'"
+    "        HSORT(A,1,6)"
+    "     END")
   (is (= "ant" (SNOBOL4clojure.env/array-get ($$ 'A) [1])))
   (is (= "zoo" (SNOBOL4clojure.env/array-get ($$ 'A) [6]))))
 
