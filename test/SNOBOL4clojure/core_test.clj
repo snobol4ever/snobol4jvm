@@ -3625,3 +3625,23 @@
       (finally (.delete f)))))
 
 
+;; An output-associated variable is a variable: "On output, the string assigned to the output variable is written as one line" (manual ch. 19, INPUT/OUTPUT, Line
+;; mode), and reading it gives back the value assigned, OUTPUT among them, as sbl -bf has it. The engine read the null string (AIS SIR.sno: SPITCORE's
+;; IN(.OUTPUT.) echoes a line through OUTPUT. and returns $IN...N, so every sentence read empty and the program answered nothing).
+(deftest an-output-associated-variable-keeps-its-value
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        OUTPUT(.OV)\n"
+                   "        OV = 'written'\n"
+                   "        OUTPUT = '1 [' OV ']'\n"
+                   "        OUTPUT = 'direct'\n"
+                   "        X = OUTPUT\n"
+                   "        OUTPUT = '2 [' X ']'\n"
+                   "        $'OV' = 'again'\n"
+                   "        OUTPUT = '3 [' $'OV' ']'\n"
+                   "END\n"))
+      (is (= "written\n1 [written]\ndirect\n2 [direct]\nagain\n3 [again]\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
+

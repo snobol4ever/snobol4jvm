@@ -415,6 +415,11 @@
           (when (some? v) (swap! <ASSOC-LAST> assoc 'INPUT v))
           v))   ; nil = EOF = statement fails, as SPITBOL does
 
+      ;; An output-associated variable, OUTPUT among them, reads the value last assigned to it ("the string assigned to the output variable is written", manual
+      ;; ch. 19, INPUT/OUTPUT), as sbl -bf has it; the value is the one <ASSOC-LAST> keeps for the dump. OUTPUT is not set as a variable, which would hide the function.
+      (or (clojure.core/= sym 'OUTPUT) (clojure.core/= :output (:type (get @<CHANNELS> sym))))
+      (get @<ASSOC-LAST> sym ε)
+
       :else
       ;; Scope chain: user <VARS> first, then engine builtins (read-only).
       ;; A user variable named INTEGER shadows the built-in INTEGER predicate —
