@@ -1189,3 +1189,17 @@
                   "5,-1: fail\n5,0: fail\n5,1: fail\n5,2: fail\n5,3: fail\n5,4: fail\n5,5: fail\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; &TRIM is 1 when a program starts, and while it is not 0 the blanks and tabs at the end of an input record are dropped as the record is read; with &TRIM = 0
+;; the record is read as it is. The engine started with &TRIM = 0 and never trimmed (Budne's trim1 prints a line of @ marks for each trailing blank). The oracle,
+;; sbl -bf, wrote exactly this output for the same six records.
+(deftest input-records-lose-their-trailing-blanks-while-trim-is-set
+  (let [f   (java.io.File/createTempFile "trim" ".sno")
+        in  "a   \nb\t\nc \t \n   \n\nd e  \n"
+        run (fn [] (binding [*in* (java.io.BufferedReader. (java.io.StringReader. in))] (with-out-str (-main (.getPath f)))))]
+    (try
+      (spit f (str "L1 line = INPUT                          :F(DONE)\n OUTPUT = '[' line ']'                 :(L1)\nDONE OUTPUT = '&TRIM=' &TRIM\nEND\n"))
+      (is (= "[a]\n[b]\n[c]\n[]\n[]\n[d e]\n&TRIM=1\n" (run)))
+      (spit f (str " &TRIM = 0\nL1 line = INPUT                          :F(DONE)\n OUTPUT = '[' line ']'                 :(L1)\nDONE OUTPUT = '&TRIM=' &TRIM\nEND\n"))
+      (is (= "[a   ]\n[b\t]\n[c \t ]\n[   ]\n[]\n[d e  ]\n&TRIM=0\n" (run)))
+      (finally (.delete f)))))

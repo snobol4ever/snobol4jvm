@@ -357,7 +357,7 @@
 ;; Bare INPUT() call (no args): read one line from stdin.
 (defn READ-LINE! []
   (let [line (try (read-line) (catch Exception _ nil))]
-    (if (nil? line) ε (str line))))
+    (if (nil? line) ε (env/input-record line))))
 
 ;; ── Named I/O channel management (Sprint 25D) ────────────────────────────────
 ;; SNOBOL4 syntax:

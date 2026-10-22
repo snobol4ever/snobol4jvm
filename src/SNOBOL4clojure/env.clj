@@ -37,7 +37,7 @@
 (def  &MAXLNGTH  (atom 4194304))
 (def  &PROFILE   (atom 0))
 (def  &TRACE     (atom 0))
-(def  &TRIM      (atom 0))
+(def  &TRIM      (atom 1))   ; 1 when a program starts, as in SPITBOL: input records lose their trailing blanks and tabs
 (def  &STCOUNT   (atom 0))
 (def  &STLIMIT   (atom 2147483647))
 ;; &IOCOMPAT: I/O argument convention selector (Sprint 25D).
@@ -51,7 +51,7 @@
 ;; registry, which outlives a program.
 (def ^:private keyword-defaults
   {#'&ANCHOR 0, #'&DUMP 0, #'&ERRLIMIT 0, #'&FTRACE 0, #'&FULLSCAN 0,
-   #'&MAXLNGTH 4194304, #'&PROFILE 0, #'&TRIM 0,
+   #'&MAXLNGTH 4194304, #'&PROFILE 0, #'&TRIM 1,
    #'&STLIMIT 2147483647, #'&IOCOMPAT :catspaw})
 
 (defn reset-keywords!
@@ -245,6 +245,11 @@
   [N]
   (get @<VARS> (symbol (name N))))
 
+;; An input record as the program reads it: while &TRIM is not 0 the blanks and tabs at its end are dropped.
+(defn input-record [line]
+  (let [s (str line)]
+    (if (zero? (long @&TRIM)) s (clojure.string/replace s #"[ \t]+$" ""))))
+
 (defn $$ [N]
   (let [sym (symbol (name N))]
     (cond
@@ -253,12 +258,12 @@
       (let [ch  (get @<CHANNELS> sym)
             rdr ^java.io.BufferedReader (:reader ch)
             line (try (.readLine rdr) (catch Exception _ nil))]
-        (if (nil? line) nil (str line)))   ; nil = EOF = statement fails (:F branch)
+        (if (nil? line) nil (input-record line)))   ; nil = EOF = statement fails (:F branch)
 
       ;; Plain INPUT variable (no channel): read from *in* (stdin)
       (clojure.core/= sym 'INPUT)
       (let [line (try (read-line) (catch Exception _ nil))]
-        (if (nil? line) nil (str line)))   ; nil = EOF = statement fails, as SPITBOL does
+        (if (nil? line) nil (input-record line)))   ; nil = EOF = statement fails, as SPITBOL does
 
       :else
       ;; Scope chain: user <VARS> first, then engine builtins (read-only).
