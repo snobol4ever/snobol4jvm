@@ -331,6 +331,16 @@
   [N]
   (get @<VARS> (symbol (name N))))
 
+;; "If s is omitted, then the null string is assigned to all user variables in the system. When s is present, it should be a list of variable names separated by
+;; commas. These variables will not be affected by the CLEAR function" (manual ch. 19, CLEAR). An output-associated variable is null too, and nothing is written;
+;; the names are trimmed and keep their case, and s is converted to a string, so .X names X (sbl -bf).
+(defn clear-vars! [s]
+  (let [kept (into #{} (comp (map clojure.string/trim) (remove empty?) (map symbol)) (clojure.string/split (sstr s) #","))
+        null (fn [m] (reduce-kv (fn [m k _] (if (kept k) m (assoc m k ""))) m m))]
+    (swap! <VARS> null)
+    (swap! <ASSOC-LAST> null)
+    ""))
+
 ;; Standard input, one reader for the INPUT variable and every channel opened on it ([-f0], or no file), so a record read through one is not read again through
 ;; another and none reads ahead of the others; it follows the *in* of the run (a test binds its own).
 (def ^:private stdin-cache (atom nil))

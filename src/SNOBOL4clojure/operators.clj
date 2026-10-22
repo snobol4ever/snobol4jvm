@@ -461,9 +461,9 @@
     STOPTR  (let [[nm ty] args] (stoptr! nm (or ty "VALUE")) ε)
     ;; COLLECT returns an integer, the store left, as SPITBOL does (DATATYPE INTEGER).
     COLLECT (quot (.freeMemory (Runtime/getRuntime)) 8)
+    CLEAR     (SNOBOL4clojure.env/clear-vars! (first args))
     ;; Not yet implemented: these keep the null result they had before an
     ;; undefined name became ERROR 022, so no program that calls them regresses.
-    CLEAR     ε
     EJECT     ε
     BACKSPACE ε
     SETEXIT (apply SETEXIT args)

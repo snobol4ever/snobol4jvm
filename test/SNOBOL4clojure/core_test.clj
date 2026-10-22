@@ -3788,3 +3788,40 @@
       (is (= "a 5\nb 9\nc 11\nd 13\ne 26\nf 32 18\ng 20 19\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; "If s is omitted, then the null string is assigned to all user variables in the system. When s is present, it should be a list of variable names separated
+;; by commas. These variables will not be affected by the CLEAR function" (manual ch. 19, CLEAR). sbl -bf: the names are read with their blanks trimmed and
+;; their case kept, the argument is converted to a string (.X keeps X, 3 keeps the variable 3), a variable that holds a table or an array is null after it, an
+;; output-associated variable is null and nothing is written, and a function is no variable. The engine's CLEAR did nothing (SnoRungs ladder__rung30_clear).
+(deftest clear-assigns-the-null-string-to-every-variable-but-those-named
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str " X = 1 ; Y = 2 ; Z = 3\n"
+                   " CLEAR('X,Y')\n"
+                   " OUTPUT = 'a [' X '][' Y '][' Z ']'\n"
+                   " X = 1 ; Y = 2 ; Z = 3\n"
+                   " CLEAR(' X, Y ')\n"
+                   " OUTPUT = 'b [' X '][' Y '][' Z ']'\n"
+                   " X = 1 ; Y = 2 ; Z = 3\n"
+                   " CLEAR(.X)\n"
+                   " OUTPUT = 'c [' X '][' Y '][' Z ']'\n"
+                   " T = TABLE() ; A = ARRAY(2)\n"
+                   " OUTPUT(.O)\n"
+                   " O = 'first'\n"
+                   " CLEAR()\n"
+                   " OUTPUT = 'd [' DATATYPE(T) '][' DATATYPE(A) '][' O ']'\n"
+                   " X = 1\n"
+                   " CLEAR('x')\n"
+                   " OUTPUT = 'e [' X ']'\n"
+                   " X = 5\n"
+                   " CLEAR(3)\n"
+                   " OUTPUT = 'f [' X ']'\n"
+                   " DEFINE('F()') :(FE)\n"
+                   "F F = 'r' :(RETURN)\n"
+                   "FE CLEAR()\n"
+                   " OUTPUT = 'g [' F() ']'\n"
+                   "END\n"))
+      (is (= "a [1][2][]\nb [1][2][]\nc [1][][]\nfirst\nd [STRING][STRING][]\ne []\nf []\ng [r]\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
