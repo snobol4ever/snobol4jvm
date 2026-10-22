@@ -3708,3 +3708,26 @@
       (finally (.delete f)))))
 
 
+;; "SPITBOL first converts the integer to a STRING and then performs a STRING to NAME conversion ... A subsequent reference to $X would access a variable with name
+;; '1'" (manual ch. 17, Integer to name): CONVERT(s, 'NAME') is the name of the variable s spells, the same name .X gives, so IDENT(.X, CONVERT('X','NAME'))
+;; succeeds and either subscripts the same table entry, as sbl -bf has it. The engine made a bare symbol of it, a different key (AIS TEST.sno: PUTL's
+;; CONVERT(UNAME,'NAME') put a property that GET(.DOG, ...) could not find).
+(deftest a-converted-name-is-the-name-dot-gives
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        T = TABLE()\n"
+                   "        T[.X] = 'one'\n"
+                   "        OUTPUT = '1 [' T[.X] ']'\n"
+                   "        N = CONVERT('X','NAME')\n"
+                   "        OUTPUT = '2 [' T[N] '] ' DATATYPE(N)\n"
+                   "        OUTPUT = '3 ' IDENT(.X, N) 'ident'\n"
+                   "        OUTPUT = '4 ' IDENT(.X, .X) 'ident'\n"
+                   "        T[N] = 'two'\n"
+                   "        OUTPUT = '5 [' T[.X] ']'\n"
+                   "        OUTPUT = '6 ' DIFFER(.X, .Y) 'differ'\n"
+                   "        A = ARRAY(2)\n"
+                   "        OUTPUT = '7 ' IDENT(.A<1>, .A<1>) 'ident'\n"
+                   "END\n"))
+      (is (= "1 [one]\n2 [one] NAME\n3 ident\n4 ident\n5 [two]\n6 differ\n7 ident\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

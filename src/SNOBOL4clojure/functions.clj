@@ -122,8 +122,9 @@
       (list 'SEQ (list 'LIT$ (str x)))
 
       (and (clojure.core/= from "STRING") (clojure.core/= to "NAME"))
-      ;; A string becomes a NAME (symbol pointing to a variable of that name)
-      (symbol (str x))
+      ;; A string becomes the name of the variable it spells, the NAME .X gives ("a STRING to NAME conversion ... A subsequent reference to $X would access
+      ;; a variable with name '1'", manual ch. 17, Integer to name), so IDENT(.X, CONVERT('X','NAME')) succeeds and both are one table key, as in sbl -bf
+      (SNOBOL4clojure.env.NAME. (symbol (str x)))
 
       ;; INTEGER conversions
       (and (clojure.core/= from "INTEGER") (clojure.core/= to "STRING"))
@@ -136,7 +137,7 @@
       (list 'SEQ (list 'LIT$ (str x)))
 
       (and (clojure.core/= from "INTEGER") (clojure.core/= to "NAME"))
-      (symbol (str x))
+      (SNOBOL4clojure.env.NAME. (symbol (str x)))
 
       ;; REAL conversions: "The real number is converted to its standard representation" (manual ch. 17, Real to string), as sstr writes it
       (and (clojure.core/= from "REAL") (clojure.core/= to "STRING"))
@@ -149,7 +150,7 @@
       (list 'SEQ (list 'LIT$ (str-arg x)))
 
       (and (clojure.core/= from "REAL") (clojure.core/= to "NAME"))
-      (symbol (str-arg x))
+      (SNOBOL4clojure.env.NAME. (symbol (str-arg x)))
 
       ;; ARRAY conversions
       (and (clojure.core/= from "ARRAY") (clojure.core/= to "TABLE"))
@@ -183,7 +184,7 @@
       ;; PATTERN stays PATTERN
       (and (clojure.core/= from "PATTERN") (clojure.core/= to "PATTERN")) x
 
-      ;; NAME conversions (NAME is a symbol in our representation)
+      ;; NAME conversions (a NAME, or a symbol where the engine keeps one, reads as its variable's name)
       (and (clojure.core/= from "NAME") (clojure.core/= to "STRING"))
       (str x)
 
