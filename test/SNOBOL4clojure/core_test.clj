@@ -1090,3 +1090,16 @@
                    "END\n"))
       (is (= "a: [] STRING\nb: v2 v0\nc: u2-u1-u0\nd: y+y+y\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A capture into OUTPUT writes the line, as an assignment to OUTPUT does: 'abc' ANY('abc') $ OUTPUT FAIL prints a, b and c. The matcher assigned the
+;; variable named OUTPUT directly and wrote nothing (Budne's any and breakx programs print through $ OUTPUT). The immediate form assigns on every attempt, so
+;; ARB $ OUTPUT prints the null string, a and ab before the C is found; the conditional form assigns once, when the match succeeds. The oracle, sbl -bf,
+;; wrote exactly this output.
+(deftest a-capture-into-output-writes-the-line
+  (let [f (java.io.File/createTempFile "capout" ".sno")]
+    (try
+      (spit f (str " 'abc' ANY('abc') $ OUTPUT FAIL\n OUTPUT = '--'\n 'xyz' LEN(1) . OUTPUT\n OUTPUT = '--'\n"
+                   " 'abc' ARB $ OUTPUT 'c'\n OUTPUT = '--'\n"
+                   " TRACE('V','VALUE')\n 'q' LEN(1) . V\n OUTPUT = 'V=' V\nEND\n"))
+      (is (= "a\nb\nc\n--\nx\n--\n\na\nab\n--\nV=q\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

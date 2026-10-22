@@ -614,7 +614,7 @@
         (when-not (nil? v) (recur (next ops) (conj vals v))))
       vals)))
 
-;; The target of . $ and @ says where the matcher puts a value. A plain variable is its symbol. Any other target becomes a function of the value: an element
+;; The target of . $ and @ says where the matcher puts a value, as a function of the value. A plain variable is assigned as a statement assigns it. An element
 ;; T<I> takes its subscripts now, a variable named by a string ($V) takes its name now, and a deferred expression (*T<I>) takes its subscripts when the assignment
 ;; is made, so a loop that moves I fills a different element each time.
 (defn- assign-to [target v] (INVOKE '= target v))
@@ -623,8 +623,9 @@
 
 (defn- capture-target [N]
   (cond
+    ;; A plain variable is assigned as a statement assigns it: OUTPUT writes the line, an output channel its record, a traced variable fires its trace.
     (symbol? N)
-    N
+    (fn [x] (assign-to N x))
     (and (list? N) (equal (first N) '$) (clojure.core/= 2 (count N)))
     (when-some [v (EVAL! (second N))]
       (let [t (indirect-target v)] (fn [x] (assign-to t x))))
