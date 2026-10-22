@@ -2976,3 +2976,58 @@
                                          "\n") "dex.sno" main)
              (with-out-str (-main main))))
       (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))
+
+;; A dump lists the primitive pattern variables the program has read (Z = BAL, W = ARB REM), each a PATTERN, as sbl -bf lists them ("These variables contain the
+;; primitive patterns of the same name", SPITBOL manual ch. 18). The engine never listed them (TPgm test1's BAL = PATTERN). The oracle, sbl -bf, wrote exactly this output.
+(deftest a-dump-lists-the-primitive-pattern-variables-read
+  (let [dir  (.toFile (java.nio.file.Files/createTempDirectory "srcpos" (make-array java.nio.file.attribute.FileAttribute 0)))
+        main (str dir "/dbal.sno")]
+    (try
+      (spit (str dir "/dbal.sno") (str "	Z = BAL\n"
+                  "	W = ARB REM\n"
+                  "	&DUMP = 1\n"
+                  "END\n"))
+      (is (= (clojure.string/replace (str "\n"
+                                         "\n"
+                                         "\n"
+                                         "dump of natural variables\n"
+                                         "\n"
+                                         "ARB = PATTERN\n"
+                                         "BAL = PATTERN\n"
+                                         "REM = PATTERN\n"
+                                         "W = PATTERN\n"
+                                         "Z = PATTERN\n"
+                                         "\n"
+                                         "\n"
+                                         "dump of keyword values\n"
+                                         "\n"
+                                         "&ANCHOR = 0\n"
+                                         "&CASE = 0\n"
+                                         "&CODE = 0\n"
+                                         "&DUMP = 1\n"
+                                         "&ERRLIMIT = 0\n"
+                                         "&ERRTEXT = ''\n"
+                                         "&ERRTYPE = 0\n"
+                                         "&FILE = 'dbal.sno'\n"
+                                         "&FNCLEVEL = 0\n"
+                                         "&FTRACE = 0\n"
+                                         "&FULLSCAN = 1\n"
+                                         "&INPUT = 1\n"
+                                         "&LASTFILE = 'dbal.sno'\n"
+                                         "&LASTLINE = 3\n"
+                                         "&LASTNO = 3\n"
+                                         "&LINE = 4\n"
+                                         "&MAXLNGTH = 16777216\n"
+                                         "&OUTPUT = 1\n"
+                                         "&PROFILE = 0\n"
+                                         "&RTNTYPE = ''\n"
+                                         "&STCOUNT = 4\n"
+                                         "&STLIMIT = 2147483647\n"
+                                         "&STNO = 4\n"
+                                         "&TRACE = 0\n"
+                                         "&TRIM = 1\n"
+                                         "\n"
+                                         "\n"
+                                         "\n") "dbal.sno" main)
+             (with-out-str (-main main))))
+      (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))
