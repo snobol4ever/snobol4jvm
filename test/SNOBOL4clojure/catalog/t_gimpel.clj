@@ -140,12 +140,12 @@
   (prog-include [GDIR]
     "-INCLUDE 'AGT.INC'
         AGT('Z','a')     :S(YES1)F(NO1)
- YES1   R1 = 'yes'       :(DONE1)
- NO1    R1 = 'no'
- DONE1  AGT('apple','BANANA')  :S(YES2)F(NO2)
- YES2   R2 = 'yes'       :(DONE2)
- NO2    R2 = 'no'
- DONE2
+YES1    R1 = 'yes'       :(DONE1)
+NO1     R1 = 'no'
+DONE1   AGT('apple','BANANA')  :S(YES2)F(NO2)
+YES2    R2 = 'yes'       :(DONE2)
+NO2     R2 = 'no'
+DONE2
      END")
   (is (= "yes" ($$ 'R1)))   ;; Z > a alphabetically
   (is (= "no"  ($$ 'R2))))  ;; apple < BANANA alphabetically
