@@ -30,7 +30,7 @@
   and       ::=  alt | and  <_  '&'  _>  alt
   alt       ::=  cat | cat (<_  '|'  _>  cat)+
   cat       ::=  at  | at  (<_>          at)+
-  at        ::=  sum | at   <_  '@'  _>  sum
+  at        ::=  sum | sum  <_  '@'  _>  at
   sum       ::=  hsh | sum  <_> '+' <_>  hsh
                      | sum  <_> '-' <_>  hsh
   hsh       ::=  div | hsh  <_  '#'  _>  div
