@@ -2857,3 +2857,17 @@
       (is (= "2 1 CARD\n2\na variable 7\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; LPAD and RPAD take their arguments as any function does: "If trailing arguments are omitted, SPITBOL will supply null strings in their place" (SPITBOL manual
+;; ch. 4), so LPAD() is the null string and RPAD('ab') is ab. The engine's LPAD and RPAD died with an ArityException (TPgm test1's DIFFER(LPAD())). The oracle, sbl -bf,
+;; wrote exactly this output.
+(deftest lpad-and-rpad-take-omitted-arguments-as-null
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "	OUTPUT = '[' LPAD() ']' '[' RPAD('ab') ']' '[' LPAD('ab',4) ']' '[' RPAD('ab',4,) ']'\n"
+                   "	OUTPUT = DIFFER(LPAD()) 'not null'\n"
+                   "	OUTPUT = 'done'\n"
+                   "END\n"))
+      (is (= "[][ab][  ab][ab  ]\ndone\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
