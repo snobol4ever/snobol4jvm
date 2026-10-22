@@ -167,11 +167,16 @@
     (sstr v)))
 
 (defn- program-fn
-  "The function a program bound to the name op (a DATA constructor or field),
-   or nil. Only names that start with a letter: operators are not looked up."
+  "The function a program gave the name op, or nil: a DATA constructor or field (held as the value of the name), or a DEFINEd or OPSYN function (held in
+   <FUNS>). Only names that start with a letter: operators are not looked up."
   [op]
   (when (and (symbol? op) (Character/isLetter (.charAt (name op) 0)))
-    (let [v (reference op)] (when (fn? v) v))))
+    (let [v (reference op)]
+      (if (fn? v) v (get @<FUNS> (name op))))))
+
+;; A variable put back as its caller had it: set to the value it had, or unset again when it had none.
+(defn- restore-var! [sym v]
+  (if (nil? v) (swap! SNOBOL4clojure.env/<VARS> dissoc sym) (snobol-set! sym v)))
 
 (defn INVOKE [op & args]
   ;; A program's own DATA function wins over the engine's arm of the same
@@ -319,8 +324,10 @@
                         ;; Save current values of params + locals
                         ;; The result variable is saved with the params and locals: it belongs to one activation, so a recursive call must not
                         ;; leave the function object, or its own result, in the caller's.
-                        (let [saved   (zipmap all-saved (map #($$ (symbol %)) all-saved))
-                              f-saved ($$ f-sym)]
+                        ;; What is saved is the program's own variable (nil: it was not set), never the engine's built-in of that name that $$ would
+                        ;; find in the core namespace, so the restore leaves the variable as the caller had it.
+                        (let [saved   (zipmap all-saved (map #(reference (symbol %)) all-saved))
+                              f-saved (reference f-sym)]
                           ;; Bind parameters to call arguments
                           (doseq [i (range (count params))]
                             (snobol-set! (symbol (params i))
@@ -345,16 +352,16 @@
                               (fire-return! fname result outcome)
                               ;; Restore saved values
                               (doseq [[k v] saved]
-                                (snobol-set! (symbol k) v))
-                              ;; Restore the caller's result variable (the function object itself outside any call)
-                              (snobol-set! f-sym f-saved)
+                                (restore-var! (symbol k) v))
+                              ;; Restore the caller's result variable
+                              (restore-var! f-sym f-saved)
                               ;; Dispatch on outcome
                               (case outcome
                                 :return  result
                                 :freturn nil    ; nil → statement failure → :F branch
                                 :nreturn nil
                                 result)))))]   ; fall-through = return
-                (snobol-set! f-sym the-fn)
+                ;; The function lives in <FUNS>, not in the variable of its name: a function and a variable are two things (sbl -bf).
                 (swap! <FUNS>  assoc fname the-fn)
                 (swap! <FDEFS> assoc fname
                                {:params params :locals locals})

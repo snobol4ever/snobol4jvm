@@ -1244,3 +1244,19 @@
                    " OUTPUT = 'f: ' DATATYPE(m) ' ' DATATYPE(.m)\nEND\n"))
       (is (= "a: node 1 2\nb: 5\nc: val next\nd: Item 3 4\ne: is-Item is-node\nf: Item NAME\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A function and a variable of the same name are two things: DEFINE('S(NA)') does not give the variable S a value, so S is the null string until the program
+;; assigns it, a function's result variable starts null, and a local named like another function holds what the function puts there. DEFINE bound the
+;; function object into the variable of its name, so DATATYPE(S) and a pattern that reads S saw the object and the matcher threw "No matching clause" (Budne's
+;; atn, whose DISPLAY has a local S beside the function S). The oracle, sbl -bf, wrote exactly this output.
+(deftest a-function-name-is-not-a-variable-value
+  (let [f (java.io.File/createTempFile "fnvar" ".sno")]
+    (try
+      (spit f (str " DEFINE('S(NA)')                       :(SE)\nS S = NA                                :(RETURN)\n"
+                   "SE DEFINE('D(X)S,L')                     :(DE)\n"
+                   "D X BREAK('b') $ S\n OUTPUT = 'in D: S=' S\n S LEN(1) . L\n OUTPUT = 'in D: L=' L                 :(RETURN)\n"
+                   "DE D('aab')\n OUTPUT = 'top: DATATYPE(S)=' DATATYPE(S) ' null=' DATATYPE(null)\n"
+                   " P = LEN(1) | null\n OUTPUT = 'P=' DATATYPE(P)\n"
+                   " T = S('x')\n OUTPUT = 'T=' T\nEND\n"))
+      (is (= "in D: S=aa\nin D: L=a\ntop: DATATYPE(S)=STRING null=STRING\nP=PATTERN\nT=x\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
