@@ -637,43 +637,47 @@ end
 " (:stdout r)))))
 
 (deftest csnobol4-a
-  "Budne suite: a.sno"
-  (let [r (run-with-timeout "	a = 1
+  "Budne suite: a.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [out (run-files [["a.sno" "	a = 1
 	&DUMP = 1
 END
-" 2000)]
-    (is (= "Dump of variables at termination
+"]])]
+    (is (same-output? "
 
-Natural variables
 
-A = 1
-ABORT = PATTERN
-ARB = PATTERN
-BAL = PATTERN
-FAIL = PATTERN
-FENCE = PATTERN
-REM = PATTERN
-SUCCEED = PATTERN
+dump of natural variables
 
-Unprotected keywords
+a = 1
 
-&ABEND = 0
+
+dump of keyword values
+
 &ANCHOR = 0
-&CASE = 1
+&CASE = 0
 &CODE = 0
 &DUMP = 1
 &ERRLIMIT = 0
-&FATALLIMIT = 0
+&ERRTEXT = ''
+&ERRTYPE = 0
+&FILE = 'a.sno'
+&FNCLEVEL = 0
 &FTRACE = 0
-&FULLSCAN = 0
-&GTRACE = 0
+&FULLSCAN = 1
 &INPUT = 1
-&MAXLNGTH = xxx
+&LASTFILE = 'a.sno'
+&LASTLINE = 2
+&LASTNO = 2
+&LINE = 3
+&MAXLNGTH = 16777216
 &OUTPUT = 1
-&STLIMIT = -1
+&PROFILE = 0
+&RTNTYPE = ''
+&STCOUNT = 3
+&STLIMIT = 2147483647
+&STNO = 3
 &TRACE = 0
-&TRIM = 0
-" (:stdout r)))))
+&TRIM = 1
+" out))))
 
 (deftest csnobol4-alis
   "Budne suite: alis.sno"
@@ -3311,45 +3315,49 @@ abcdefghijklmnopqrstuvwxyz
 " (:stdout r)))))
 
 (deftest csnobol4-dump
-  "Budne suite: dump.sno"
-  (let [r (run-with-timeout "	a = 1
+  "Budne suite: dump.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [out (run-files [["dump.sno" "	a = 1
 	b = 'hello world'
 	&DUMP = 1
 END
-" 2000)]
-    (is (= "Dump of variables at termination
+"]])]
+    (is (same-output? "
 
-Natural variables
 
-A = 1
-ABORT = PATTERN
-ARB = PATTERN
-B = 'hello world'
-BAL = PATTERN
-FAIL = PATTERN
-FENCE = PATTERN
-REM = PATTERN
-SUCCEED = PATTERN
+dump of natural variables
 
-Unprotected keywords
+a = 1
+b = 'hello world'
 
-&ABEND = 0
+
+dump of keyword values
+
 &ANCHOR = 0
-&CASE = 1
+&CASE = 0
 &CODE = 0
 &DUMP = 1
 &ERRLIMIT = 0
-&FATALLIMIT = 0
+&ERRTEXT = ''
+&ERRTYPE = 0
+&FILE = 'dump.sno'
+&FNCLEVEL = 0
 &FTRACE = 0
-&FULLSCAN = 0
-&GTRACE = 0
+&FULLSCAN = 1
 &INPUT = 1
-&MAXLNGTH = xxx
+&LASTFILE = 'dump.sno'
+&LASTLINE = 3
+&LASTNO = 3
+&LINE = 4
+&MAXLNGTH = 16777216
 &OUTPUT = 1
-&STLIMIT = -1
+&PROFILE = 0
+&RTNTYPE = ''
+&STCOUNT = 4
+&STLIMIT = 2147483647
+&STNO = 4
 &TRACE = 0
-&TRIM = 0
-" (:stdout r)))))
+&TRIM = 1
+" out))))
 
 (deftest csnobol4-end
   "Budne suite: end.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
