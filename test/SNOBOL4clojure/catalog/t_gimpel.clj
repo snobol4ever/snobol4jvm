@@ -220,7 +220,8 @@ DONE2
      END")
   (is (= "ABC" ($$ 'P0)))
   (is (= "BAC" ($$ 'P1)))
-  (is (= "CAB" ($$ 'P2))))
+  ;; sbl -bf lists indexes 0..5 of ABC as ABC BAC ACB BCA CAB CBA
+  (is (= "ACB" ($$ 'P2))))
 
 ;; ── Chapter 13: Sorting ───────────────────────────────────────────────────────
 
