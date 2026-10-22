@@ -1652,7 +1652,8 @@
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
 
-;; &OUTPUT = 0 suppresses what is assigned to OUTPUT until it is 1 again, and &INPUT = 0 switches the INPUT variable off, so a read of it gives the null string. The oracle, sbl -bf, wrote exactly this output.
+;; &OUTPUT = 0 suppresses what is assigned to OUTPUT until it is 1 again, and &INPUT = 0 switches the INPUT variable off, so a read of it gives the null string.
+;; The oracle, sbl -bf, wrote exactly this output.
 (deftest output-and-input-keywords-switch-the-two-variables-off
   (let [f (java.io.File/createTempFile "gen" ".sno")]
     (try
@@ -1688,3 +1689,62 @@
       (is (= "before 1\nafter 2\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; &FILE and &LINE name the file and the physical line the statement being executed begins on (a statement of several lines, with a + continuation, is at its first;
+;; a blank line has a number but no statement), &LASTFILE and &LASTLINE those of the statement executed before it (the null string and 0 for the first), and the
+;; statements of one line share it. The keywords did not exist: reading one gave the null string (SnoRungs keyword_17, Budne's line). The oracle, sbl -bf, wrote exactly
+;; this output; its file name is the one the program was given, here the path of a temporary file.
+(deftest source-positions-name-the-file-and-line-of-each-statement
+  (let [dir  (.toFile (java.nio.file.Files/createTempDirectory "srcpos" (make-array java.nio.file.attribute.FileAttribute 0)))
+        main (str dir "/pos_one.sno")]
+    (try
+      (spit (str dir "/pos_one.sno") (str "* comment line 1\n"
+                  "	OUTPUT = &FILE ':' &LINE ' last ' &LASTFILE ':' &LASTLINE ' stno ' &STNO ' lastno ' &LASTNO\n"
+                  "\n"
+                  "	X = 1\n"
+                  "+		+ 2\n"
+                  "	OUTPUT = &FILE ':' &LINE ' last ' &LASTFILE ':' &LASTLINE ' stno ' &STNO ' lastno ' &LASTNO\n"
+                  "	OUTPUT = 'a' ; OUTPUT = &FILE ':' &LINE ' last ' &LASTLINE\n"
+                  "	OUTPUT = &LINE\n"
+                  "END\n"))
+      (is (= (clojure.string/replace "pos_one.sno:2 last :0 stno 1 lastno 0\npos_one.sno:6 last pos_one.sno:4 stno 4 lastno 3\na\npos_one.sno:7 last 7\n8\n" "pos_one.sno" main)
+             (with-out-str (-main main))))
+      (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))
+
+;; -INCLUDE splices a file in under its own name and its own line numbers, and the including file resumes at the line after the card. A name is included once: the second
+;; -INCLUDE of it is skipped, but a name that differs (a blank after it) is another include of the same file. -LINE n "file" numbers the line after it n and names its file
+;; (a card without the file keeps it). As SPITBOL has it, when the included file ends with a comment line its name is still &FILE for the one statement that follows.
+;; The engine spliced the text in and lost every position (Budne's include and line). The oracle, sbl -bf, wrote exactly this output.
+(deftest include-and-line-cards-keep-the-file-and-line-as-sbl-does
+  (let [dir  (.toFile (java.nio.file.Files/createTempDirectory "srcpos" (make-array java.nio.file.attribute.FileAttribute 0)))
+        main (str dir "/ln_main.sno")]
+    (try
+      (spit (str dir "/ln_inc.sno") (str "	OUTPUT = &LASTFILE ':' &LASTLINE ' (last)'\n"
+                  "	OUTPUT = &FILE ':' &LINE ' (inc)'\n"
+                  "*\n"))
+      (spit (str dir "/ln_main.sno") (str "	OUTPUT = &FILE ':' &LINE\n"
+                  "-INCLUDE \"ln_inc.sno\"\n"
+                  "	OUTPUT = &FILE ':' &LINE\n"
+                  "	OUTPUT = &FILE ':' &LINE\n"
+                  "-LINE 1234 \"foo\"\n"
+                  "	OUTPUT = &FILE ':' &LINE\n"
+                  "-INCLUDE \"ln_inc.sno\"\n"
+                  "	OUTPUT = &FILE ':' &LINE\n"
+                  "-INCLUDE \"ln_inc.sno \"\n"
+                  "	OUTPUT = &FILE ':' &LINE\n"
+                  "-LINE 50\n"
+                  "	OUTPUT = &FILE ':' &LINE\n"
+                  "END\n"))
+      (is (= (clojure.string/replace (str "ln_main.sno:1\n"
+                                         "ln_main.sno:1 (last)\n"
+                                         "ln_inc.sno:2 (inc)\n"
+                                         "ln_inc.sno:3\n"
+                                         "ln_main.sno:4\n"
+                                         "foo:1234\n"
+                                         "foo:1236\n"
+                                         "foo:1236 (last)\n"
+                                         "ln_inc.sno:2 (inc)\n"
+                                         "ln_inc.sno:1238\n"
+                                         "foo:50\n") "ln_main.sno" main)
+             (with-out-str (-main main))))
+      (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))

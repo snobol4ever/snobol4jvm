@@ -28,7 +28,7 @@
      (edn->ir s)                  — EDN string -> [codes nos labels]"
   (:require [clojure.string          :as string]
             [clojure.edn             :as edn]
-            [SNOBOL4clojure.env      :refer [STNO <STNO> <LABL> <CODE> <DISPNO> BLANKS &CASE fold-case]]
+            [SNOBOL4clojure.env      :refer [STNO <STNO> <LABL> <CODE> <DISPNO> <POS> BLANKS &CASE fold-case]]
             [SNOBOL4clojure.grammar  :refer [parse-statement]]
             [SNOBOL4clojure.emitter  :refer [emitter]]))
 
@@ -44,38 +44,41 @@
 (defn- error-node [info] (list 'ERROR (:line info) (:column info) (:text info)))
 
 (defn- split-source
-  "Split SNOBOL4 source into raw statement strings. A blank physical line is a statement of its own as SPITBOL numbers them, and is marked :blank.
-   ls is where the physical line being read begins."
+  "Split SNOBOL4 source into raw statement strings, each with the physical line it begins on, as [statement line]. A blank physical line is a statement of its own as
+   SPITBOL numbers them, and is [:blank line]. ls is where the physical line being read begins, line is its number and sl the line the statement being read began on."
   [src]
   (let [chars (if (string/ends-with? (str src) "\n") (str src) (str src "\n"))
         n     (count chars)
         blank-line? (fn [from to] (every? #(Character/isWhitespace ^char %) (subs chars from to)))]
-    (loop [i 0 cur (StringBuilder.) stmts [] in-sq false in-dq false ls 0]
+    (loop [i 0 cur (StringBuilder.) stmts [] in-sq false in-dq false ls 0 line 1 sl 1]
       (if (>= i n)
         (let [s (string/trimr (str cur))]
-          (if (seq s) (conj stmts s) stmts))
-        (let [ch (.charAt chars i)]
+          (if (seq s) (conj stmts [s sl]) stmts))
+        (let [ch (.charAt chars i)
+              sl (if (zero? (.length cur)) line sl)]
           (cond
             (and (= ch \') (not in-dq))
-            (recur (inc i) (.append cur ch) stmts (not in-sq) in-dq ls)
+            (recur (inc i) (.append cur ch) stmts (not in-sq) in-dq ls line sl)
             (and (= ch \") (not in-sq))
-            (recur (inc i) (.append cur ch) stmts in-sq (not in-dq) ls)
+            (recur (inc i) (.append cur ch) stmts in-sq (not in-dq) ls line sl)
             (and (= ch \;) (not in-sq) (not in-dq))
             (let [s (string/trimr (str cur))]
-              (recur (inc i) (StringBuilder.) (if (seq s) (conj stmts s) stmts) false false ls))
+              (recur (inc i) (StringBuilder.) (if (seq s) (conj stmts [s sl]) stmts) false false ls line line))
             (= ch \newline)
             (let [s (string/trimr (str cur))]
               (if (seq s)
                 (let [next-i (inc i)
                       next-ch (when (< next-i n) (.charAt chars next-i))]
                   (if (and next-ch (or (= next-ch \+) (= next-ch \.)))
-                    (recur (+ i 2) (.append cur \space) stmts false false (inc i))
-                    (recur (inc i) (StringBuilder.) (conj stmts s) false false (inc i))))
-                (recur (inc i) (StringBuilder.) (if (blank-line? ls i) (conj stmts :blank) stmts) false false (inc i))))
+                    (recur (+ i 2) (.append cur \space) stmts false false (inc i) (inc line) sl)
+                    (recur (inc i) (StringBuilder.) (conj stmts [s sl]) false false (inc i) (inc line) (inc line))))
+                (recur (inc i) (StringBuilder.) (if (blank-line? ls i) (conj stmts [:blank line]) stmts) false false (inc i) (inc line) (inc line))))
             :else
-            (recur (inc i) (.append cur ch) stmts in-sq in-dq ls)))))))
+            (recur (inc i) (.append cur ch) stmts in-sq in-dq ls line sl)))))))
 
 ;; -- -INCLUDE preprocessor ----------------------------------------------------
+
+(declare preprocess-includes*)
 
 (defn preprocess-includes
   "Recursively expand -INCLUDE 'file' (or -INCLUDE \"file\") directives.
@@ -86,67 +89,97 @@
    wins) and splices its content inline.  The include file is itself
    preprocessed recursively.
 
-   Guards against infinite recursion via a seen-files set.
+   As SPITBOL has it, a file name is included once: a second -INCLUDE of the same name (as written) is skipped, and so is a cycle. The splice is bracketed by
+   the cards -FILE-ENTER \"name\" and -FILE-LEAVE (STALE), which CODE! reads to keep &FILE and &LINE. STALE is written when the included file's last line is a comment,
+   the case in which SPITBOL leaves the included file's name as &FILE for the statement that follows.
 
    Parameters:
      src          – SNOBOL4 source string
      search-path  – seq of directory path strings; default [\".\"]
-     seen-files   – (internal) set of absolute paths already included
+     seen         – (internal) the set of names already included
 
    Returns the fully expanded source string."
   ([src] (preprocess-includes src ["."]))
   ([src search-path] (preprocess-includes src search-path #{}))
-  ([src search-path seen-files]
-   (let [include-re #"(?i)^\s*-include\s+['\"]([^'\"]+)['\"]"]
-     (->> (string/split-lines src)
-          (mapcat (fn [line]
-                    (if-let [[_ fname] (re-find include-re line)]
-                      ;; Locate the file on the search-path
-                      (let [found (some (fn [dir]
-                                         (let [f (clojure.java.io/file dir fname)]
-                                           (when (.exists f) f)))
-                                        search-path)]
-                        (if (nil? found)
-                          ;; File not found — keep the directive as a comment
-                          ;; so the compiler sees a harmless *-line
-                          [(str "* -INCLUDE not found: " fname)]
-                          (let [abs (.getCanonicalPath found)]
-                            (if (seen-files abs)
-                              [(str "* -INCLUDE skipped (cycle): " fname)]
-                              ;; Recursively expand the included file
-                              (string/split-lines
-                                (preprocess-includes
-                                  (slurp found :encoding "ISO-8859-1")
-                                  ;; Add the include file's own directory to path
-                                  (distinct (cons (.getParent found) search-path))
-                                  (conj seen-files abs)))))))
-                      [line])))
-          (string/join "\n")))))
+  ([src search-path seen] (first (preprocess-includes* src search-path seen))))
+
+(defn- preprocess-includes*
+  "preprocess-includes, returning [expanded-source seen]."
+  [src search-path seen]
+  (let [include-re #"(?i)^\s*-include\s+['\"]([^'\"]+)['\"]"]
+    (loop [lines (string/split-lines src) out [] seen seen]
+      (if-let [line (first lines)]
+        (if-let [[_ fname] (re-find include-re line)]
+          (let [found (some (fn [dir]
+                              (let [f (clojure.java.io/file dir (string/trim fname))]
+                                (when (.exists f) f)))
+                            search-path)]
+            (cond
+              ;; File not found — keep the directive as a comment so the compiler sees a harmless *-line
+              (nil? found)
+              (recur (rest lines) (conj out (str "* -INCLUDE not found: " fname)) seen)
+              (seen fname)
+              (recur (rest lines) (conj out (str "* -INCLUDE skipped (already included): " fname)) seen)
+              :else
+              (let [text            (slurp found :encoding "ISO-8859-1")
+                    ;; the included file's own directory joins the search path
+                    [body seen']    (preprocess-includes* text (distinct (cons (.getParent found) search-path)) (conj seen fname))
+                    last-line       (last (string/split-lines text))
+                    stale?          (boolean (and last-line (string/starts-with? last-line "*")))]
+                (recur (rest lines)
+                       (into out (concat [(str "-FILE-ENTER \"" (string/trim fname) "\"")] (string/split-lines body) [(str "-FILE-LEAVE" (when stale? " STALE"))]))
+                       seen'))))
+          (recur (rest lines) (conj out line) seen))
+        [(string/join "\n" out) seen]))))
+
+;; The source position a card changes. A -LINE card sets the number and file of the line that follows it; a -FILE-ENTER card (written by preprocess-includes in place of the
+;; -INCLUDE card) starts the included file at line 1 and remembers where the including file resumes, which is after the line the -INCLUDE card stood on; the matching
+;; -FILE-LEAVE card resumes it, in the including file's name unless it says STALE, which keeps the included file's name for the one statement that
+;; follows. A position is {:file f :bp physical-line-of-the-next-line :bl its number :stack [..]}.
+(defn- position-card [fold command pline pos]
+  (let [card (fn [re] (re-find (if fold (re-pattern (str "(?i)" re)) (re-pattern re)) command))]
+    (cond
+      (card "^-LINE\\s+\\d+")
+      (let [[_ n f] (re-find #"^-\S+\s+(\d+)(?:\s+\"([^\"]*)\")?" command)]
+        (assoc pos :file (or f (:file pos)) :revert nil :bp (inc pline) :bl (Long/parseLong n)))
+      (card "^-FILE-ENTER\\s+\"")
+      (let [[_ f] (re-find #"\"([^\"]*)\"" command)]
+        (assoc pos :file f :bp (inc pline) :bl 1 :stack (conj (:stack pos) (assoc pos :card-line (+ (:bl pos) (- pline (:bp pos)))))))
+      (card "^-FILE-LEAVE")
+      (let [outer (peek (:stack pos))]
+        (let [stale (boolean (re-find #"STALE" command))]
+          (assoc outer :file (if stale (:file pos) (:file outer)) :revert (when stale (:file outer)) :bp (inc pline) :bl (inc (:card-line outer)) :stack (pop (:stack pos)))))
+      :else pos)))
 
 ;; -- CODE! — parse source into {CODES NOS LABELS} ----------------------------
 (defn CODE!
   "Compile SNOBOL4 source S into a [codes nos labels disp] vector. disp holds, for each statement in order, how many blank lines (statements SPITBOL
-   numbers but never runs) came before it, and the total, as {:before [..] :total n}.
+   numbers but never runs) came before it, and the total, as {:before [..] :total n}, and where it stands in its file, as {:pos [[file line] ..]}.
    Optional include-path is a seq of directory strings used to resolve
-   -INCLUDE directives (default [\".\"])."
+   -INCLUDE directives (default [\".\"]). file is the name the program was given, which &FILE reads."
   ([S] (CODE! S ["."]))
-  ([S include-path]
+  ([S include-path] (CODE! S include-path nil))
+  ([S include-path file]
    (let [expanded  (preprocess-includes (str S) include-path)
          raw-stmts (split-source expanded)]
-     (loop [stmts raw-stmts NO 1 CODES {} NOS {} LABELS {} blanks 0 before [] fold (not (zero? (long @&CASE)))]
+     (loop [stmts raw-stmts NO 1 CODES {} NOS {} LABELS {} blanks 0 before [] fold (not (zero? (long @&CASE)))
+            poss [] pos {:file (str file) :bp 1 :bl 1 :stack []}]
        (if (empty? stmts)
-         [CODES NOS LABELS {:before before :total blanks}]
-         (let [command (first stmts)]
+         [CODES NOS LABELS {:before before :total blanks :pos poss}]
+         (let [[command pline] (first stmts)]
            (cond
-             (= command :blank) (recur (rest stmts) NO CODES NOS LABELS (inc blanks) before fold)
-             (comment? command) (recur (rest stmts) NO CODES NOS LABELS blanks before fold)
-             (control? command) (recur (rest stmts) NO CODES NOS LABELS blanks before (let [f (case-card fold command)] (if (nil? f) fold f)))
+             (= command :blank) (recur (rest stmts) NO CODES NOS LABELS (inc blanks) before fold poss pos)
+             (comment? command) (recur (rest stmts) NO CODES NOS LABELS blanks before fold poss pos)
+             (control? command) (recur (rest stmts) NO CODES NOS LABELS blanks before (let [f (case-card fold command)] (if (nil? f) fold f)) poss
+                                       (position-card fold command pline pos))
              :else
              (let [stmt   (cond-> (string/replace command #"\r" "") fold fold-case)
                    ast    (parse-statement stmt)
-                   code   (emitter ast)]
+                   code   (emitter ast)
+                   here   [(:file pos) (+ (:bl pos) (- pline (:bp pos)))]
+                   pos''  (if (:revert pos) (assoc pos :file (:revert pos) :revert nil) pos)]
                (if (and (map? code) (:reason code))
-                 (recur (rest stmts) (inc NO) (assoc CODES NO (error-node code)) NOS LABELS blanks (conj before blanks) fold)
+                 (recur (rest stmts) (inc NO) (assoc CODES NO (error-node code)) NOS LABELS blanks (conj before blanks) fold (conj poss here) pos'')
                  (let [label  (:label code)
                        body   (:body  code)
                        goto   (:goto  code)
@@ -155,15 +188,16 @@
                        nos    (if (keyword? key) (assoc NOS   key NO) NOS)
                        labels (if (keyword? key) (assoc LABELS NO key) LABELS)
                        codes  (assoc CODES key code)]
-                   (recur (rest stmts) (inc NO) codes nos labels blanks (conj before blanks) fold)))))))))))
+                   (recur (rest stmts) (inc NO) codes nos labels blanks (conj before blanks) fold (conj poss here) pos'')))))))))))
 
 ;; -- CODE — compile and load into the global statement store ------------------
 (defn CODE
   "Compile S and load into the global statement store.
    Optional include-path is a seq of directory strings (default [\".\"])."
   ([S] (CODE S ["."]))
-  ([S include-path]
-   (let [[codes nos labels disp] (CODE! S include-path)
+  ([S include-path] (CODE S include-path nil))
+  ([S include-path file]
+   (let [[codes nos labels disp] (CODE! S include-path file)
          start              (inc @STNO)
          base               @BLANKS]
      (loop [NO 1]
@@ -176,6 +210,7 @@
          (do
            (swap! STNO inc)
            (swap! <DISPNO> assoc @STNO (+ @STNO base (get (:before disp) (dec NO) 0)))
+           (swap! <POS> assoc @STNO (get (:pos disp) (dec NO) ["" 0]))
            (if-let [label (labels NO)]
              (do
                (swap! <CODE> #(assoc % label (codes label)))
@@ -217,6 +252,7 @@
         (do
           (swap! STNO inc)
           (swap! <DISPNO> assoc @STNO (+ @STNO base (get (:before disp) (dec NO) 0)))
+          (swap! <POS> assoc @STNO (get (:pos disp) (dec NO) ["" 0]))
           (if-let [label (labels NO)]
             (do
               (swap! <CODE> #(assoc % label (codes label)))

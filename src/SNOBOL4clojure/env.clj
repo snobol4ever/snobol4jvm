@@ -38,6 +38,10 @@
 (def  &LASTNO    (atom 0))   ; the number of the statement executed before the current one
 (def  &STNO      (atom 0))   ; the number of the statement being executed
 (def  &FNCLEVEL  (atom 0))   ; how many user functions are active
+(def  &FILE      (atom ε))   ; the file and line of the statement being executed, and of the one executed before it
+(def  &LASTFILE  (atom ε))
+(def  &LINE      (atom 0))
+(def  &LASTLINE  (atom 0))
 (def  &LCASE     "abcdefghijklmnopqrstuvwxyz")
 (def  &INPUT      (atom 1))   ; 0 switches the INPUT variable off: a read gives the null string
 (def  &MAXLNGTH  (atom 16777216))
@@ -93,6 +97,7 @@
 ;;   :arity 0 = function synonym (no-op on arity, just alias)
 ;;   :arity 1 = unary operator redefinition
 ;;   :arity 2 = binary operator redefinition
+(def <POS> (atom {}))   ; statement number -> [file line]: where the statement stands in the source, which &FILE and &LINE read
 (def <SETEXIT> (atom nil))   ; the label SETEXIT named (a keyword), or nil when no handler is armed
 (def <DISPNO> (atom {}))   ; statement key (the number a statement is stored under) -> the number SPITBOL gives it, which counts blank lines
 (def BLANKS   (atom 0))    ; the blank lines of the code loaded so far: they take numbers and are never run
@@ -231,6 +236,11 @@
    (reset! <TRACES>   {})
    (reset! <DISPNO>   {})
    (reset! <SETEXIT>  nil)
+   (reset! <POS>      {})
+   (reset! &FILE ε)
+   (reset! &LASTFILE ε)
+   (reset! &LINE 0)
+   (reset! &LASTLINE 0)
    (reset! BLANKS     0)
    (reset! STNO    0)
    (reset! <STNO>  {})

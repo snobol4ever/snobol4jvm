@@ -207,7 +207,7 @@
     (let [src (slurp file :encoding "ISO-8859-1")   ; a program is bytes
           dir (or (.getParent (java.io.File. ^String file)) ".")]
       (case engine
-        "interp" (do (env/GLOBALS) (rt/RUN (comp/CODE src (include-dirs dir (System/getenv "SNO_LIB")))))
+        "interp" (do (env/GLOBALS) (rt/RUN (comp/CODE src (include-dirs dir (System/getenv "SNO_LIB")) file)))
         "vm"     (print (vm/run-program! src)))
       (flush))))
 
