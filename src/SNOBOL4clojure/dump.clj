@@ -29,7 +29,7 @@
 
 (defn- variables []
   (let [vars (cond-> (merge (into {} (for [s @env/<PRIMS-READ>] [s (deref (ns-resolve (the-ns 'SNOBOL4clojure.core) s))])) @<VARS>)
-               (some? @<LASTOUT>) (assoc 'OUTPUT @<LASTOUT>))]
+               true (merge @env/<ASSOC-LAST>))]   ; an associated variable holds the last record read or written through it
     (sort-by (comp name key) (remove (fn [[_ v]] (or (nil? v) (clojure.core/= "" v) (fn? v))) vars))))
 
 (def ^:private keyword-order

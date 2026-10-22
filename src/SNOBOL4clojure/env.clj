@@ -107,6 +107,7 @@
 (def <DIAGNOSTICS> (atom []))   ; the compile-time errors of the last source compiled, as [line code] pairs
 (def <HOST0> (atom ""))   ; what HOST(0) returns: the -u text, or else the program's own arguments joined by blanks
 (def <LASTOUT> (atom nil))   ; the last value assigned to OUTPUT, which a dump lists as the variable OUTPUT
+(def <ASSOC-LAST> (atom {}))   ; an associated variable (INPUT, OUTPUT, a channel's) -> the last record read or written through it, which a dump lists as its value
 (def <SETEXIT> (atom nil))   ; the label SETEXIT named (a keyword), or nil when no handler is armed
 (def <DISPNO> (atom {}))   ; statement key (the number a statement is stored under) -> the number SPITBOL gives it, which counts blank lines
 (def BLANKS   (atom 0))    ; the blank lines of the code loaded so far: they take numbers and are never run
@@ -247,6 +248,7 @@
    (reset! <SETEXIT>  nil)
    (reset! <OBJNO>    0)
    (reset! <LASTOUT>  nil)
+   (reset! <ASSOC-LAST> {})
    (reset! <HOST0>    "")
    (reset! <PRIMS-READ> #{})
    (reset! &RTNTYPE   ε)
@@ -378,6 +380,7 @@
             v    (cond (nil? line) nil                       ; nil = EOF = statement fails (:F branch)
                        (:raw ch)   line                      ; a raw read is the data as it is
                        :else       (input-record line (:maxlen ch)))]
+        (when (some? v) (swap! <ASSOC-LAST> assoc sym v))
         v)
 
       ;; Plain INPUT variable (no channel): read from *in* (stdin)
@@ -386,6 +389,7 @@
         ε                                                   ; &INPUT = 0 switches the variable off: a read gives the null string
         (let [line (try (.readLine (stdin-reader)) (catch Exception _ nil))
               v    (when-not (nil? line) (input-record line))]
+          (when (some? v) (swap! <ASSOC-LAST> assoc 'INPUT v))
           v))   ; nil = EOF = statement fails, as SPITBOL does
 
       :else

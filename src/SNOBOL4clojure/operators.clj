@@ -306,7 +306,7 @@
                 ;; normal variable assignment
                 (clojure.core/contains? #{'OUTPUT 'TERMINAL 'INPUT} N)
                 (let [out-val (concat-value r)]
-                  (when (clojure.core/= N 'OUTPUT) (reset! <LASTOUT> out-val))
+                  (swap! SNOBOL4clojure.env/<ASSOC-LAST> assoc N out-val)
                   (when (and (clojure.core/= N 'OUTPUT) (not (zero? (long @&OUTPUT)))) (println (output-text out-val)))
                   (when (clojure.core/= N 'TERMINAL) (binding [*out* *err*] (println (output-text out-val))))
                   out-val)
@@ -314,6 +314,7 @@
                 (clojure.core/= :output (:type (get @<CHANNELS> N)))
                 (let [out-val (concat-value r)]
                   (write-to-channel! N out-val)
+                  (swap! SNOBOL4clojure.env/<ASSOC-LAST> assoc N out-val)
                   out-val)
                 :else
                 (let [v (concat-value r)]

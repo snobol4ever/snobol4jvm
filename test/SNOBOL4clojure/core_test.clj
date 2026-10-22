@@ -3111,3 +3111,65 @@
       (is (= "[one] [two] [three]\n"
              (with-out-str (binding [*in* (java.io.BufferedReader. (java.io.StringReader. "one\ntwo\nthree\n"))] (-main (.getPath f))))))
       (finally (.delete f)))))
+
+;; A dump lists each associated variable with the last record read or written through it: IN and INPUT the last records read, OUT and OUTPUT the last written, as
+;; sbl -bf writes it (TPgm test6 lists INPUT and OUT). The engine listed none but OUTPUT. The oracle, sbl -bf, wrote exactly this output from this input.
+(deftest a-dump-lists-associated-variables-with-their-last-records
+  (let [dir  (.toFile (java.nio.file.Files/createTempDirectory "srcpos" (make-array java.nio.file.attribute.FileAttribute 0)))
+        main (str dir "/as.sno")]
+    (try
+      (spit (str dir "/as.sno") (str "        OUTPUT(.OUT, 6, '[-f1]')\n"
+                  "        INPUT(.IN, 5, '[-f0]')\n"
+                  "        OUT = 'written to out'\n"
+                  "        X = IN\n"
+                  "        Y = INPUT\n"
+                  "        OUTPUT = 'last'\n"
+                  "        &DUMP = 1\n"
+                  "END\n"))
+      (is (= (clojure.string/replace (str "written to out\n"
+                                         "last\n"
+                                         "\n"
+                                         "\n"
+                                         "\n"
+                                         "dump of natural variables\n"
+                                         "\n"
+                                         "IN = 'first line'\n"
+                                         "INPUT = 'second line'\n"
+                                         "OUT = 'written to out'\n"
+                                         "OUTPUT = 'last'\n"
+                                         "X = 'first line'\n"
+                                         "Y = 'second line'\n"
+                                         "\n"
+                                         "\n"
+                                         "dump of keyword values\n"
+                                         "\n"
+                                         "&ANCHOR = 0\n"
+                                         "&CASE = 0\n"
+                                         "&CODE = 0\n"
+                                         "&DUMP = 1\n"
+                                         "&ERRLIMIT = 0\n"
+                                         "&ERRTEXT = ''\n"
+                                         "&ERRTYPE = 0\n"
+                                         "&FILE = 'as.sno'\n"
+                                         "&FNCLEVEL = 0\n"
+                                         "&FTRACE = 0\n"
+                                         "&FULLSCAN = 1\n"
+                                         "&INPUT = 1\n"
+                                         "&LASTFILE = 'as.sno'\n"
+                                         "&LASTLINE = 7\n"
+                                         "&LASTNO = 7\n"
+                                         "&LINE = 8\n"
+                                         "&MAXLNGTH = 16777216\n"
+                                         "&OUTPUT = 1\n"
+                                         "&PROFILE = 0\n"
+                                         "&RTNTYPE = ''\n"
+                                         "&STCOUNT = 8\n"
+                                         "&STLIMIT = 2147483647\n"
+                                         "&STNO = 8\n"
+                                         "&TRACE = 0\n"
+                                         "&TRIM = 1\n"
+                                         "\n"
+                                         "\n"
+                                         "\n") "as.sno" main)
+             (with-out-str (binding [*in* (java.io.BufferedReader. (java.io.StringReader. "first line\nsecond line\n"))] (-main main)))))
+      (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))
