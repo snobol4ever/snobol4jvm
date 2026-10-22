@@ -2493,3 +2493,21 @@
       (is (= "ARB-match=ab\nREM-match=ef\nBAL-read=PATTERN\nFAIL-read=PATTERN\nFENCE-read=PATTERN\nABORT-read=PATTERN\nSUCCEED-read=PATTERN\nPATTERN-KEYWORDS-OK\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; "Replacement occurs only if evaluation of the subject, pattern, and replacement succeeded" (SPITBOL manual ch. 14, Replacement field): a predicate that fails
+;; inside the pattern of a replacement statement fails the statement. The engine went on to match with the failed pattern and died with a ClassCastException (SnoRungs
+;; code_eval_notany_pos_replace_branch_1). The oracle, sbl -bf, wrote exactly this output.
+(deftest a-pattern-that-fails-to-evaluate-fails-a-replacement
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        HOLD = 'abc'\n"
+                   "        HOLD DIFFER('x','x') LEN(1) RPOS(0) =  :S(OK)F(NO)\n"
+                   "OK      OUTPUT = 'replaced [' HOLD ']'    :(N2)\n"
+                   "NO      OUTPUT = 'failed [' HOLD ']'\n"
+                   "N2      HOLD DIFFER('x','x') LEN(1)  :S(OK2)F(NO2)\n"
+                   "OK2     OUTPUT = 'matched'    :(END)\n"
+                   "NO2     OUTPUT = 'match failed'\n"
+                   "END\n"))
+      (is (= "failed [abc]\nmatch failed\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

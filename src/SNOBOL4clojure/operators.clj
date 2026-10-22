@@ -804,7 +804,8 @@
                                            :else (apply list (if (list? container-sym) container-val container-sym) (map EVAL! (rest N)))))
                                        N)]
                               (when N' (INVOKE '= N' (EVAL! R))))
-          (equal op '?=)    (let [[N P R] parms] (INVOKE '?= N (EVAL! P) R))
+          ;; "Replacement occurs only if evaluation of the subject, pattern, and replacement succeeded" (manual ch. 14): a pattern that fails to evaluate fails the statement
+          (equal op '?=)    (let [[N P R] parms] (when-some [p (EVAL! P)] (INVOKE '?= N p R)))
           ;; the protected keywords &ABORT, &ARB, &BAL, &FAIL, &FENCE, &REM and &SUCCEED hold "the primitive pattern" of their name (manual ch. 16)
           (and (equal op '&) (pattern-keywords (str (first parms))))
           ((pattern-keywords (str (first parms))))
