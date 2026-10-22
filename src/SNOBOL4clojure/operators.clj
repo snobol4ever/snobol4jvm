@@ -163,7 +163,7 @@
 ;; TABLE, the type of a DATA object); everything else as sstr.
 (defn- output-text [v]
   (if (or (and (or (list? v) (vector? v)) (#{"PATTERN" "EXPRESSION"} (SNOBOL4clojure.env/DATATYPE v)))
-          (array? v) (table? v) (instance? SNOBOL4clojure.env.DataObj v))
+          (array? v) (table? v) (instance? SNOBOL4clojure.env.DataObj v) (instance? SNOBOL4clojure.env.CodeBlock v))
     (SNOBOL4clojure.env/DATATYPE v)
     (sstr v)))
 
@@ -574,7 +574,7 @@
                 ;; Returns the entry-point label string (success) or nil (failure).
                 ;; Does NOT execute — caller uses a computed goto to invoke it.
                 (try
-                  (compile-f src)
+                  (when-some [entry (compile-f src)] (SNOBOL4clojure.env/->CodeBlock entry))
                   (catch Exception e
                     (throw (ex-info (.getMessage e) {:snobol/signal :error})))))
     code      (apply INVOKE 'CODE args)

@@ -18,7 +18,8 @@
   jmp       ::=  target
   sjmp      ::=  <'S' | 's'> target
   fjmp      ::=  <'F' | 'f'> target
- <target>   ::=  <'('> expr <')'> | <'<'> expr <'>'>
+ <target>   ::=  <'('> expr <')'> | dgo
+  dgo       ::=  <'<'> expr <'>'>
   comment   ::=  <'*'> #'.*' <eol>
   control   ::=  <'-'> #'[^;\\n]*' <eos>
   eos       ::=  '\\n' | ';'

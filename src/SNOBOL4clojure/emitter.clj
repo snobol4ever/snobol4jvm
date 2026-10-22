@@ -97,6 +97,8 @@
      :inv       (fn [f & xs] (apply list f xs))
      ;; an argument left out, F(A,,C) or F(,B), is the null string in its place
      :nul       (fn []       "")
+     ;; a direct Goto, :<V>, branches to the code V holds, not to a label (manual ch. 14, Goto field)
+     :dgo       (fn [x]      (list 'DIRECT x))
      :N         (fn [n]      (symbol n))
      :S         (fn [s]      (subs s 1 (subtract (count s) 1)))
      :I         edn/read-string

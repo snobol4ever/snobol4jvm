@@ -498,6 +498,10 @@
 ;; A program-defined (DATA) object has an identity, as in SPITBOL: its fields are assigned in place, whoever refers to the object sees the change, two constructions
 ;; are two objects, and IDENT compares identity. It holds its type name, its field names and a mutable array of field values.
 (deftype DataObj [type-name field-names ^objects fields serial])
+;; What CODE(s) returns: "a pointer to the object code compiled from statements in the argument string ... executed with a direct Goto (:<CEDAR>)"
+;; (manual ch. 19, CODE); its datatype is CODE. entry is the statement the code begins with, as the loader returns it.
+(deftype CodeBlock [entry])
+(defmethod DATATYPE "class SNOBOL4clojure.env.CodeBlock"          [_] "CODE")
 (defmethod DATATYPE "class SNOBOL4clojure.env.DataObj"            [X] (.type-name ^DataObj X))
 (defmethod DATATYPE "class clojure.lang.PersistentArrayMap"       [X] (get X :__type__ "TABLE"))
 (defmethod DATATYPE "class clojure.lang.PersistentHashMap"        [X] (get X :__type__ "TABLE"))

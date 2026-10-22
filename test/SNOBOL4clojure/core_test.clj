@@ -2179,3 +2179,32 @@
       (is (= "started at START\nand went on\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A Goto to a label the program does not define is ERROR 038 ("38 Goto undefined label", SPITBOL manual Appendix D), and an error in the Goto field is trapped as one
+;; in the body: under &ERRLIMIT with no handler the statement fails and its failure exit is taken; with SETEXIT the handler runs and CONTINUE takes the failure exit (manual
+;; ch. 16 &ERRLIMIT, ch. 19 SETEXIT). A computed Goto whose expression fails takes no branch. The engine ended the program silently at an undefined label. The oracle,
+;; sbl -bf, wrote exactly this output.
+(deftest a-goto-to-an-undefined-label-is-error-38-and-is-trapped
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 3\n"
+                   "        OUTPUT = 'a'                            :S(NOWHERE)\n"
+                   "        OUTPUT = 'b ' &ERRTYPE ' ' &ERRLIMIT ' ' &ERRTEXT\n"
+                   "        OUTPUT = 'd'                            :S($(DIFFER(1,1)))\n"
+                   "        OUTPUT = 'e ' &ERRTYPE ' ' &ERRLIMIT ' ' &ERRTEXT\n"
+                   "        SETEXIT(.H)\n"
+                   "        OUTPUT = 'f'                            :S(NOWHERE2)\n"
+                   "        OUTPUT = 'g ' &ERRLIMIT                 :(END)\n"
+                   "H       OUTPUT = 'H ' &ERRTYPE ' ' &LASTNO      :(CONTINUE)\n"
+                   "END\n"))
+      (is (= "a\nb 38 2 goto undefined label\nd\ne 38 2 goto undefined label\nf\nH 38 7\ng 1\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
+;; Untrapped, an undefined Goto label ends the program with ERROR 038, and a variable that holds a label's name is not a label: sbl -bf raises 038 for X = 'LAB' then :(X).
+(deftest an-untrapped-undefined-goto-label-is-error-38
+  (let [code (fn [src] (try (RUN (CODE src)) :no-error
+                            (catch clojure.lang.ExceptionInfo e (or (:snobol/error (ex-data e)) (.getMessage e)))))]
+    (is (= 38 (code "        OUTPUT = 'a'   :(NOWHERE)\nEND\n")))
+    (is (= 38 (code "        X = 'LAB'\n        OUTPUT = 'b'   :(X)\nLAB     OUTPUT = 'c'\nEND\n")))
+    (is (= :no-error (code "        X = 'LAB'\n        OUTPUT = 'd'   :($X)\nLAB     OUTPUT = 'e'\nEND\n")))))

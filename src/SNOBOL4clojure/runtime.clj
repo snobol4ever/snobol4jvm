@@ -38,20 +38,24 @@
 ;; With &ERRLIMIT at 0 the error goes on up and ends the program.
 (defrecord Trapped [label ex])
 
+;; e, an error raised in a statement's body or its Goto field: trapped under &ERRLIMIT not 0, it gives a Trapped (a handler was armed) or false (the statement fails).
+;; An error with &ERRLIMIT at 0, one that ABORT passes on, and every other signal go on up.
+(defn- trap [^clojure.lang.ExceptionInfo e]
+  (let [{n :snobol/error abort :snobol/abort} (ex-data e)]
+    (if (and n (not abort) (pos? (long @&ERRLIMIT)))
+      (let [h @<SETEXIT>]
+        (swap! &ERRLIMIT dec)
+        (reset! &ERRTYPE n)
+        (reset! &ERRTEXT (ex-message e))
+        (if h
+          (do (reset! <SETEXIT> nil) (->Trapped h e))
+          false))
+      (throw e))))
+
 (defn- exec-body [body]
   (try
     (or (nil? body) (EVAL! body))
-    (catch clojure.lang.ExceptionInfo e
-      (let [n (:snobol/error (ex-data e))]
-        (if (and n (pos? (long @&ERRLIMIT)))
-          (let [h @<SETEXIT>]
-            (swap! &ERRLIMIT dec)
-            (reset! &ERRTYPE n)
-            (reset! &ERRTEXT (ex-message e))
-            (if h
-              (do (reset! <SETEXIT> nil) (->Trapped h e))
-              false))
-          (throw e))))))
+    (catch clojure.lang.ExceptionInfo e (trap e))))
 
 (defn- label-name [tgt] (when (or (keyword? tgt) (string? tgt) (symbol? tgt)) (name tgt)))
 
@@ -75,36 +79,55 @@
      ;;   string   "FOO" — label name as string (returned by CODE() at runtime)
      ;;   integer  N     — direct statement number
      (saddr [at]      (cond
+                        ;; a label names a statement; a variable that holds a label's name is not one (sbl -bf: :(X) with X = 'LAB' is ERROR 038)
                         (keyword? at)
-                          (or (when-let [n (@<STNO> at)] [n at])
-                              ;; Not a known label — treat as variable name
-                              (let [varname  (name at)
-                                    resolved (EVAL! (symbol varname))]
-                                (cond
-                                  (string?  resolved) (or (when-let [n (@<STNO> (keyword resolved))] [n (keyword resolved)])
-                                                          (when (re-matches #"[0-9]+" resolved)
-                                                            (let [n (Long/parseLong resolved)] [n (@<LABL> n)])))
-                                  (keyword? resolved) [(@<STNO> resolved) resolved]
-                                  (integer? resolved) [resolved (@<LABL> resolved)]
-                                  :else               nil)))
+                          (when-let [n (@<STNO> at)] [n at])
                         (string?  at) (or (when-let [n (@<STNO> (keyword at))] [n (keyword at)])
                                           ;; Numeric string (e.g. CODE() returned stmt# as integer, stored as str)
                                           (when (re-matches #"[0-9]+" at)
                                             (let [n (Long/parseLong at)]
                                               [n (@<LABL> n)]))
-                                          [(@<STNO> at) at])
+                                          (when (@<CODE> at) [(@<STNO> at) at]))
                         (integer? at) [at (@<LABL> at)]))
      ;; A computed goto, :($X) or :S($('WANG.A.' OP)), names its label by the value of the expression: a string (a label, RETURN, END) or an integer.
      ;; It is resolved here, once, so that the jump and the special labels see the label itself. A target that is not a $ form is passed on as it was.
+     ;; A direct Goto, :<V>, goes to the start of the code V holds; anything else there is "24 Goto operand in direct goto is not code" (manual, Appendix D).
      (computed-target [tgt]
-       (if (and (list? tgt) (clojure.core/= '$ (first tgt)) (clojure.core/= 2 (count tgt)))
+       (cond
+         (and (list? tgt) (clojure.core/= '$ (first tgt)) (clojure.core/= 2 (count tgt)))
          (when-some [v (EVAL! (second tgt))]
            (if (integer? v) v (keyword (str v))))
-         tgt))
+         (and (list? tgt) (clojure.core/= 'DIRECT (first tgt)))
+         (when-some [v (EVAL! (second tgt))]
+           (if (instance? SNOBOL4clojure.env.CodeBlock v)
+             (.entry ^SNOBOL4clojure.env.CodeBlock v)
+             (throw (ex-info "goto operand in direct goto is not code" {:snobol/error 24}))))
+         :else tgt))
      (goto! [tgt]
        (if (special-targets tgt)
          (dispatch-special! tgt)
-         tgt))]
+         tgt))
+     ;; "38 Goto undefined label" (manual, Appendix D)
+     (label-addr [tgt] (or (saddr tgt) (throw (ex-info "goto undefined label" {:snobol/error 38}))))
+     ;; Where control goes after a statement that succeeded (r) or failed: [address err]. A Goto-field error is thrown, to be trapped as a body's is.
+     ;; CONTINUE resumes at the failure exit of the statement in error; ABORT lets the error end the program, as though no intercept had been set.
+     (step [r goto err current]
+       (let [g   (when (map? goto) goto)
+             tgt (computed-target (if r (or (:G g) (:S g)) (or (:G g) (:F g))))
+             nm  (label-name tgt)]
+         (cond
+           (and err (clojure.core/= nm "CONTINUE"))
+           (let [g2   (:goto err)
+                 etgt (computed-target (when (map? g2) (or (:G g2) (:F g2))))]
+             (if etgt
+               (do (goto! etgt) [(label-addr etgt) nil])
+               [(saddr (inc ((:at err) 0))) nil]))
+           (and err (clojure.core/= nm "ABORT"))
+           (let [e ^clojure.lang.ExceptionInfo (:ex err)] (throw (ex-info (ex-message e) (assoc (ex-data e) :snobol/abort true))))
+           tgt
+           (do (goto! tgt) [(label-addr tgt) err])
+           :else
+           [(saddr (inc (current 0))) err])))]
     ;; a program's run starts &STCOUNT at 0; the run of a function body, one level down, goes on counting
     (when (zero? (long @&FNCLEVEL)) (reset! &STCOUNT 0))
     (try
@@ -139,23 +162,16 @@
                 (if (instance? Trapped r)
                   ;; control goes to the handler; CONTINUE and ABORT there refer back to the statement in error
                   (recur (saddr (:label r)) {:at current :goto goto :ex (:ex r)})
-                  (let [g   (when (map? goto) goto)
-                        tgt (computed-target (if r (or (:G g) (:S g)) (or (:G g) (:F g))))
-                        nm  (label-name tgt)]
-                    (cond
-                      ;; CONTINUE resumes at the failure exit of the statement in error; ABORT lets the error end the program
-                      (and err (clojure.core/= nm "CONTINUE"))
-                      (let [g2   (:goto err)
-                            etgt (computed-target (when (map? g2) (or (:G g2) (:F g2))))]
-                        (if etgt
-                          (do (goto! etgt) (recur (saddr etgt) nil))
-                          (recur (saddr (inc ((:at err) 0))) nil)))
-                      (and err (clojure.core/= nm "ABORT"))
-                      (throw (:ex err))
-                      tgt
-                      (do (goto! tgt) (recur (saddr tgt) err))
-                      :else
-                      (recur (saddr (inc (current 0))) err)))))))))
+                  ;; an error in the Goto field is trapped like one in the body: to the handler, or the statement fails and its failure exit is taken,
+                  ;; which may be the same Goto again until &ERRLIMIT runs out (manual ch. 16, &ERRLIMIT)
+                  (let [[nxt err'] (loop [r r]
+                                     (let [res (try (step r goto err current)
+                                                    (catch clojure.lang.ExceptionInfo e (let [t (trap e)] (if t t ::fail))))]
+                                       (cond
+                                         (instance? Trapped res) [(saddr (:label res)) {:at current :goto goto :ex (:ex res)}]
+                                         (clojure.core/= ::fail res) (recur false)
+                                         :else res)))]
+                    (recur nxt err'))))))))
       (catch clojure.lang.ExceptionInfo e
         (case (get (ex-data e) :snobol/signal)
           :end        (do (end-statement!) nil)          ; normal program end
