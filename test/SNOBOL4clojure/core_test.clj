@@ -1384,3 +1384,15 @@
                    " S = ((IDENT(1,2), 'in') (IDENT(1,1), 'ner'))\n OUTPUT = 'f: ' S\nEND\n"))
       (is (= "x runs\ny runs\nz runs\na: done\nb: second\nc: failed\nd: 7\ne: ax\nf: in\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; The result of a match with a replacement, S pattern = replacement, is assigned to the subject as any assignment is, so a value trace on S fires and an
+;; OUTPUT subject writes its line; a match that fails assigns nothing. The engine stored the new value directly and a traced subject said nothing (Budne's spit).
+;; The oracle, sbl -bf, wrote exactly this output.
+(deftest a-replacement-is-an-assignment-to-the-subject
+  (let [f (java.io.File/createTempFile "replasn" ".sno")]
+    (try
+      (spit f (str " &TRACE = 100\n TRACE('a')\n TRACE('b')\n a = 'yes!!'\n b = 'yes!!'\n p = 'yes'\n b p =\n a 'yes' = 'no'\n a 'zzz' = 'never'\n"
+                   " OUTPUT = a ' ' b\n OUTPUT = 'left ' &TRACE\n c = 'x'\n c 'x' = 'it'\n OUTPUT = c\nEND\n"))
+      (is (= (str "****4*******  a = 'yes!!'\n****5*******  b = 'yes!!'\n****7*******  b = '!!'\n****8*******  a = 'no!!'\nno!! !!\nleft 96\nit\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

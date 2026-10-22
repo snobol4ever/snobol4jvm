@@ -293,7 +293,7 @@
                       result (str (subs subject 0 start)
                                   repl
                                   (subs subject end))]
-                  (snobol-set! n result)
+                  (INVOKE '= n result)       ; assigned as any assignment is: a value trace fires, OUTPUT writes
                   result)))
     DEFINE  (let [[proto entry-arg] args
                   ;; Parse: 'fname(p1,p2,...)l1,l2,...'  or  'fname(p1,...)'
