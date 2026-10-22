@@ -103,6 +103,7 @@
 (def <POS> (atom {}))   ; statement number -> [file line]: where the statement stands in the source, which &FILE and &LINE read
 (def <OBJNO> (atom 0))   ; how many arrays, tables and DATA objects the program has made: the number a dump gives each, #n
 (defn next-serial! [] (swap! <OBJNO> inc))
+(def <HOST0> (atom ""))   ; what HOST(0) returns: the -u text, or else the program's own arguments joined by blanks
 (def <LASTOUT> (atom nil))   ; the last value assigned to OUTPUT, which a dump lists as the variable OUTPUT
 (def <SETEXIT> (atom nil))   ; the label SETEXIT named (a keyword), or nil when no handler is armed
 (def <DISPNO> (atom {}))   ; statement key (the number a statement is stored under) -> the number SPITBOL gives it, which counts blank lines
@@ -244,6 +245,7 @@
    (reset! <SETEXIT>  nil)
    (reset! <OBJNO>    0)
    (reset! <LASTOUT>  nil)
+   (reset! <HOST0>    "")
    (reset! &RTNTYPE   ε)
    (reset! &ERRTYPE   0)
    (reset! &ERRTEXT   ε)

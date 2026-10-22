@@ -2664,3 +2664,15 @@
 ;; HOST() is "a 'host-information' string describing the system on which SPITBOL is executing", computer type:operating system:version (SPITBOL manual ch. 19, HOST).
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
+
+;; HOST(0) is the text of the -u option and, "If -u was not specified, ... the concatenation of all command line arguments" (SPITBOL manual ch. 19, HOST): sbl -bf joins
+;; the arguments after the program file with blanks ([a b c]) and gives the -u text when there is one ([X Y]). The engine kept no arguments, so aisnobol HSORT, which opens
+;; the file HOST(0) names, could not read its input.
+(deftest host-zero-is-the-u-text-or-the-programs-arguments
+  (let [f (java.io.File/createTempFile "host0" ".sno")]
+    (try
+      (spit f "        OUTPUT = '[' HOST(0) ']'\nEND\n")
+      (is (= "[a b c]\n" (with-out-str (-main (.getPath f) "a" "b" "c"))))
+      (is (= "[X Y]\n" (with-out-str (-main "-u" "X Y" (.getPath f) "a" "b"))))
+      (is (= "[]\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

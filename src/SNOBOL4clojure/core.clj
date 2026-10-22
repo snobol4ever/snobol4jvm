@@ -198,9 +198,10 @@
    -INCLUDE files resolve against the program's own directory, then SNO_LIB,
    then the current one. INPUT reads stdin."
   [& args]
-  (let [[engine file] (if (clojure.core/= "--engine" (first args))
-                        [(second args) (nth args 2 nil)]
-                        ["interp" (first args)])]
+  (let [[engine args] (if (clojure.core/= "--engine" (first args)) [(second args) (nnext args)] ["interp" args])
+        ;; -u STR before the file is HOST(0)'s text; the arguments after the file are the program's own, which HOST(0) joins when there is no -u
+        [u args]      (if (clojure.core/= "-u" (first args)) [(second args) (nnext args)] [nil args])
+        [file & prog-args] args]
     (when (or (nil? file) (not (#{"interp" "vm"} engine)))
       (binding [*out* *err*]
         (println "Usage: lein run [--engine interp|vm] <file.sno>"))
@@ -209,6 +210,7 @@
           dir (or (.getParent (java.io.File. ^String file)) ".")]
       (case engine
         "interp" (do (env/GLOBALS)
+                     (reset! env/<HOST0> (or u (clojure.string/join " " (remove #{"--"} prog-args))))
                      ;; the termination dump &DUMP asks for is written however the program ends
                      (try (rt/RUN (comp/CODE src (include-dirs dir (System/getenv "SNO_LIB")) file))
                           (finally (when (pos? (long @env/&DUMP)) (print (dump/dump-text @env/&DUMP))))))
