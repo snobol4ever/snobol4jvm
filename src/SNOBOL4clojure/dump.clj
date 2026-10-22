@@ -46,10 +46,29 @@
 ;; types"), as sbl -bf writes them.
 (defn- serial-of [v] (cond (env/array? v) (:serial v) (env/table? v) (:serial (meta v)) (instance? DataObj v) (.serial ^DataObj v)))
 
+;; SPITBOL's hash of a table key, the bucket's order in a dump (sbl.min: tfind and hashs; a dump walks the buckets in order and each chain in the order entries were
+;; made). A string: its length, exclusive-or'd with its first three 8-byte words of characters (little-endian, zero past the end), kept to 63 bits. An integer: its
+;; magnitude; a real: the magnitude of its bit pattern; the most negative of either hashes to 0. Another key has no hash here, and its entries come last in their order.
+(defn- key-hash [k]
+  (let [mag (fn [^long x] (cond (clojure.core/= x Long/MIN_VALUE) 0 (neg? x) (- x) :else x))]
+    (cond
+      (string? k)  (let [b ^bytes (.getBytes ^String k "ISO-8859-1") n (alength b)]
+                     (if (zero? n)
+                       0
+                       (bit-and Long/MAX_VALUE
+                                (reduce (fn [h w] (bit-xor h (reduce (fn [acc j] (let [i (+ (* 8 w) j)]
+                                                                                   (if (< i n) (bit-or acc (bit-shift-left (bit-and 0xff (long (aget b i))) (* 8 j))) acc)))
+                                                                     0 (range 8))))
+                                        (long n) (range (min 3 (quot (+ n 7) 8)))))))
+      (integer? k) (mag (long k))
+      (double? k)  (mag (Double/doubleToRawLongBits k))
+      :else nil)))
+
 (defn- parts [v]   ; [[kind label value] ...] of an object, in order
   (cond
     (env/array? v)        (for [[k x] (sort-by key @(:data v))] [:sub k x])
-    (env/table? v)        (for [[k x] (env/table-entries v)] [:sub [k] x])
+    (env/table? v)        (let [n (long (:size (meta v) 11))]
+                            (for [[k x] (sort-by (fn [[k _]] (if-some [h (key-hash k)] (mod h n) Long/MAX_VALUE)) (env/table-entries v))] [:sub [k] x]))
     (instance? DataObj v) (map (fn [f x] [:field f x]) (.field-names ^DataObj v) (seq (.fields ^DataObj v)))))
 
 (defn- objects [vars]
