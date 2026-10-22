@@ -16,6 +16,7 @@
             [SNOBOL4clojure.runtime    :as rt]
             [SNOBOL4clojure.dump       :as dump]
             [SNOBOL4clojure.fatal      :as fatal]
+            [SNOBOL4clojure.listing    :as listing]
             [SNOBOL4clojure.trace      :as trace]
             [SNOBOL4clojure.transpiler :as xpile]
             [SNOBOL4clojure.vm         :as vm]
@@ -213,15 +214,13 @@
       (let [rc (case engine
         "interp" (do (env/GLOBALS)
                      (reset! env/<HOST0> (or u (clojure.string/join " " (remove #{"--"} prog-args))))
-                     ;; "-NOERRORS is the default, and suppresses execution if there is a compilation error" (manual ch. 14): a program with a compile error is
-                     ;; reported in sbl -bf's shape, file(line) : ERROR code -- text, and not run; -main answers 231, sbl's exit code for it
+                     ;; "-NOERRORS is the default, and suppresses execution if there is a compilation error" (manual ch. 14): the listing -LIST asks for is
+                     ;; written as the program is compiled, a compile error on its page in sbl -bf's shape, and a program with one is not run; -main answers 231,
+                     ;; sbl's exit code for it
                      (let [entry (comp/CODE src (include-dirs dir (System/getenv "SNO_LIB")) file)]
+                       (listing/write-listing! file)
                        (if (seq @env/<DIAGNOSTICS>)
-                         (do (doseq [[l code] @env/<DIAGNOSTICS>]
-                               (let [msg (str file "(" l ") : ERROR " (format "%03d" code) " -- " (env/error-message code))]
-                                 (println msg) (binding [*out* *err*] (println msg))))
-                             (flush)
-                             231)
+                         231
                          ;; an execution error that ends the program (and the statement limit, "244 Statement count exceeds value of STLIMIT keyword") is
                          ;; reported as sbl -bf reports it, with &ERRTYPE and &ERRTEXT set, and the run ends there, exit code 0 as sbl's; the termination
                          ;; dump &DUMP asks for is written after it, however the program ends

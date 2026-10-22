@@ -3062,17 +3062,24 @@
 ;; A continuation line (+ or . in column one) continues the statement on the line before it; one that continues nothing -- the first line of the program, a line after a
 ;; comment line ("Comment and control statements are always one line long", SPITBOL manual ch. 14), a line after a statement closed by a semicolon -- is a compile error,
 ;; "214 bad label or misplaced continuation line", and the program is not run ("-NOERRORS is the default, and suppresses execution if there is a compilation error",
-;; ch. 14). After a blank line it continues the blank one. sbl -bf writes file(line) : ERROR 214 -- ... and exits 231; -main answers 231. The engine ran the program
-;; (TPgm test2, which sbl refuses at line 238).
+;; ch. 14). After a blank line it continues the blank one. sbl -bf writes the error on the listing's page, after the line it is found on (its head's identity and
+;; clock lines are read here as IDENTITY and CLOCK), and exits 231; -main answers 231. The engine ran the program (TPgm test2, which sbl refuses at line 238).
 (deftest a-misplaced-continuation-line-is-error-214-and-the-program-does-not-run
   (let [dir (.toFile (java.nio.file.Files/createTempDirectory "cont" (make-array java.nio.file.attribute.FileAttribute 0)))
         run (fn [nm src] (let [f (java.io.File. dir nm)] (spit f src)
                            (let [rc (atom nil) out (with-out-str (binding [*err* (java.io.StringWriter.)] (reset! rc (-main (.getPath f)))))]
-                             [(clojure.string/replace out (str dir "/") "") @rc])))]
+                             [(-> out (clojure.string/replace (str dir "/") "")
+                                  (clojure.string/replace #"(?m)^snobol4jvm version \S+$" "IDENTITY")
+                                  (clojure.string/replace #"(?m)^x86-64  \w{3} \w{3} [ \d]\d \d\d:\d\d:\d\d \d{4}$" "CLOCK"))
+                              @rc])))
+        page (fn [stmt err] (str "\n\n\nIDENTITY\nCLOCK\n\n\n\n" (apply str (repeat 112 \space)) "page 1\n\n" stmt "\n\n" err "\n\n"))]
     (try
-      (is (= ["c1.sno(2) : ERROR 214 -- bad label or misplaced continuation line\n" 231] (run "c1.sno" "\tX = 1 ;\n+\tY = 2\n\tOUTPUT = 'ran'\nEND\n")))
-      (is (= ["c2.sno(2) : ERROR 214 -- bad label or misplaced continuation line\n" 231] (run "c2.sno" "* a comment\n+\tY = 2\n\tOUTPUT = 'ran'\nEND\n")))
-      (is (= ["c4.sno(1) : ERROR 214 -- bad label or misplaced continuation line\n" 231] (run "c4.sno" "+\tY = 2\n\tOUTPUT = 'ran'\nEND\n")))
+      (is (= [(page "2       +\tY = 2" "c1.sno(2) : ERROR 214 -- bad label or misplaced continuation line") 231]
+             (run "c1.sno" "\tX = 1 ;\n+\tY = 2\n\tOUTPUT = 'ran'\nEND\n")))
+      (is (= [(page "1       +\tY = 2" "c2.sno(2) : ERROR 214 -- bad label or misplaced continuation line") 231]
+             (run "c2.sno" "* a comment\n+\tY = 2\n\tOUTPUT = 'ran'\nEND\n")))
+      (is (= [(page "1       +\tY = 2" "c4.sno(1) : ERROR 214 -- bad label or misplaced continuation line") 231]
+             (run "c4.sno" "+\tY = 2\n\tOUTPUT = 'ran'\nEND\n")))
       (is (= "ran 1\n" (first (run "c3.sno" "\tX = 1\n\n+\tY = 2\n\tOUTPUT = 'ran ' X\nEND\n"))))
       (is (= "ran 3\n" (first (run "c5.sno" "\tX = 1\n+\t+ 2\n\tOUTPUT = 'ran ' X\nEND\n"))))
       (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))
@@ -3362,3 +3369,150 @@
                     "RTAB(*) 55 rtab evaluated argument is negative or too large\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; "-LIST This statement turns on listing, thereby producing a program listing with statement numbers"; -NOLIST, -EJECT, -SPACE N, -TITLE, -STITL, -PRINT, -NOPRINT,
+;; -SINGLE and -DOUBLE (manual ch. 14, Listing controls), and the include depth beside the statement number (-INCLUDE). sbl -bf writes the listing on standard output
+;; as the program is compiled; its head names the engine and the time, read here as IDENTITY and CLOCK. The engine wrote no listing.
+(deftest the-listing-is-written-as-sbl-writes-it
+  (let [dir (.toFile (java.nio.file.Files/createTempDirectory "lst" (make-array java.nio.file.attribute.FileAttribute 0)))
+        mask (fn [s] (-> s (clojure.string/replace (str dir "/") "") (clojure.string/replace #"(?m)^(macro spitbol|snobol4jvm) version \S+$" "IDENTITY")
+                         (clojure.string/replace #"(?m)^x86-64  \w{3} \w{3} [ \d]\d \d\d:\d\d:\d\d \d{4}$" "CLOCK")))]
+    (try
+        (spit (java.io.File. dir "main.sno") (str "* a comment before -LIST\n"
+                                             "-LIST\n"
+                                             "* a comment\n"
+                                             "        A = 1 ; B = 2\n"
+                                             "LAB     C = 3\n"
+                                             "+         4\n"
+                                             "\n"
+                                             "-INCLUDE 'inc2.inc'\n"
+                                             "-SPACE 2\n"
+                                             "-TITLE My Title\n"
+                                             "        E = 5    :(NEXT)\n"
+                                             "NEXT    OUTPUT = A B C E\n"
+                                             "-EJECT\n"
+                                             "-STITL Sub one\n"
+                                             "-NOPRINT\n"
+                                             "-SPACE\n"
+                                             "        F = 6\n"
+                                             "-PRINT\n"
+                                             "-DOUBLE\n"
+                                             "        G = 7\n"
+                                             "-SINGLE\n"
+                                             "        H = '0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'\n"
+                                             "-NOLIST\n"
+                                             "        I = 8\n"
+                                             "-LIST\n"
+                                             "END\n"
+                                             "data after end\n"))
+        (spit (java.io.File. dir "inc2.inc") (str "-SPACE\n"
+                                             "* inc comment\n"
+                                             "        Y = 2\n"))
+      (let [rc (atom nil) out (with-out-str (binding [*err* (java.io.StringWriter.)] (reset! rc (-main (.getPath (java.io.File. dir "main.sno"))))))]
+        (is (= (str "\n"
+                    "\n"
+                    "\n"
+                    "IDENTITY\n"
+                    "CLOCK\n"
+                    "\n"
+                    "\n"
+                    "\n"
+                    "                                                                                                                page 1\n"
+                    "\n"
+                    "        -LIST\n"
+                    "        * a comment\n"
+                    "1               A = 1 ; B = 2\n"
+                    "3       LAB     C = 3\n"
+                    "        +         4\n"
+                    "4       \n"
+                    "        -INCLUDE 'inc2.inc'\n"
+                    "\n"
+                    "     1  -SPACE\n"
+                    "     1  * inc comment\n"
+                    "5    1          Y = 2\n"
+                    "\n"
+                    "\n"
+                    "        -SPACE 2\n"
+                    "\n"
+                    "\n"
+                    "\n"
+                    "My Title                                                                                                        page 2\n"
+                    "\n"
+                    "\n"
+                    "        -TITLE My Title\n"
+                    "6               E = 5    :(NEXT)\n"
+                    "7       NEXT    OUTPUT = A B C E\n"
+                    "\n"
+                    "\n"
+                    "\n"
+                    "My Title                                                                                                        page 3\n"
+                    "\n"
+                    "\n"
+                    "        -EJECT\n"
+                    "\n"
+                    "\n"
+                    "\n"
+                    "My Title                                                                                                        page 4\n"
+                    "Sub one\n"
+                    "\n"
+                    "        -STITL Sub one\n"
+                    "\n"
+                    "8               F = 6\n"
+                    "        -PRINT\n"
+                    "        -DOUBLE\n"
+                    "\n"
+                    "9               G = 7\n"
+                    "\n"
+                    "        -SINGLE\n"
+                    "10              H = '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\n"
+                    "0000000000000000000000000000'\n"
+                    "        -LIST\n"
+                    "12      END\n"
+                    "12345\n")
+               (mask out)))
+        (is (= nil @rc)))
+      (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))
+
+
+;; With the listing off, the first compile error opens the listing's head and page, under the title a -TITLE gave ("The list file is advanced to a new page prior to
+;; printing the new title", manual ch. 14), an -EJECT turning no page while nothing is listed; each error follows the line it is found on, numbered with its
+;; statement (TPgm test2: page 1 under SPITBOL TEST PROGRAM #2, statement 259, ERROR 214 at line 238). As sbl -bf writes it; IDENTITY and CLOCK are its head's lines.
+(deftest compile-errors-are-written-on-the-listings-page
+  (let [dir (.toFile (java.nio.file.Files/createTempDirectory "lst" (make-array java.nio.file.attribute.FileAttribute 0)))
+        mask (fn [s] (-> s (clojure.string/replace (str dir "/") "") (clojure.string/replace #"(?m)^(macro spitbol|snobol4jvm) version \S+$" "IDENTITY")
+                         (clojure.string/replace #"(?m)^x86-64  \w{3} \w{3} [ \d]\d \d\d:\d\d:\d\d \d{4}$" "CLOCK")))]
+    (try
+        (spit (java.io.File. dir "e1.sno") (str "-TITLE T1\n"
+                                           "        A = 1\n"
+                                           "-EJECT\n"
+                                           "        B = 2 ;\n"
+                                           ".  C = 3\n"
+                                           "        D = 4\n"
+                                           "+ E\n"
+                                           "        X = 1 ;\n"
+                                           "+ Y = 2\n"
+                                           "END\n"))
+      (let [rc (atom nil) out (with-out-str (binding [*err* (java.io.StringWriter.)] (reset! rc (-main (.getPath (java.io.File. dir "e1.sno"))))))]
+        (is (= (str "\n"
+                    "\n"
+                    "\n"
+                    "IDENTITY\n"
+                    "CLOCK\n"
+                    "\n"
+                    "\n"
+                    "\n"
+                    "T1                                                                                                              page 1\n"
+                    "\n"
+                    "\n"
+                    "3       .  C = 3\n"
+                    "\n"
+                    "e1.sno(5) : ERROR 214 -- bad label or misplaced continuation line\n"
+                    "\n"
+                    "6       + Y = 2\n"
+                    "\n"
+                    "e1.sno(9) : ERROR 214 -- bad label or misplaced continuation line\n"
+                    "\n")
+               (mask out)))
+        (is (= 231 @rc)))
+      (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))

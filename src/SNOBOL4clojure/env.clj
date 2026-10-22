@@ -105,6 +105,7 @@
 (defn next-serial! [] (swap! <OBJNO> inc))
 (def <PRIMS-READ> (atom #{}))   ; the primitive pattern variables (BAL, ARB, ...) the program has read, which a dump lists as SPITBOL lists them
 (def <DIAGNOSTICS> (atom []))   ; the compile-time errors of the last source compiled, as [line code] pairs
+(def <SOURCE> (atom nil))   ; the last source compiled, its -INCLUDEs spliced in, as {:text t :stmts its [text line] statements :cards the -INCLUDE lines}, for the listing
 (def <HOST0> (atom ""))   ; what HOST(0) returns: the -u text, or else the program's own arguments joined by blanks
 (def <LASTOUT> (atom nil))   ; the last value assigned to OUTPUT, which a dump lists as the variable OUTPUT
 (def <ASSOC-LAST> (atom {}))   ; an associated variable (INPUT, OUTPUT, a channel's) -> the last record read or written through it, which a dump lists as its value

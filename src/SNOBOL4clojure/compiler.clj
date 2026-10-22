@@ -28,7 +28,7 @@
      (edn->ir s)                  — EDN string -> [codes nos labels]"
   (:require [clojure.string          :as string]
             [clojure.edn             :as edn]
-            [SNOBOL4clojure.env      :refer [STNO <STNO> <LABL> <CODE> <DISPNO> <POS> <DIAGNOSTICS> BLANKS &CASE fold-case]]
+            [SNOBOL4clojure.env      :refer [STNO <STNO> <LABL> <CODE> <DISPNO> <POS> <DIAGNOSTICS> <SOURCE> BLANKS &CASE fold-case]]
             [SNOBOL4clojure.grammar  :refer [parse-statement]]
             [SNOBOL4clojure.emitter  :refer [emitter]]))
 
@@ -119,10 +119,10 @@
   ([src search-path seen] (first (preprocess-includes* src search-path seen))))
 
 (defn- preprocess-includes*
-  "preprocess-includes, returning [expanded-source seen]."
+  "preprocess-includes, returning [expanded-source seen cards], cards the -INCLUDE lines as written, one for each -FILE-ENTER card in order, which the listing prints."
   [src search-path seen]
   (let [include-re #"(?i)^\s*-include\s+['\"]([^'\"]+)['\"]"]
-    (loop [lines (string/split-lines src) out [] seen seen]
+    (loop [lines (string/split-lines src) out [] seen seen cards []]
       (if-let [line (first lines)]
         (if-let [[_ fname] (re-find include-re line)]
           (let [found (some (fn [dir]
@@ -132,22 +132,23 @@
             (cond
               ;; File not found — keep the directive as a comment so the compiler sees a harmless *-line
               (nil? found)
-              (recur (rest lines) (conj out (str "* -INCLUDE not found: " fname)) seen)
+              (recur (rest lines) (conj out (str "* -INCLUDE not found: " fname)) seen cards)
               ;; "SPITBOL remembers only the 'trimmed' names of files included so far, so the comparison with the blank-padded name will fail, and the file will be
               ;; included again" (manual ch. 14, -INCLUDE): the name as written is looked up among the trimmed names
               (seen fname)
-              (recur (rest lines) (conj out (str "* -INCLUDE skipped (already included): " fname)) seen)
+              (recur (rest lines) (conj out (str "* -INCLUDE skipped (already included): " fname)) seen cards)
               :else
-              (let [text            (slurp found :encoding "ISO-8859-1")
+              (let [text                (slurp found :encoding "ISO-8859-1")
                     ;; the included file's own directory joins the search path
-                    [body seen']    (preprocess-includes* text (distinct (cons (.getParent found) search-path)) (conj seen (string/trim fname)))
-                    last-line       (last (string/split-lines text))
-                    stale?          (boolean (and last-line (string/starts-with? last-line "*")))]
+                    [body seen' inner]  (preprocess-includes* text (distinct (cons (.getParent found) search-path)) (conj seen (string/trim fname)))
+                    last-line           (last (string/split-lines text))
+                    stale?              (boolean (and last-line (string/starts-with? last-line "*")))]
                 (recur (rest lines)
                        (into out (concat [(str "-FILE-ENTER \"" (string/trim fname) "\"")] (string/split-lines body) [(str "-FILE-LEAVE" (when stale? " STALE"))]))
-                       seen'))))
-          (recur (rest lines) (conj out line) seen))
-        [(string/join "\n" out) seen]))))
+                       seen'
+                       (into (conj cards line) inner)))))
+          (recur (rest lines) (conj out line) seen cards))
+        [(string/join "\n" out) seen cards]))))
 
 ;; The source position a card changes. A -LINE card sets the number and file of the line that follows it; a -FILE-ENTER card (written by preprocess-includes in place of the
 ;; -INCLUDE card) starts the included file at line 1 and remembers where the including file resumes, which is after the line the -INCLUDE card stood on; the matching
@@ -178,9 +179,10 @@
   ([S] (CODE! S ["."]))
   ([S include-path] (CODE! S include-path nil))
   ([S include-path file]
-   (let [expanded  (preprocess-includes (str S) include-path)
+   (let [[expanded _ cards] (preprocess-includes* (str S) include-path #{})
          raw-stmts (split-source expanded)
-         _         (reset! <DIAGNOSTICS> (:diagnostics (meta raw-stmts)))]
+         _         (reset! <DIAGNOSTICS> (:diagnostics (meta raw-stmts)))
+         _         (reset! <SOURCE> {:text expanded :stmts raw-stmts :cards cards})]
      (loop [stmts raw-stmts NO 1 CODES {} NOS {} LABELS {} blanks 0 before [] fold (not (zero? (long @&CASE)))
             poss [] pos {:file (str file) :bp 1 :bl 1 :stack []}]
        (if (empty? stmts)
