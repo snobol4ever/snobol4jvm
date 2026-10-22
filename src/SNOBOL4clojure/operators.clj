@@ -279,10 +279,12 @@
                   v))))
     ?=      (let [[n p R] args
                   subject (str (or ($$ n) ""))
-                  pat     p                       ; already evaluated by EVAL! dispatch
-                  repl    (str (or (EVAL! R) ""))]
+                  pat     p]                      ; already evaluated by EVAL! dispatch
               (when-let [[start end] (SEARCH subject pat)]
-                (let [result (str (subs subject 0 start)
+                ;; The replacement is evaluated after the match, so it sees the
+                ;; variables the match assigned (S RTAB(N) . S REM . S1 = S1 S).
+                (let [repl   (str (or (EVAL! R) ""))
+                      result (str (subs subject 0 start)
                                   repl
                                   (subs subject end))]
                   (snobol-set! n result)

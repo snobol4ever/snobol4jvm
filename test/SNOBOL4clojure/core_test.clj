@@ -906,3 +906,26 @@
                   "k: INTEGER 7\nl: NAME Y\nm: INTEGER\nn: two nulls succeed\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A replacement is evaluated after the match, so it sees the variables the match
+;; assigned: S RTAB(N) . S REM . S1 = S1 S rotates S (Gimpel's ROTATER), and a
+;; replacement of X X doubles the captured letter. The replacement was evaluated
+;; before the pattern ran, from the old values, and the subject came back as it
+;; was (ABCDE). A match that fails evaluates nothing and assigns nothing (c). The
+;; oracle, sbl -bf, wrote exactly this output.
+(deftest a-replacement-is-evaluated-after-the-match
+  (let [f (java.io.File/createTempFile "replorder" ".sno")]
+    (try
+      (spit f (str " S = 'ABCDE'\n N = 2\n S RTAB(N) . S REM . S1 = S1 S\n OUTPUT = 'a: ' S\n"
+                   " T = 'hello world'\n T 'o' . X = X X\n OUTPUT = 'b: ' T ' X=' X\n"
+                   " U = 'abc'\n U 'zzz' . Y = Y 'a'                  :S(YES)F(NO)\n"
+                   "YES OUTPUT = 'c: matched'                :(CONT)\n"
+                   "NO OUTPUT = 'c: failed U=' U ' Y=[' Y ']'\n"
+                   "CONT V = 'one two'\n V BREAK(' ') . W ' ' REM . Z = Z ' ' W\n OUTPUT = 'd: ' V\n"
+                   " Q = 'abc'\n Q 'b' $ R = '<' R '>'\n OUTPUT = 'e: ' Q\n"
+                   " L = 'x1y'\n L LEN(1) . A1 ANY('0123456789') . A2 = A2 A1\n OUTPUT = 'f: ' L\n"
+                   "END\n"))
+      (is (= (str "a: DEABC\nb: helloo world X=o\nc: failed U=abc Y=[]\nd: two one\n"
+                  "e: a<b>c\nf: 1xy\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
