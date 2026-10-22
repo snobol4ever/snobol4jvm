@@ -2807,3 +2807,30 @@
       (is (= "integer fails\nInteger fails\ninteger converts with &CASE 1\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A number given to a string function is the string SPITBOL makes of it, "converted to its standard representation" (SPITBOL manual ch. 17, Real to string): 21.0 is
+;; 21. to SIZE, DUPL, REVERSE, TRIM, REPLACE, LPAD, RPAD, SUBSTR and CONVERT(x,'STRING'), and e is 2.71828182845905. The engine gave them Clojure's text (21.0, SIZE 4) or
+;; nothing, and REVERSE and REPLACE of a number died (aisnobol TEST, user_function_array_trim_replace_branch_1). The oracle, sbl -bf, wrote exactly this output.
+(deftest a-number-is-its-spitbol-string-to-the-string-functions
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        X = 21.0\n"
+                   "        OUTPUT = '(' X ' ' X ')'\n"
+                   "        Y = X ' '\n"
+                   "        OUTPUT = Y '|'\n"
+                   "        OUTPUT = CONVERT(X,'STRING') '|' SIZE(X) '|' DUPL(X,2) '|' REVERSE(X) '|' TRIM(X)\n"
+                   "        OUTPUT = REPLACE(X,'1','9') '|' LPAD(X,6) '|' SUBSTR(X,1,2)\n"
+                   "        T = TABLE()\n"
+                   "        T<X> = 'k'\n"
+                   "        OUTPUT = 'key ' T<21.0> ' ' T<'21.'>\n"
+                   "        L = 'a'\n"
+                   "        L = L ' ' X\n"
+                   "        OUTPUT = L\n"
+                   "        Z = EXP(1)\n"
+                   "        OUTPUT = Z ' ' Z * 2\n"
+                   "        S = 'v=' 2.5E-2\n"
+                   "        OUTPUT = S\n"
+                   "END\n"))
+      (is (= "(21. 21.)\n21. |\n21.|3|21.21.|.12|21.\n29.|   21.|21\nkey k \na 21.\n2.71828182845905 5.43656365691809\nv=0.25e-1\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

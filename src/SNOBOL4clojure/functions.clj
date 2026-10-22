@@ -46,25 +46,31 @@
                        (real->integer d)
                        (throw (ex-info "argument is not integer" {:snobol/error err})))))))
 
-(defn SIZE    [s]         (count (str s)))
+
+;; A string argument as SPITBOL converts it: an integer as its digits and a real "converted to its standard representation" (manual ch. 17, Real to string: 21. for 21.0,
+;; 2.71828182845905 for e), which sstr writes; the null string for nil.
+(defn- str-arg ^String [x] (sstr x))
+
+(defn SIZE    [s]         (count (str-arg s)))
 (defn REPLACE [s1 s2 s3]
   ;; Replace chars in s1: each char of s2 mapped to corresponding char of s3
-  (apply str (map #(let [i (.indexOf ^String s2 (str %))]
-                     (if (>= i 0) (.charAt ^String s3 i) %))
-                  s1)))
-(defn DUPL    [x i]   (apply str (repeat (int-arg i 90) x)))
-(defn TRIM    [s]     (clojure.string/trimr (str s)))
-(defn REVERSE [s]     (apply str (clojure.string/reverse s)))
+  (let [s1 (str-arg s1) s2 (str-arg s2) s3 (str-arg s3)]
+    (apply str (map #(let [i (.indexOf ^String s2 (str %))]
+                       (if (>= i 0) (.charAt ^String s3 i) %))
+                    s1))))
+(defn DUPL    [x i]   (apply str (repeat (int-arg i 90) (if (string? x) x (if (number? x) (str-arg x) x)))))
+(defn TRIM    [s]     (clojure.string/trimr (str-arg s)))
+(defn REVERSE [s]     (apply str (clojure.string/reverse (str-arg s))))
 (defn LPAD
   ([s n]        (LPAD s n " "))
-  ([s n fill]   (let [s-str  (str s)
+  ([s n fill]   (let [s-str  (str-arg s)
                       pad    (clojure.core/- (int-arg n 145) (count s-str))
                       fill-c (let [f (str fill)] (if (clojure.core/= "" f) " " (subs f 0 1)))]   ; a null fill pads with blanks
                   (if (clojure.core/<= pad 0) s-str
                     (str (apply str (repeat pad fill-c)) s-str)))))
 (defn RPAD
   ([s n]        (RPAD s n " "))
-  ([s n fill]   (let [s-str  (str s)
+  ([s n fill]   (let [s-str  (str-arg s)
                       pad    (clojure.core/- (int-arg n 179) (count s-str))
                       fill-c (let [f (str fill)] (if (clojure.core/= "" f) " " (subs f 0 1)))]   ; a null fill pads with blanks
                   (if (clojure.core/<= pad 0) s-str
@@ -73,7 +79,7 @@
   "SUBSTR(s, i, n): the n characters of s from the 1-based position i, where n = 0 means all the rest of s from i. It fails when i is not from 1 to one past
    the end of s, when n is negative, or when the n characters are not all there, as sbl -bf does."
   [s i n]
-  (let [s (str s) i (int-arg i 193) n (int-arg n 192) len (count s)]
+  (let [s (str-arg s) i (int-arg i 193) n (int-arg n 192) len (count s)]
     (when (and (clojure.core/<= 1 i (inc len)) (clojure.core/>= n 0))
       (if (zero? n)
         (subs s (dec i))
@@ -129,18 +135,18 @@
       (and (clojure.core/= from "INTEGER") (clojure.core/= to "NAME"))
       (symbol (str x))
 
-      ;; REAL conversions
+      ;; REAL conversions: "The real number is converted to its standard representation" (manual ch. 17, Real to string), as sstr writes it
       (and (clojure.core/= from "REAL") (clojure.core/= to "STRING"))
-      (str x)
+      (str-arg x)
 
       (and (clojure.core/= from "REAL") (clojure.core/= to "INTEGER"))
       (real->integer x)
 
       (and (clojure.core/= from "REAL") (clojure.core/= to "PATTERN"))
-      (list 'SEQ (list 'LIT$ (str x)))
+      (list 'SEQ (list 'LIT$ (str-arg x)))
 
       (and (clojure.core/= from "REAL") (clojure.core/= to "NAME"))
-      (symbol (str x))
+      (symbol (str-arg x))
 
       ;; ARRAY conversions
       (and (clojure.core/= from "ARRAY") (clojure.core/= to "TABLE"))
