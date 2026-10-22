@@ -139,6 +139,7 @@
 (def FIELD   fns/FIELD)
 (def ASCII   fns/ASCII)
 (def CHAR    fns/CHAR)
+(def ORD     fns/ORD)
 (def REMDR   fns/REMDR)
 (def ATAN    fns/ATAN)
 (def CHOP    fns/CHOP)

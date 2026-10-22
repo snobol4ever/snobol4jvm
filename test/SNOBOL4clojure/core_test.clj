@@ -1115,3 +1115,40 @@
                    " 'hello' LEN(2) . OUTPUT LEN(1) . OUTPUT\nEND\n"))
       (is (= "V=l\nW=c\nhe\nl\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; An integer argument may be an integer, a real (truncated toward zero) or a numeric string (a point or an exponent makes it a real, then truncated), as in
+;; CHAR(65.9), CHAR('66'), DUPL('ab','2.5') and SUBSTR('hello',2.7,3.2); SUBSTR fails when its characters are not all there; ORD is the code of the first
+;; character and fails for the null string. The engine took only an integer, so a string argument threw a ClassCastException (Budne's intval) and ORD was
+;; undefined (ord). A bad argument is the function's own error: CHAR 281 not an integer and 282 out of range, DUPL 90, SUBSTR 193 and 192, LPAD 145, RPAD 179.
+;; The oracle, sbl -bf, wrote exactly this output and these error numbers.
+(deftest an-integer-argument-may-be-a-real-or-a-numeric-string
+  (let [f (java.io.File/createTempFile "intarg" ".sno")]
+    (try
+      (spit f (str " OUTPUT = 'a: ' CHAR(65.9) CHAR('66') CHAR('67.5') CHAR(' 68 ')\n"
+                   " OUTPUT = 'b: ' DUPL('ab',2.9) '|' DUPL('ab','3') '|' DUPL('ab','2.5') '|' DUPL('x',0)\n"
+                   " OUTPUT = 'c: ' SUBSTR('hello','2','3') ' ' SUBSTR('hello',2.7,3.2)\n"
+                   " OUTPUT = 'd: ' LPAD('ab','5') '|' RPAD('ab',4.5) '|'\n"
+                   " OUTPUT = 'i: ' ORD('A') ' ' ORD('ABC') ' ' ORD(65) ' ' ORD(CHAR(0)) ' ' ORD(CHAR(255)) ' ' ORD(.X) ' ' ORD(1,2)\n"
+                   " OUTPUT = 'j: ' DATATYPE(ORD(7.5))\n"
+                   " X = ORD('')                           :S(Y1)F(N1)\n"
+                   "Y1 OUTPUT = 'k: ORD null succeeds'       :(C1)\n"
+                   "N1 OUTPUT = 'k: ORD null fails'\n"
+                   "C1 X = ORD()                             :S(Y2)F(N2)\n"
+                   "Y2 OUTPUT = 'l: ORD() succeeds'          :(C2)\n"
+                   "N2 OUTPUT = 'l: ORD() fails'\n"
+                   "C2 X = SUBSTR('abc',0,1)                 :S(Y3)F(N3)\n"
+                   "Y3 OUTPUT = 'm: SUBSTR from 0 succeeds'  :(C3)\n"
+                   "N3 OUTPUT = 'm: SUBSTR from 0 fails'\n"
+                   "C3 X = SUBSTR('abc',2,5)                 :S(Y4)F(N4)\n"
+                   "Y4 OUTPUT = 'n: SUBSTR too long succeeds' :(C4)\n"
+                   "N4 OUTPUT = 'n: SUBSTR too long fails'\n"
+                   "C4\nEND\n"))
+      (is (= (str "a: ABCD\nb: abab|ababab|abab|\nc: ell ell\nd:    ab|ab  |\ni: 65 65 54 0 255 88 49\nj: INTEGER\n"
+                  "k: ORD null fails\nl: ORD() fails\nm: SUBSTR from 0 fails\nn: SUBSTR too long fails\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f))))
+  (doseq [[stmt n] [["CHAR('x')" 281] ["CHAR(256)" 282] ["CHAR(-1)" 282] ["DUPL('a','x')" 90] ["SUBSTR('abc','x',1)" 193]
+                    ["SUBSTR('abc',1,'y')" 192] ["LPAD('a','x')" 145] ["RPAD('a','x')" 179]]]
+    (is (= n (try (RUN (CODE (str "        V = " stmt "\nEND\n"))) :no-error
+                  (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e)))))
+        stmt)))

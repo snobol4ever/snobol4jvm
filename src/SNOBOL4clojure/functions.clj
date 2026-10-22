@@ -8,30 +8,7 @@
   (:refer-clojure :exclude [= + - * / num]))
 
 ;; ── String functions ──────────────────────────────────────────────────────────
-(defn SIZE    [s]         (count (str s)))
-(defn REPLACE [s1 s2 s3]
-  ;; Replace chars in s1: each char of s2 mapped to corresponding char of s3
-  (apply str (map #(let [i (.indexOf ^String s2 (str %))]
-                     (if (>= i 0) (.charAt ^String s3 i) %))
-                  s1)))
-(defn DUPL    [x i]   (apply str (repeat i x)))  ; string only for now
-(defn TRIM    [s]     (clojure.string/trimr (str s)))
-(defn REVERSE [s]     (apply str (clojure.string/reverse s)))
-(defn LPAD
-  ([s n]        (LPAD s n " "))
-  ([s n fill]   (let [s-str  (str s)
-                      pad    (clojure.core/- (long n) (count s-str))
-                      fill-c (str (first (str fill)))]
-                  (if (clojure.core/<= pad 0) s-str
-                    (str (apply str (repeat pad fill-c)) s-str)))))
-(defn RPAD
-  ([s n]        (RPAD s n " "))
-  ([s n fill]   (let [s-str  (str s)
-                      pad    (clojure.core/- (long n) (count s-str))
-                      fill-c (str (first (str fill)))]
-                  (if (clojure.core/<= pad 0) s-str
-                    (str s-str (apply str (repeat pad fill-c)))))))
-(defn SUBSTR  [s i j] (subs (str s) (dec (long i)) (clojure.core/+ (dec (long i)) (long j))))
+
 (defn- string->real
   "The real a string denotes, or nil (failure). SNOBOL4's syntax, measured
    with sbl -bf: blanks at the ends ignored, the null string is 0., then an
@@ -56,6 +33,48 @@
       (long x)
       Long/MIN_VALUE)))
 
+;; An integer argument as sbl -bf reads it: an integer, a real (truncated toward zero) or a numeric string (read as a number, so a point or an exponent makes it a
+;; real, which is truncated). Anything else is the calling function's own error, which the caller names.
+(defn- int-arg [x err]
+  (cond
+    (integer? x) x
+    (double? x)  (real->integer x)
+    :else        (let [t (clojure.string/trim (str x))]
+                   (if (re-matches #"[+-]?\d+" t)
+                     (try (Long/parseLong t) (catch NumberFormatException _ (throw (ex-info "argument is not integer" {:snobol/error err}))))
+                     (if-some [d (string->real t)]
+                       (real->integer d)
+                       (throw (ex-info "argument is not integer" {:snobol/error err})))))))
+
+(defn SIZE    [s]         (count (str s)))
+(defn REPLACE [s1 s2 s3]
+  ;; Replace chars in s1: each char of s2 mapped to corresponding char of s3
+  (apply str (map #(let [i (.indexOf ^String s2 (str %))]
+                     (if (>= i 0) (.charAt ^String s3 i) %))
+                  s1)))
+(defn DUPL    [x i]   (apply str (repeat (int-arg i 90) x)))
+(defn TRIM    [s]     (clojure.string/trimr (str s)))
+(defn REVERSE [s]     (apply str (clojure.string/reverse s)))
+(defn LPAD
+  ([s n]        (LPAD s n " "))
+  ([s n fill]   (let [s-str  (str s)
+                      pad    (clojure.core/- (int-arg n 145) (count s-str))
+                      fill-c (str (first (str fill)))]
+                  (if (clojure.core/<= pad 0) s-str
+                    (str (apply str (repeat pad fill-c)) s-str)))))
+(defn RPAD
+  ([s n]        (RPAD s n " "))
+  ([s n fill]   (let [s-str  (str s)
+                      pad    (clojure.core/- (int-arg n 179) (count s-str))
+                      fill-c (str (first (str fill)))]
+                  (if (clojure.core/<= pad 0) s-str
+                    (str s-str (apply str (repeat pad fill-c)))))))
+(defn SUBSTR
+  "SUBSTR(s, i, n): the n characters of s that start at the 1-based position i. It fails when they are not all there, as sbl -bf does."
+  [s i j]
+  (let [s (str s) i (int-arg i 193) j (int-arg j 192)]
+    (when (and (clojure.core/>= j 0) (clojure.core/<= 1 i) (clojure.core/<= (clojure.core/+ (dec i) j) (count s)))
+      (subs s (dec i) (clojure.core/+ (dec i) j)))))
 (defn CONVERT [x t]
   "CONVERT(x, type) — coerce x to the named SNOBOL4 type.
    Returns nil (failure) if the conversion is not defined."
@@ -175,7 +194,17 @@
 
 ;; ── Type conversion & char functions ─────────────────────────────────────────
 (defn ASCII   [s]  (int (first (str s))))
-(defn CHAR    [n]  (str (char n)))
+(defn CHAR
+  "CHAR(n): the one-character string whose code is n, 0 to 255."
+  [n]
+  (let [n (int-arg n 281)]
+    (if (clojure.core/<= 0 n 255)
+      (str (char n))
+      (throw (ex-info "char argument not in range" {:snobol/error 282})))))
+(defn ORD
+  "ORD(s): the code of the first character of s; it fails for the null string. A number is read as its text."
+  [s]
+  (let [t (sstr s)] (when (seq t) (long (int (first t))))))
 (defn REMDR   [x y] (clojure.core/rem (long x) (long y)))
 
 ;; ── Real functions (SPITBOL) ─────────────────────────────────────────────────
