@@ -145,9 +145,10 @@
             (reset! &LASTLINE @&LINE)
             (let [[f l] (get @<POS> (first current) ["" 0])] (reset! &FILE f) (reset! &LINE l))
             (reset! &STNO (get @<DISPNO> (first current) (first current)))
-            ;; a negative &STLIMIT is unlimited execution, and &STCOUNT stops counting
+            ;; a negative &STLIMIT is unlimited execution, and &STCOUNT stops counting; 0 is no limit too, as sbl -bf counts (its countdown starts at the limit,
+            ;; sbl.min stgcc, so at 0 the check is never reached), and &STCOUNT goes on
             (let [n (if (neg? (long @&STLIMIT)) @&STCOUNT (swap! &STCOUNT inc))]
-              (when (and (not (neg? (long @&STLIMIT))) (> n @&STLIMIT))
+              (when (and (pos? (long @&STLIMIT)) (> n @&STLIMIT))
                 (snobol-steplimit! n))
               ;; ── LABEL trace ────────────────────────────────────────────────
               (when (pos? @&TRACE)

@@ -3254,3 +3254,19 @@
                                          "\n") "th.sno" main)
              (with-out-str (-main main))))
       (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))
+
+
+;; "&STLIMIT The maximum number of statements permitted to be executed ... To inhibit this check on number of statements executed, assign a negative value"
+;; (manual ch. 16). sbl -bf also takes 0 as no limit: its countdown starts at the limit (sbl.min stgcc), so at 0 it never reaches the check, and &STCOUNT goes on.
+(deftest stlimit-zero-is-no-limit
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &STLIMIT = 0\n"
+                   "        I = 0\n"
+                   "L       I = I + 1\n"
+                   "        OUTPUT = I LT(I,10) :S(L)\n"
+                   "        OUTPUT = 'done ' &STCOUNT\n"
+                   "END\n"))
+      (is (= "1\n2\n3\n4\n5\n6\n7\n8\n9\ndone 23\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
