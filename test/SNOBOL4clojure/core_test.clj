@@ -2438,3 +2438,33 @@
       (is (= "TRIM=[] SIZE=[] DUPL=[] ARRAY=[]\nPATTERN PATTERN PATTERN PATTERN PATTERN PATTERN PATTERN\nTRIM=[mine] ab|\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; EQ, NE, LT, LE, GT and GE compare numbers whatever their types: "N1 and n2 must evaluate to integer or real values" (SPITBOL manual ch. 19, EQ), so EQ(2.0,2)
+;; succeeds and NE(2.0,2) fails; a string of a number's form converts; an argument that is not numeric is the function's error (Appendix D: EQ 101/102, NE 149/150,
+;; LT 147/148, LE 118/119, GT 111/112, GE 109/110). The engine compared a real and an integer as unequal and raised nothing (SnoRungs simple_output_186). The oracle,
+;; sbl -bf, wrote exactly this output.
+(deftest numeric-comparisons-compare-numbers-and-refuse-what-is-not-numeric
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 100\n"
+                   "        OUTPUT = IDENT(EQ(2.0,2)) 'EQ real int'\n"
+                   "        OUTPUT = IDENT(EQ('2',2.0)) 'EQ string real'\n"
+                   "        OUTPUT = IDENT(NE(2.0,2)) 'NE real int'\n"
+                   "        OUTPUT = IDENT(LT(1.5,2)) 'LT real int'\n"
+                   "        OUTPUT = IDENT(GE(2,2.0)) 'GE int real'\n"
+                   "        OUTPUT = IDENT(EQ(' 3 ',3)) 'EQ blanks'\n"
+                   "        OUTPUT = IDENT(EQ('',0)) 'EQ null zero'\n"
+                   "        EQ('a',1)\n"
+                   "        OUTPUT = 'EQ L ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        EQ(1,'a')\n"
+                   "        OUTPUT = 'EQ R ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        NE('a',1)\n"
+                   "        OUTPUT = 'NE L ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        GT(1,'a')\n"
+                   "        OUTPUT = 'GT R ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        LE('a',1)\n"
+                   "        OUTPUT = 'LE L ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "END\n"))
+      (is (= "EQ real int\nEQ string real\nLT real int\nGE int real\nEQ blanks\nEQ null zero\nEQ L 101 eq first argument is not numeric\nEQ R 102 eq second argument is not numeric\nNE L 149 ne first argument is not numeric\nGT R 112 gt second argument is not numeric\nLE L 118 le first argument is not numeric\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

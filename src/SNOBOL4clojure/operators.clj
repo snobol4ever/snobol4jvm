@@ -51,12 +51,6 @@
     (list ['x]          (list 'if (condition (cvt 'x) default) ε))
     (list ['x 'y '& '_] (list 'if (condition (cvt 'x) (cvt 'y)) ε))))
 
-(eval (primitive 'EQ     0   ε ncvt     #(list 'equal %1 %2)))
-(eval (primitive 'NE     0 nil ncvt     #(list 'not=  %1 %2)))
-(eval (primitive 'LE     0   ε ncvt     #(list '<=    %1 %2)))
-(eval (primitive 'LT     0 nil ncvt     #(list '<     %1 %2)))
-(eval (primitive 'GE     0   ε ncvt     #(list '>=    %1 %2)))
-(eval (primitive 'GT     0 nil ncvt     #(list '>     %1 %2)))
 (eval (primitive 'LEQ    ε   ε scvt     #(list 'equal %1 %2)))
 (eval (primitive 'LNE    ε nil scvt     #(list 'not=  %1 %2)))
 (eval (primitive 'LLE    ε   ε scvt     #(list '<=   (list 'compare %1 %2) 0)))
@@ -103,6 +97,22 @@
 ;; An integer result past 64 bits is the operator's overflow error (3 addition, 34 subtraction, 28 multiplication); exact is Math/addExact and its kin.
 (defn- exact [exact-op a b code msg]
   (try (exact-op (long a) (long b)) (catch ArithmeticException _ (throw (ex-info msg {:snobol/error code})))))
+
+;; The numeric comparisons: "N1 and n2 must evaluate to integer or real values" (manual ch. 19, EQ and its kin), compared as numbers whatever their types, so EQ(2.0,2)
+;; succeeds; an argument that is not numeric is the function's error (Appendix D: EQ 101/102, NE 149/150, LT 147/148, LE 118/119, GT 111/112, GE 109/110). An argument left
+;; out is the null string, 0.
+(defmacro ^:private numeric-predicate [f cmp first-code second-code]
+  (let [nm (clojure.string/lower-case (name f))]
+    `(defn ~f [& args#]
+       (let [a# (operand (first args#) ~first-code ~(str nm " first argument is not numeric"))
+             b# (operand (second args#) ~second-code ~(str nm " second argument is not numeric"))]
+         (when (~cmp a# b#) ε)))))
+(numeric-predicate EQ clojure.core/== 101 102)
+(numeric-predicate NE (fn [a b] (not (clojure.core/== a b))) 149 150)
+(numeric-predicate LT clojure.core/< 147 148)
+(numeric-predicate LE clojure.core/<= 118 119)
+(numeric-predicate GT clojure.core/> 111 112)
+(numeric-predicate GE clojure.core/>= 109 110)
 
 (defn pow-fn
   "SNOBOL4 exponentiation (**, and its synonyms ^ and !). Integer ** non-negative
