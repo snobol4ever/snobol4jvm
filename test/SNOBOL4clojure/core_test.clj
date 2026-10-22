@@ -4263,3 +4263,26 @@
                    "e 254\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; A real literal too large for a real is "231 Syntax error: Invalid numeric item" (manual, Appendix D), found as the text is compiled. EVAL of such a text fails,
+;; setting &ERRTYPE and &ERRTEXT and spending one of &ERRLIMIT when it is above 0, never fatal, as sbl -bf runs it. The engine compiled the literal as an
+;; infinity and EVAL succeeded (X64T math_limits2, math_limits3).
+(deftest eval-of-a-real-literal-too-large-fails-with-231
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 3\n"
+                   "        X = EVAL('1.797693135E+308') :S(S1)\n"
+                   "        OUTPUT = 'a fails ' &ERRTYPE ' ' &ERRLIMIT ' ' &ERRTEXT :(N1)\n"
+                   "S1      OUTPUT = 'a ok'\n"
+                   "N1      &ERRLIMIT = 0\n"
+                   "        X = EVAL('-1.797693135E+308') :S(S2)\n"
+                   "        OUTPUT = 'b fails ' &ERRTYPE ' ' &ERRLIMIT :(N2)\n"
+                   "S2      OUTPUT = 'b ok'\n"
+                   "N2      OUTPUT = 'c ' EVAL('1.797693134E+308')\n"
+                   "END\n"))
+      (is (= (str "a fails 231 2 syntax error: invalid numeric item\n"
+                   "b fails 231 0\n"
+                   "c 0.1797693134e+309\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

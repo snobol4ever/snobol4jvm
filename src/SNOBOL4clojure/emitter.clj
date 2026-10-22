@@ -104,8 +104,8 @@
      :N         (fn [n]      (symbol n))
      :S         (fn [s]      (subs s 1 (subtract (count s) 1)))
      :I         edn/read-string
-     ;; a real literal reads as SPITBOL reads it (env/parse-real); one too large for a real stays the infinity it was
-     :R         (fn [s] (or (parse-real s) (Double/parseDouble (clojure.string/replace s #"[dD]" "e"))))}
+     ;; a real literal reads as SPITBOL reads it (env/parse-real); one too large for a real is "231 Syntax error: Invalid numeric item" (Appendix D), a compile error
+     :R         (fn [s] (or (parse-real s) (throw (ex-info "syntax error: invalid numeric item" {:snobol/error 231 :snobol/compile true}))))}
     ast))
 
 (defn parse+emit

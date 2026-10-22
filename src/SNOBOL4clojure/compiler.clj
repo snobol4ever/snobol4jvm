@@ -201,7 +201,10 @@
              :else
              (let [stmt   (cond-> (string/replace command #"\r" "") fold fold-case)
                    ast    (parse-statement stmt)
-                   code   (emitter ast)
+                   ;; a compile error the emitter finds (an invalid numeric item) is the statement's error, as a parse failure is
+                   code   (try (emitter ast)
+                               (catch clojure.lang.ExceptionInfo e
+                                 (if (:snobol/compile (ex-data e)) {:reason :compile :line pline :column 1 :text (ex-message e)} (throw e))))
                    here   [(:file pos) (+ (:bl pos) (- pline (:bp pos)))]
                    pos''  (if (:revert pos) (assoc pos :file (:revert pos) :revert nil) pos)]
                (if (and (map? code) (:reason code))

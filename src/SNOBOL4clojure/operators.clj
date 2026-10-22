@@ -906,6 +906,18 @@
   (let [p (parse-expression (if (zero? (long @&CASE)) s (fold-case s)))]
     (when-not (instance? instaparse.gll.Failure p) (first (emitter p)))))
 
+;; A compile error EVAL's text holds makes EVAL fail, with &ERRTYPE and &ERRTEXT set and one of &ERRLIMIT spent when it is above 0; it is never fatal (sbl -bf:
+;; EVAL('1.797693135E+308') under &ERRLIMIT = 0 fails with &ERRTYPE 231).
+(defn- compile-or-fail [^String s]
+  (try (compile-expression s)
+       (catch clojure.lang.ExceptionInfo e
+         (let [{n :snobol/error c :snobol/compile} (ex-data e)]
+           (when-not c (throw e))
+           (reset! SNOBOL4clojure.env/&ERRTYPE n)
+           (reset! SNOBOL4clojure.env/&ERRTEXT (ex-message e))
+           (when (pos? (long @SNOBOL4clojure.env/&ERRLIMIT)) (swap! SNOBOL4clojure.env/&ERRLIMIT dec))
+           nil))))
+
 ;; An unevaluated expression, the value *X makes: DATATYPE EXPRESSION, evaluated by EVAL.
 (defn- deferred? [x] (and (seq? x) (clojure.core/= 'DEFER! (first x)) (fn? (second x))))
 (defn- expression-of [ir] (list 'DEFER! (fn [] (EVAL! ir))))
@@ -915,6 +927,6 @@
 (defn EVAL [X]
   (cond
     (deferred? X) ((second X))
-    (string? X)   (let [ir (compile-expression X)] (when-not (nil? ir) (EVAL! ir)))
+    (string? X)   (let [ir (compile-or-fail X)] (when-not (nil? ir) (EVAL! ir)))
     (number? X)   X
     true          (EVAL! X)))
