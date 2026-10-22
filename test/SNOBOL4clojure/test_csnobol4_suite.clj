@@ -83,6 +83,8 @@ END
   (let [r (run-with-timeout "*  061 - FENCE(P) seals: backtrack cannot re-enter P's alternatives
 *  Without fence: FENCE(LEN(1)|LEN(2)) RPOS(0) on 'AB' would succeed
 *  via LEN(2). With fence: LEN(1) chosen, sealed, RPOS(0) fails -> match fails.
+*  The match is anchored: unanchored, the scan would try the next start position and succeed there (sbl -bf).
+        &ANCHOR = 1
         X = 'AB'
         X  FENCE(LEN(1) | LEN(2))  RPOS(0)                   :S(YES)F(NO)
 YES     OUTPUT = 'should not reach'                            :(END)
@@ -127,7 +129,8 @@ END
         OUTPUT = ID
 END
 " 2000)]
-    (is (= "hello_world
+    ;; ANY took the h: the capture is the rest of the identifier (sbl -bf)
+    (is (= "ello_world
 " (:stdout r)))))
 
 (deftest fence-065-pat-fence-fn-decimal
@@ -140,7 +143,8 @@ END
         OUTPUT = N
 END
 " 2000)]
-    (is (= "42
+    ;; ANY took the 4: the capture is the digits after it (sbl -bf)
+    (is (= "2
 " (:stdout r)))))
 
 (deftest fence-066-pat-fence-fn-nested
