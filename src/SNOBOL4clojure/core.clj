@@ -14,6 +14,7 @@
             [SNOBOL4clojure.emitter    :as emit]
             [SNOBOL4clojure.compiler   :as comp]
             [SNOBOL4clojure.runtime    :as rt]
+            [SNOBOL4clojure.dump       :as dump]
             [SNOBOL4clojure.trace      :as trace]
             [SNOBOL4clojure.transpiler :as xpile]
             [SNOBOL4clojure.vm         :as vm]
@@ -207,7 +208,10 @@
     (let [src (slurp file :encoding "ISO-8859-1")   ; a program is bytes
           dir (or (.getParent (java.io.File. ^String file)) ".")]
       (case engine
-        "interp" (do (env/GLOBALS) (rt/RUN (comp/CODE src (include-dirs dir (System/getenv "SNO_LIB")) file)))
+        "interp" (do (env/GLOBALS)
+                     ;; the termination dump &DUMP asks for is written however the program ends
+                     (try (rt/RUN (comp/CODE src (include-dirs dir (System/getenv "SNO_LIB")) file))
+                          (finally (when (pos? (long @env/&DUMP)) (print (dump/dump-text @env/&DUMP))))))
         "vm"     (print (vm/run-program! src)))
       (flush))))
 

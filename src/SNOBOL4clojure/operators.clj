@@ -9,7 +9,7 @@
               table? table-get table-set
               array? array-get array-set array-prototype assign-keyword! name-string
               snobol-return! snobol-freturn! snobol-nreturn!
-              <FUNS> <FDEFS> <CHANNELS> <OPSYN> &STNO &FNCLEVEL &CASE &OUTPUT fold-case]]
+              <FUNS> <FDEFS> <CHANNELS> <OPSYN> &STNO &FNCLEVEL &CASE &OUTPUT &FILE &LINE &RTNTYPE <LASTOUT> fold-case]]
             [SNOBOL4clojure.functions :refer
              [ASCII CHAR ORD DATE TIME REMDR ATAN CHOP COS EXP LN SIN SQRT TAN INTEGER integer-predicate REAL SETEXIT STRING SIZE TRIM DUPL REVERSE LPAD RPAD REPLACE SUBSTR
               ITEM PROTOTYPE CONVERT COPY FIELD SORT RSORT DATA
@@ -265,6 +265,7 @@
                 ;; normal variable assignment
                 (clojure.core/contains? #{'OUTPUT 'TERMINAL 'INPUT} N)
                 (let [out-val (concat-value r)]
+                  (when (clojure.core/= N 'OUTPUT) (reset! <LASTOUT> out-val))
                   (when (and (clojure.core/= N 'OUTPUT) (not (zero? (long @&OUTPUT)))) (println (output-text out-val)))
                   (when (clojure.core/= N 'TERMINAL) (binding [*out* *err*] (println (output-text out-val))))
                   out-val)
@@ -324,7 +325,9 @@
                         ;; find in the core namespace, so the restore leaves the variable as the caller had it.
                         (let [saved   (zipmap all-saved (map #(reference (symbol %)) all-saved))
                               f-saved (reference f-sym)
-                              stno-saved @&STNO]
+                              stno-saved @&STNO
+                              file-saved @&FILE
+                              line-saved @&LINE]
                           ;; Bind parameters to call arguments
                           (doseq [i (range (count params))]
                             (snobol-set! (symbol (params i))
@@ -356,6 +359,9 @@
                               (restore-var! f-sym f-saved)
                               ;; the statement that called the function is again the one last executed
                               (reset! &STNO stno-saved)
+                              (reset! &FILE file-saved)
+                              (reset! &LINE line-saved)
+                              (reset! &RTNTYPE (case outcome :freturn "FRETURN" :nreturn "NRETURN" "RETURN"))
                               ;; Dispatch on outcome
                               (case outcome
                                 :return  result
@@ -770,7 +776,8 @@
           ;; not the value B held when the pattern was first assigned.
           (and (equal op '*) (clojure.core/= (count parms) 1))
           (let [sym (first parms)]
-            (list 'DEFER! (fn [] (EVAL! sym))))
+            ;; the expression keeps its source in its metadata when that is a variable, which a dump spells *NAME
+            (with-meta (list 'DEFER! (fn [] (EVAL! sym))) {:defer-var sym}))
           ;; a subscript on a subscript, tt['blue']['green']: the operator is the inner subscript, whose value is the container
           (list? op) (when-some [container (EVAL! op)] (when-some [args (eval-operands parms)] (apply INVOKE container args)))
           true (let [;; ~X negates success and failure, so it takes a failed operand

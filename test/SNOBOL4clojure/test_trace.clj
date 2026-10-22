@@ -20,8 +20,9 @@
     "        J = 2"
     "        K = 3"
     "END")
-  (is (= 3 @SNOBOL4clojure.env/&STCOUNT)
-      "&STCOUNT should equal the number of statements executed"))
+;; The END statement is executed too: sbl -bf reads &STCOUNT = 3 at the end of a program of two statements and END (Budne's a.ref).
+  (is (= 4 @SNOBOL4clojure.env/&STCOUNT)
+      "&STCOUNT should equal the number of statements executed, END among them"))
 
 (deftest stlimit-terminates-loop
   "&STLIMIT = 10 kills an infinite loop after 10 steps — reported as :step-limit."

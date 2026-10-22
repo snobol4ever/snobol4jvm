@@ -29,6 +29,7 @@
 (def  &CASE      (atom 0))   ; not 0: CODE and EVAL fold lower case names to upper case (a program's own -CASE card governs its source)
 (def  &DIGITS    "0123456789")
 (def  &DUMP      (atom 0))  ; 1, 2, and 3 levels
+(def  &CODE       (atom 0))   ; the end-of-job code
 (def  &COMPARE    (atom 0))
 (def  &ERRLIMIT  (atom 0))
 (def  &ERRTEXT   (atom ε))
@@ -47,6 +48,7 @@
 (def  &MAXLNGTH  (atom 16777216))
 (def  &OUTPUT     (atom 1))   ; 0 suppresses what is assigned to OUTPUT
 (def  &PROFILE   (atom 0))
+(def  &RTNTYPE   (atom ε))   ; how the last function returned: RETURN, FRETURN or NRETURN
 (def  &TRACE     (atom 0))
 (def  &TRIM      (atom 1))   ; 1 when a program starts, as in SPITBOL: input records lose their trailing blanks and tabs
 (def  &STCOUNT   (atom 0))
@@ -59,7 +61,7 @@
 
 ;; The value each settable keyword holds when a program starts.
 (def ^:private keyword-defaults
-  {#'&ABEND 0, #'&ANCHOR 0, #'&CASE 0, #'&COMPARE 0, #'&DUMP 0, #'&ERRLIMIT 0, #'&FTRACE 0, #'&FULLSCAN 1, #'&INPUT 1,
+  {#'&ABEND 0, #'&ANCHOR 0, #'&CASE 0, #'&CODE 0, #'&COMPARE 0, #'&DUMP 0, #'&ERRLIMIT 0, #'&FTRACE 0, #'&FULLSCAN 1, #'&INPUT 1,
    #'&MAXLNGTH 16777216, #'&OUTPUT 1, #'&PROFILE 0, #'&TRIM 1, #'&TRACE 0,
    #'&STLIMIT 2147483647, #'&IOCOMPAT :catspaw})
 
@@ -98,6 +100,9 @@
 ;;   :arity 1 = unary operator redefinition
 ;;   :arity 2 = binary operator redefinition
 (def <POS> (atom {}))   ; statement number -> [file line]: where the statement stands in the source, which &FILE and &LINE read
+(def <OBJNO> (atom 0))   ; how many arrays, tables and DATA objects the program has made: the number a dump gives each, #n
+(defn next-serial! [] (swap! <OBJNO> inc))
+(def <LASTOUT> (atom nil))   ; the last value assigned to OUTPUT, which a dump lists as the variable OUTPUT
 (def <SETEXIT> (atom nil))   ; the label SETEXIT named (a keyword), or nil when no handler is armed
 (def <DISPNO> (atom {}))   ; statement key (the number a statement is stored under) -> the number SPITBOL gives it, which counts blank lines
 (def BLANKS   (atom 0))    ; the blank lines of the code loaded so far: they take numbers and are never run
@@ -236,6 +241,11 @@
    (reset! <TRACES>   {})
    (reset! <DISPNO>   {})
    (reset! <SETEXIT>  nil)
+   (reset! <OBJNO>    0)
+   (reset! <LASTOUT>  nil)
+   (reset! &RTNTYPE   ε)
+   (reset! &ERRTYPE   0)
+   (reset! &ERRTEXT   ε)
    (reset! <POS>      {})
    (reset! &FILE ε)
    (reset! &LASTFILE ε)
@@ -369,14 +379,15 @@
    (let [dims (parse-array-proto proto)]
      (when (nil? dims) (throw (ex-info "ARRAY: invalid prototype" {:proto proto})))
      ;; :proto keeps the prototype as written, for PROTOTYPE
-     (assoc (->SnobolArray dims dflt (atom {})) :proto (clojure.string/trim (str proto))))))
+     (assoc (->SnobolArray dims dflt (atom {})) :proto (clojure.string/trim (str proto)) :serial (next-serial!)))))
 
 ;; A TABLE is an atom holding a map, with the order its keys were first assigned kept beside it (in the atom's metadata), because SPITBOL lists a table's
 ;; entries in that order (CONVERT to an ARRAY, SORT, RSORT) and a plain map does not keep it.
-(defn- new-table [] (atom {} :meta {:order (atom {})}))
-(defn TABLE     ([]      (new-table))
-                ([_n]    (new-table))
-                ([_n _d] (new-table)))
+(defn- new-table [size] (atom {} :meta {:order (atom {}) :size size :serial (next-serial!)}))
+(defn- table-size [n] (let [k (num n)] (cond (integer? k) k (and (double? k) (not (Double/isNaN k))) (long k) :else 11)))   ; TABLE() is TABLE(11), the size a dump shows
+(defn TABLE     ([]      (new-table 11))
+                ([n]     (new-table (table-size n)))
+                ([n _d]  (new-table (table-size n))))
 (defn SET       [] (hash-set))
 
 (defn table?    [x] (and (instance? clojure.lang.IDeref x)
@@ -466,7 +477,7 @@
 (defmethod DATATYPE "class clojure.lang.Atom"                     [_] "TABLE")
 ;; A program-defined (DATA) object has an identity, as in SPITBOL: its fields are assigned in place, whoever refers to the object sees the change, two constructions
 ;; are two objects, and IDENT compares identity. It holds its type name, its field names and a mutable array of field values.
-(deftype DataObj [type-name field-names ^objects fields])
+(deftype DataObj [type-name field-names ^objects fields serial])
 (defmethod DATATYPE "class SNOBOL4clojure.env.DataObj"            [X] (.type-name ^DataObj X))
 (defmethod DATATYPE "class clojure.lang.PersistentArrayMap"       [X] (get X :__type__ "TABLE"))
 (defmethod DATATYPE "class clojure.lang.PersistentHashMap"        [X] (get X :__type__ "TABLE"))

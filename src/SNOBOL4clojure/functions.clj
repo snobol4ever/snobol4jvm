@@ -142,13 +142,13 @@
         (if (and (clojure.core/= (count dims) 2)
                  (clojure.core/= (second (second dims)) 2)
                  (clojure.core/= (first (second dims)) 1))
-          (let [t (atom {})
-                [lo1 hi1] (first dims)]
+          (let [[lo1 hi1] (first dims)
+                t (env/TABLE (inc (clojure.core/- hi1 lo1)))]
             (doseq [i (range lo1 (inc hi1))]
               (let [k (array-get x [i 1])
                     v (array-get x [i 2])]
                 (when-not (nil? k)
-                  (swap! t assoc k (or v ε)))))
+                  (env/table-set t k (or v ε)))))
             t)
           nil))  ; wrong shape → fail
 
@@ -191,13 +191,12 @@
       :else nil)))
 (defn COPY    [x]
   (cond
-    (table? x) (let [t (atom @x :meta {:order (atom (if-let [o (:order (meta x))] @o {}))})] t)
-    (array? x) (SNOBOL4clojure.env/->SnobolArray
-                  (:dims x) (:dflt x) (atom @(:data x)))
+    (table? x) (let [t (atom @x :meta {:order (atom (if-let [o (:order (meta x))] @o {})) :size (:size (meta x) 11) :serial (SNOBOL4clojure.env/next-serial!)})] t)
+    (array? x) (assoc (SNOBOL4clojure.env/->SnobolArray (:dims x) (:dflt x) (atom @(:data x))) :proto (:proto x) :serial (SNOBOL4clojure.env/next-serial!))
     ;; a DATA object: a new object with the same field values
     (instance? SNOBOL4clojure.env.DataObj x)
     (SNOBOL4clojure.env/->DataObj (.type-name ^SNOBOL4clojure.env.DataObj x) (.field-names ^SNOBOL4clojure.env.DataObj x)
-                                  (aclone ^objects (.fields ^SNOBOL4clojure.env.DataObj x)))
+                                  (aclone ^objects (.fields ^SNOBOL4clojure.env.DataObj x)) (SNOBOL4clojure.env/next-serial!))
     :else x))
 
 ;; ── Type conversion & char functions ─────────────────────────────────────────
@@ -325,7 +324,7 @@
       ;; We emit a form suitable for eval in the user namespace.
       (let [constructor-body
               `(fn [& args#]
-                 (SNOBOL4clojure.env/->DataObj ~tname ~fnames (object-array (map-indexed (fn [i# _#] (nth args# i# ε)) ~fnames))))
+                 (SNOBOL4clojure.env/->DataObj ~tname ~fnames (object-array (map-indexed (fn [i# _#] (nth args# i# ε)) ~fnames)) (SNOBOL4clojure.env/next-serial!)))
             accessor-forms
               (for [[i f] (map-indexed vector fnames)]
                 [f

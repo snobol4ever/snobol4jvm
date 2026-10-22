@@ -14,7 +14,7 @@
   Statement-level trace (wildcard '*') prints each statement number + label.
   Pattern traces are handled in match.clj via *trace* dynamic var."
   (:require [SNOBOL4clojure.env   :refer [<STNO> <LABL> <CODE> <DISPNO>
-                                           &STCOUNT &STLIMIT &TRACE &STNO &LASTNO &ERRLIMIT &ERRTYPE &ERRTEXT <SETEXIT> <POS> &FILE &LASTFILE &LINE &LASTLINE
+                                           &STCOUNT &STLIMIT &TRACE &STNO &LASTNO &ERRLIMIT &ERRTYPE &ERRTEXT <SETEXIT> <POS> &FILE &LASTFILE &LINE &LASTLINE &FNCLEVEL
                                            snobol-return! snobol-freturn!
                                            snobol-nreturn! snobol-end!
                                            snobol-steplimit!]]
@@ -54,6 +54,16 @@
           (throw e))))))
 
 (defn- label-name [tgt] (when (or (keyword? tgt) (string? tgt) (symbol? tgt)) (name tgt)))
+
+;; The END statement is executed like any other when control reaches it, by falling in or by a goto: it counts in &STCOUNT and is the statement &STNO and &LINE name afterwards.
+(defn- end-statement! []
+  (when-let [n (@<STNO> :END)]
+    (when-not (neg? (long @&STLIMIT)) (swap! &STCOUNT inc))
+    (reset! &LASTNO @&STNO)
+    (reset! &STNO (get @<DISPNO> n n))
+    (reset! &LASTFILE @&FILE)
+    (reset! &LASTLINE @&LINE)
+    (let [[f l] (get @<POS> n ["" 0])] (reset! &FILE f) (reset! &LINE l))))
 
 (defn RUN [at]
   (letfn
@@ -95,7 +105,8 @@
        (if (special-targets tgt)
          (dispatch-special! tgt)
          tgt))]
-    (reset! &STCOUNT 0)
+    ;; a program's run starts &STCOUNT at 0; the run of a function body, one level down, goes on counting
+    (when (zero? (long @&FNCLEVEL)) (reset! &STCOUNT 0))
     (try
       (loop [current (saddr at) err nil]
         (when-let [key (skey current)]
@@ -147,7 +158,7 @@
                       (recur (saddr (inc (current 0))) err)))))))))
       (catch clojure.lang.ExceptionInfo e
         (case (get (ex-data e) :snobol/signal)
-          :end        nil          ; normal program end
+          :end        (do (end-statement!) nil)          ; normal program end
           :return     nil          ; bubble up to DEFINE wrapper
           :step-limit (throw e)    ; propagate — caught by test-helpers/harness
           :freturn    (throw e)    ; bubble up to DEFINE wrapper
