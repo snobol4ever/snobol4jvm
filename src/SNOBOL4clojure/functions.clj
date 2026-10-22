@@ -70,11 +70,15 @@
                   (if (clojure.core/<= pad 0) s-str
                     (str s-str (apply str (repeat pad fill-c)))))))
 (defn SUBSTR
-  "SUBSTR(s, i, n): the n characters of s that start at the 1-based position i. It fails when they are not all there, as sbl -bf does."
-  [s i j]
-  (let [s (str s) i (int-arg i 193) j (int-arg j 192)]
-    (when (and (clojure.core/>= j 0) (clojure.core/<= 1 i) (clojure.core/<= (clojure.core/+ (dec i) j) (count s)))
-      (subs s (dec i) (clojure.core/+ (dec i) j)))))
+  "SUBSTR(s, i, n): the n characters of s from the 1-based position i, where n = 0 means all the rest of s from i. It fails when i is not from 1 to one past
+   the end of s, when n is negative, or when the n characters are not all there, as sbl -bf does."
+  [s i n]
+  (let [s (str s) i (int-arg i 193) n (int-arg n 192) len (count s)]
+    (when (and (clojure.core/<= 1 i (inc len)) (clojure.core/>= n 0))
+      (if (zero? n)
+        (subs s (dec i))
+        (when (clojure.core/<= (clojure.core/+ (dec i) n) len)
+          (subs s (dec i) (clojure.core/+ (dec i) n)))))))
 (defn CONVERT [x t]
   "CONVERT(x, type) — coerce x to the named SNOBOL4 type.
    Returns nil (failure) if the conversion is not defined."

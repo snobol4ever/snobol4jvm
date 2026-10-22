@@ -1170,3 +1170,22 @@
       (finally (.delete f))))
   (is (= 22 (try (RUN (CODE " DEFINE('q(x)')                  :(QEND)\nq q = x x                      :(RETURN)\nQEND V = Q('ab')\nEND\n")) :no-error
                  (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e)))))))
+
+;; SUBSTR(s, i, n) is the n characters of s from the 1-based position i, with n = 0 meaning all the rest of s from i, and it fails when i is not from 1 to
+;; one past the end of s, when n is negative, or when the n characters are not all there. The engine read n = 0 as no characters, so SUBSTR(s,1,0) was the
+;; null string where SPITBOL gives all of s (Budne's substr). The oracle, sbl -bf, wrote exactly this grid for s = abc, i and n each from -1 to 5.
+(deftest substr-length-zero-is-the-rest-of-the-string
+  (let [f (java.io.File/createTempFile "substr" ".sno")]
+    (try
+      (spit f (str " S = 'abc'\n I = -1\nIL N = -1\nNL R = SUBSTR(S,I,N)                     :F(NOP)\n"
+                   " OUTPUT = I ',' N ': [' R ']'          :(NXT)\nNOP OUTPUT = I ',' N ': fail'\n"
+                   "NXT N = N + 1\n LE(N,5)                               :S(NL)\n I = I + 1\n LE(I,5)                               :S(IL)\nEND\n"))
+      (is (= (str "-1,-1: fail\n-1,0: fail\n-1,1: fail\n-1,2: fail\n-1,3: fail\n-1,4: fail\n-1,5: fail\n"
+                  "0,-1: fail\n0,0: fail\n0,1: fail\n0,2: fail\n0,3: fail\n0,4: fail\n0,5: fail\n"
+                  "1,-1: fail\n1,0: [abc]\n1,1: [a]\n1,2: [ab]\n1,3: [abc]\n1,4: fail\n1,5: fail\n"
+                  "2,-1: fail\n2,0: [bc]\n2,1: [b]\n2,2: [bc]\n2,3: fail\n2,4: fail\n2,5: fail\n"
+                  "3,-1: fail\n3,0: [c]\n3,1: [c]\n3,2: fail\n3,3: fail\n3,4: fail\n3,5: fail\n"
+                  "4,-1: fail\n4,0: []\n4,1: fail\n4,2: fail\n4,3: fail\n4,4: fail\n4,5: fail\n"
+                  "5,-1: fail\n5,0: fail\n5,1: fail\n5,2: fail\n5,3: fail\n5,4: fail\n5,5: fail\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
