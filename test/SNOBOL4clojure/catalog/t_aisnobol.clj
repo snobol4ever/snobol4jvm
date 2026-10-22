@@ -173,7 +173,7 @@
     " BINOP  = ('AND' | 'IMP' | 'OR' | 'EQU')\n"
     " UNOP.FORMULA = ' ' (UNOP . OP) '(' (BAL . PHI) ')'\n"
     " BINOP.FORMULA = ' ' (BINOP . OP) '(' (BAL . PHI) ','\n"
-    "                     (BAL . PSI) ')'\n"
+    "+                    (BAL . PSI) ')'\n"
     " FORMULA = UNOP.FORMULA | BINOP.FORMULA\n"
     " ATOM = (NOTANY(' ') (BREAK(' ') | REM)) . A\n"
     "                                               :(WANG.END)\n"
@@ -234,7 +234,7 @@
          " &FULLSCAN = 1\n"
          " &TRIM = 1\n"
          "       VALID = WANG(NULL, ' IMP(NOT(OR(P,Q)),NOT(P))')  'VALID'\n"
-         "                                                          :S(END)\n"
+         "+                                                         :S(END)\n"
          "       VALID = 'INVALID'\n"
          "END"))
   (is (= "VALID" ($$ 'VALID))))
@@ -247,7 +247,7 @@
          " &FULLSCAN = 1\n"
          " &TRIM = 1\n"
          "       RESULT = WANG(NULL, ' NOT(IMP(NOT(OR(P,Q)),NOT(P)))')  'VALID'\n"
-         "                                                          :S(END)\n"
+         "+                                                         :S(END)\n"
          "       RESULT = 'INVALID'\n"
          "END"))
   (is (= "INVALID" ($$ 'RESULT))))
