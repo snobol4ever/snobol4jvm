@@ -40,8 +40,8 @@
   xp        ::=  cap | cap  <_> '^' <_>  xp
                      | cap  <_> '!' <_>  xp
                      | cap  <_> '**' <_> xp
-  cap       ::=  ttl | ttl  <_> '$' <_>  cap
-                     | ttl  <_> '.' <_>  cap
+  cap       ::=  ttl | cap  <_> '$' <_>  ttl
+                     | cap  <_> '.' <_>  ttl
   ttl       ::=  uop | ttl  <_  '~'  _>  uop
   uop       ::=  ndx | '@' uop | '~' uop | '?' uop | '&' uop | '+' uop
                      | '-' uop | '*' uop | '$' uop | '.' uop | '!' uop

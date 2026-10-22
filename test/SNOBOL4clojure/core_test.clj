@@ -2676,3 +2676,22 @@
       (is (= "[X Y]\n" (with-out-str (-main "-u" "X Y" (.getPath f) "a" "b"))))
       (is (= "[]\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; Binary $ and . associate to the left (SPITBOL manual ch. 15, Binary operators: $ left 12, . left 12): P $ X $ Y is (P $ X) $ Y and assigns what P matched to X and
+;; to Y. The grammar built P $ (X $ Y), whose capture target is no variable, and raised ERROR 235 (aisnobol KALAH's REM $ OUTPUT $ SHADOW). The oracle, sbl -bf, wrote
+;; exactly this output.
+(deftest binary-dollar-and-dot-associate-to-the-left
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        'abcdef' LEN(2) $ X $ Y\n"
+                   "        OUTPUT = 'imm ' X ' ' Y\n"
+                   "        'abcdef' LEN(3) . P . Q\n"
+                   "        OUTPUT = 'cond ' P ' ' Q\n"
+                   "        'abcdef' (LEN(1) $ A LEN(1)) . B\n"
+                   "        OUTPUT = 'nest ' A ' ' B\n"
+                   "        'abcdef' REM $ OUTPUT $ R\n"
+                   "        OUTPUT = 'to output and ' R\n"
+                   "END\n"))
+      (is (= "imm ab ab\ncond abc abc\nnest a ab\nabcdef\nto output and abcdef\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
