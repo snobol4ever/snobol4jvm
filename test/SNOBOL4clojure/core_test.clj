@@ -1023,3 +1023,25 @@
   (let [text " PROGEVAL2 = PROGEVAL1 PROGEVAL1"]
     (prog (str " PROGEVAL1 = 'a'") text "END"))
   (is (= "aa" ($$ 'PROGEVAL2))))
+
+;; A label may contain a point (HSORT.END, A.B), as a variable name may. The emitter kept a label of letters, digits and underscores as a keyword and made
+;; anything else a string, while the goto target (HSORT.END) was always a keyword, so a jump to a dotted label found nothing and the program ended
+;; silently at the jump: Shafto's AI-SNOBOL programs, which name their labels HSORT.END, WANG.A.NOT and WORDEND.1, never ran past their first DEFINE.
+;; The oracle, sbl -bf, wrote exactly this output.
+(deftest a-label-may-contain-a-point
+  (let [f (java.io.File/createTempFile "dotlabel" ".sno")]
+    (try
+      (spit f (str " DEFINE('F.G(X)')                      :(F.END)\n"
+                   "F.G F.G = X X                             :(RETURN)\n"
+                   "F.END OUTPUT = 'a: ' F.G('ab')\n"
+                   " :(A.B)\n OUTPUT = 'skipped'\n"
+                   "A.B OUTPUT = 'b: at A.B'\n"
+                   " I = 0\nL.OOP I = I + 1\n LT(I,3)                               :S(L.OOP)\n"
+                   " OUTPUT = 'd: I=' I\n"
+                   " EQ(I,3)                               :S(Y.ES)F(N.O)\n"
+                   "Y.ES OUTPUT = 'e: yes'                     :(Z.Z)\n"
+                   "N.O OUTPUT = 'e: no'\n"
+                   "Z.Z\n"
+                   "END\n"))
+      (is (= "a: abab\nb: at A.B\nd: I=3\ne: yes\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
