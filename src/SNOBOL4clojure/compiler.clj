@@ -61,7 +61,8 @@
             (recur (inc i) (.append cur ch) stmts (not in-sq) in-dq ls line sl)
             (and (= ch \") (not in-sq))
             (recur (inc i) (.append cur ch) stmts in-sq (not in-dq) ls line sl)
-            (and (= ch \;) (not in-sq) (not in-dq))
+            ;; a comment line (* in column 1) is one comment: a semicolon in it separates nothing
+            (and (= ch \;) (not in-sq) (not in-dq) (not (and (pos? (.length cur)) (= \* (.charAt cur 0)))))
             (let [s (string/trimr (str cur))]
               (recur (inc i) (StringBuilder.) (if (seq s) (conj stmts [s sl]) stmts) false false ls line line))
             (= ch \newline)

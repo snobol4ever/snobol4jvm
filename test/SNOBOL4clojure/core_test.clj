@@ -1950,3 +1950,17 @@
     "DONE"
     "END")
   (is (= "match" ($$ 'R))))
+
+;; A comment line (a * in column 1) is one comment: a semicolon in it separates nothing. The engine cut statements at the semicolons of a comment and ran the pieces, so a comment
+;; that spoke of ARBNO made ARBNO a variable (SnoRungs arbno_fence_notany_replace_branch_1, whose comments are long). The oracle, sbl -bf, wrote exactly this output.
+(deftest a-semicolon-in-a-comment-line-separates-nothing
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "* a comment with a semicolon; OUTPUT = 'from the comment'; and another\n"
+                   "        OUTPUT = 'a' ; OUTPUT = 'b'\n"
+                   "* it's a comment with an apostrophe; and a semicolon\n"
+                   "        OUTPUT = 'c'\n"
+                   "END\n"))
+      (is (= "a\nb\nc\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
