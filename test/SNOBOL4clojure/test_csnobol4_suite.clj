@@ -885,7 +885,7 @@ d
 " (:stdout r)))))
 
 (deftest csnobol4-atn
-  "Budne suite: atn.sno — reads from INPUT (stdin below END)"
+  "Budne suite: atn.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-input "*-LIST LEFT
 *	&FTRACE = 100
 
@@ -1025,17 +1025,17 @@ NULL_END
 * Put COAT on RACK using HANGER
 
 	DEFINE( 'PUT(RACK,COAT,HANGER)' )			:(PUT_END)
-PUT	PROP<RACK> =
-+		DIFFER('TABLE',DATATYPE(PROP<RACK>)) TABLE()
-	ITEM(PROP<RACK>,HANGER) = COAT				:(RETURN)
+PUT	PROP[RACK] =
++		DIFFER('TABLE',DATATYPE(PROP[RACK])) TABLE()
+	ITEM(PROP[RACK],HANGER) = COAT				:(RETURN)
 PUT_END
 
 * Get contents of HANGER off RACK
 
 	DEFINE( 'GET(RACK,HANGER)' )				:(GET_END)
-GET	PROP<RACK> =
-+		DIFFER('TABLE',DATATYPE(PROP<RACK>)) TABLE()	:S(RETURN)
-	GET = ITEM(PROP<RACK>,HANGER)				:(RETURN)
+GET	PROP[RACK] =
++		DIFFER('TABLE',DATATYPE(PROP[RACK])) TABLE()	:S(RETURN)
+	GET = ITEM(PROP[RACK],HANGER)				:(RETURN)
 GET_END
 
 * Program text semi-constants used in code generation
@@ -1295,10 +1295,10 @@ S_POP	NULL(LEX_STACK)						:S(NRETURN)
 
 S_LEX	LEX_STACK_SAVE = LEX_STACK
 S_LEX1	NULL(LEX_STACK)						:S(S_LEX2)
-	LEXICAL_FEATURES<W> = TOP(LEX_STACK) BLANK
-+			LEXICAL_FEATURES<W>
+	LEXICAL_FEATURES[W] = TOP(LEX_STACK) BLANK
++			LEXICAL_FEATURES[W]
 	LEX_STACK = REST(LEX_STACK)				:(S_LEX1)
-S_LEX2	PRT('     | ' W ':  ' LEXICAL_FEATURES<W>)
+S_LEX2	PRT('     | ' W ':  ' LEXICAL_FEATURES[W])
 	LEX_STACK = LEX_STACK_SAVE				:(NRETURN)
 
 * Remove all blanks from the formal argument list for a FUNCTION
@@ -1364,17 +1364,17 @@ DUMP_PROP
 	PROP = null
 	N = 1
 
-DUMP1	TN1 = T<N,1>						:F(RETURN)
-	TN2 = T<N,2>
-	T<N,1> = null
-	T<N,2> = null
+DUMP1	TN1 = T[N,1]						:F(RETURN)
+	TN2 = T[N,2]
+	T[N,1] = null
+	T[N,2] = null
 	R = CONVERT(TN2,\"ARRAY\")				:F(DUMP3)
 	PRT()
 	PRT( 'NODE: ' TN1 )
 	M = 1
 
-DUMP2		RM1 = R<M,1>					:F(DUMP3)
-		RM2 = R<M,2>
+DUMP2		RM1 = R[M,1]					:F(DUMP3)
+		RM2 = R[M,2]
 		PRT( DUPL(' ',10) RM1 ' = ' RM2 )
 		M = M + 1					:(DUMP2)
 
@@ -1386,8 +1386,9 @@ DUMP_PROP_END
 
 	COMPILE()						:S(END)
 	ERROR('****** FATAL ERROR ******')
-END"
-                          "**********************************
+END
+"
+           "**********************************
  NETWORK PARSE_CLAUSE
 **********************************
     S1
@@ -1527,7 +1528,7 @@ TESTF1
 
 **********************************
  FUNCTION GETF (X) ()
-    GETF = LEXICAL_FEATURES<X> :(RETURN) ;
+    GETF = LEXICAL_FEATURES[X] :(RETURN) ;
  END GETF
 
 **********************************
@@ -1553,8 +1554,8 @@ TESTF1
 **********************************
  EXEC PARSE_CLAUSE(\"SENTENCE\",null)
 "
-                          10000)]
-    (is (= "**********************************
+           5000)]
+    (is (same-output? "**********************************
  NETWORK PARSE_CLAUSE
 **********************************
     S1
@@ -1960,13 +1961,13 @@ TESTF1
 
 **********************************
  FUNCTION GETF (X) ()
-    GETF = LEXICAL_FEATURES<X> :(RETURN) ;
+    GETF = LEXICAL_FEATURES[X] :(RETURN) ;
  END GETF
 
 ------ Code ------
 
      | GETF
-     |  GETF = LEXICAL_FEATURES<X> :(RETURN)
+     |  GETF = LEXICAL_FEATURES[X] :(RETURN)
      |  ERROR('No return from ' 'GETF') :(END)
 
 ------ End of Code ------
@@ -2216,8 +2217,6 @@ NODE: BOY
 
 NODE: SENTENCE
           CHILDREN = *PARSE_CLAUSE_28* 
-
-
 " (:stdout r)))))
 
 (deftest csnobol4-bal
