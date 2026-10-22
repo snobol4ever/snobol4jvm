@@ -6017,7 +6017,7 @@ END
 " (:stdout r)))))
 
 (deftest csnobol4-sudoku
-  "Budne suite: sudoku.sno — reads from INPUT (stdin below END)"
+  "Budne suite: sudoku.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-input "* Sudoku solving program written in the SNOBOL4 programming language
 * Look at end for sample input
 
@@ -6033,7 +6033,7 @@ END
 * setup loop
         n = -1
 sulp1   n = n + 1
-        a<n> = c(n)
+        a[n] = c(n)
         LT(n,80) :S(sulp1)
 * set up zone links
         n = -1
@@ -6043,8 +6043,8 @@ sulp2   n = n + 1
 * set row and column zones
         rp = REMDR(r + 1, 9)
         cp = REMDR(c + 1, 9)
-        z1(a<n>) = a<r * 9 + cp>
-        z2(a<n>) = a<rp * 9 + c>
+        z1(a[n]) = a[r * 9 + cp]
+        z2(a[n]) = a[rp * 9 + c]
 * do little 3x3 block zones
 * xr and xc are which block number (row colum)  0-2 0-2
 * br and bc are which cell with in the little block (row col) 0-2 0-2
@@ -6054,7 +6054,7 @@ sulp2   n = n + 1
         bc = REMDR(c,3)
         newbc = REMDR(bc + 1,3)
         newbr = REMDR(br + (bc + 1) / 3,3)
-        z3(a<n>) = a<xr * 27 + newbr * 9 + xc * 3 + newbc>
+        z3(a[n]) = a[xr * 27 + newbr * 9 + xc * 3 + newbc]
         LT(n,80) :S(sulp2)
 
 * Read input puzzle
@@ -6066,9 +6066,9 @@ sulp3   inline = INPUT :F(solve)
         OUTPUT = inline
 sulp4   inline LEN(1) . x = :F(sulp3)
         n = n + 1
-        b<n> = '123456789'
+        b[n] = '123456789'
         x NOTANY('123456789') :S(sulp4)
-        b<n> = x :(sulp4)
+        b[n] = x :(sulp4)
 
 * solve puzzle
 solve   compute(b) :S(nextpuzzle)
@@ -6088,7 +6088,7 @@ compute did = 0
 * scan to see if solved and find longest string
         n = 0
         mxl = 0
-scnlp1  xs = b<n>
+scnlp1  xs = b[n]
         GT(SIZE(xs),mxl) :F(scnlp1nx)
         mxs = xs
         mxl = SIZE(mxs)
@@ -6098,55 +6098,56 @@ scnlp1nx n = n + 1 LT(n,80) :S(scnlp1)
 * Print out the solution stored in array b
 printout n = 0
 printoutlp
-        z = z b<n>
+        z = z b[n]
         n = n + 1 LT(n,80) :S(printoutlp)
         OUTPUT =
 printoutlp3 z LEN(9) . OUTPUT = :S(printoutlp3)F(RETURN)
 
 trylp   mxs LEN(1) . tryc = :F(FRETURN)
         ncopy = COPY(b)
-        ncopy<mxn> = tryc
+        ncopy[mxn] = tryc
         compute(ncopy) :S(RETURN)
         :(trylp)
 
 *propagate restrictions
 prop    n = 0
-proplp  s = b<n>
+proplp  s = b[n]
         m = 8
-        p = index(z1(a<n>))
-        q = index(z2(a<n>))
-        r = index(z3(a<n>))
+        p = index(z1(a[n]))
+        q = index(z2(a[n]))
+        r = index(z3(a[n]))
 
 proplp2 EQ(SIZE(s),1) :F(propskip)
 
-        t = b<p>
+        t = b[p]
 proprm1 t s = :F(proprm1n)
         did = did + 1
 proprm1n
-        b<p> = t DIFFER(t) :F(FRETURN)
-        p = index(z1(a<p>))
+        b[p] = t DIFFER(t) :F(FRETURN)
+        p = index(z1(a[p]))
 
-        t = b<q>
+        t = b[q]
 proprm2 t s = :F(proprm2n)
         did = did + 1
 proprm2n
-        b<q> = t DIFFER(t) :F(FRETURN)
-        q = index(z2(a<q>))
+        b[q] = t DIFFER(t) :F(FRETURN)
+        q = index(z2(a[q]))
 
-        t = b<r>
+        t = b[r]
 proprm3 t s = :F(proprm3n)
         did = did + 1
 proprm3n
-        b<r> = t DIFFER(t) :F(FRETURN)
-        r = index(z3(a<r>))
+        b[r] = t DIFFER(t) :F(FRETURN)
+        r = index(z3(a[r]))
 
         m = m - 1 GT(m,1) :S(proplp2)
 propskip n = n + 1 LT(n,80) :S(proplp)
 propdone prop = b :(RETURN)
 
 
-END"
-                          "---17--35
+END
+"
+           "---17--35
 7--------
 --2--3697
 ---3-7-82
@@ -6230,8 +6231,8 @@ STOP
 --7----19
 
 "
-                          30000)]
-    (is (= "---17--35
+           5000)]
+    (is (same-output? "---17--35
 7--------
 --2--3697
 ---3-7-82
@@ -6290,7 +6291,6 @@ STOP
 985472361
 342516978
 176839452
-
 " (:stdout r)))))
 
 (deftest csnobol4-t
