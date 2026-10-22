@@ -758,6 +758,15 @@
       (list? E)
       (let [[op & parms] E]
         (cond
+          ;; A<k> or A[k]: an element of the table or array the name holds; a name that holds neither is "235 Subscripted operand is not table or array" (manual,
+          ;; Appendix D), whatever function has that name
+          (:subscript (meta E))
+          (let [c (if (symbol? op) ($$ op) (EVAL! op))
+                c (if (instance? NAME c) ($$ (symbol (str (.n ^NAME c)))) c)]
+            (when-some [ks (eval-operands parms)]
+              (cond (table? c) (table-get c (first ks))
+                    (array? c) (array-get c (vec ks))
+                    :else (throw (ex-info "subscripted operand is not table or array" {:snobol/error 235})))))
           ;; The unused unary operators are ERROR 029 until OPSYN defines one.
           (and (clojure.core/= 1 (count parms))
                (contains? unused-unary-ops op)

@@ -87,9 +87,11 @@
                                "#" (list 'sharp y)
                                "~" (list 'tilde y)
                                    (list (symbol op) y))))
+     ;; A<k> and A[k] are subscripts, F(k) a call (the inv node): the subscript form carries :subscript, so DATA[1] reads the array a variable DATA holds while
+     ;; DATA('...') still calls the function, as sbl -bf tells them apart
      :ndx       (fn
                   ([n]       n)
-                  ([n & xs]  (apply list n xs)))
+                  ([n & xs]  (with-meta (apply list n xs) {:subscript true})))
      :cnd       (fn
                   ([x]       x)
                   ;; (e1, e2, ...): the first expression that succeeds; the keyword marks the group, which no concatenation can begin with

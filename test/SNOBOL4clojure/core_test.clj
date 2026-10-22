@@ -2871,3 +2871,26 @@
       (is (= "[][ab][  ab][ab  ]\ndone\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A<k> and A[k] are subscripts and F(k) is a call, told apart by their form: a variable DATA or SIZE that holds an array or a table is subscripted while DATA(...) and
+;; SIZE(...) still call the functions, and a subscript of a name that holds no table or array is "235 Subscripted operand is not table or array" (SPITBOL manual
+;; Appendix D). The engine read DATA[1] as a call of DATA (a ClassCastException; TPgm test5) and B<1> of a string as ERROR 022. The oracle, sbl -bf, wrote exactly this
+;; output.
+(deftest a-subscript-and-a-call-are-told-apart
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DATA = ARRAY(3)\n"
+                   "        DATA[1] = 'one'\n"
+                   "        DATA<2> = 'two'\n"
+                   "        OUTPUT = DATA[1] ' ' DATA<2>\n"
+                   "        SIZE = TABLE()\n"
+                   "        SIZE['k'] = 'v'\n"
+                   "        OUTPUT = SIZE['k'] ' ' SIZE('abc')\n"
+                   "        &ERRLIMIT = 10\n"
+                   "        B = 'str'\n"
+                   "        X = B<1>\n"
+                   "        OUTPUT = &ERRTYPE ' ' &ERRTEXT\n"
+                   "END\n"))
+      (is (= "one two\nv 3\n235 subscripted operand is not table or array\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
