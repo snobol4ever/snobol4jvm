@@ -338,15 +338,28 @@
      ;; :proto keeps the prototype as written, for PROTOTYPE
      (assoc (->SnobolArray dims dflt (atom {})) :proto (clojure.string/trim (str proto))))))
 
-(defn TABLE     ([]      (atom {}))
-                ([_n]    (atom {}))
-                ([_n _d] (atom {})))
+;; A TABLE is an atom holding a map, with the order its keys were first assigned kept beside it (in the atom's metadata), because SPITBOL lists a table's
+;; entries in that order (CONVERT to an ARRAY, SORT, RSORT) and a plain map does not keep it.
+(defn- new-table [] (atom {} :meta {:order (atom {})}))
+(defn TABLE     ([]      (new-table))
+                ([_n]    (new-table))
+                ([_n _d] (new-table)))
 (defn SET       [] (hash-set))
 
 (defn table?    [x] (and (instance? clojure.lang.IDeref x)
                          (map? @x)))
 (defn table-get [t k]        (get @t k ε))
-(defn table-set [t k v]      (swap! t assoc k v) v)
+(defn table-set [t k v]
+  (when-let [o (:order (meta t))]
+    (swap! o (fn [m] (if (contains? m k) m (assoc m k (count m))))))
+  (swap! t assoc k v)
+  v)
+
+(defn table-entries
+  "The [key value] entries of a table in the order the keys were first assigned."
+  [t]
+  (let [order (if-let [o (:order (meta t))] @o {})]
+    (sort-by (fn [[k _]] (get order k Long/MAX_VALUE)) (seq @t))))
 
 (defn array?    [x] (instance? SnobolArray x))
 

@@ -155,7 +155,7 @@
       ;; TABLE conversions
       (and (clojure.core/= from "TABLE") (clojure.core/= to "ARRAY"))
       ;; Convert TABLE to Nx2 ARRAY sorted by key string representation
-      (let [entries (sort-by #(str (first %)) (seq @x))
+      (let [entries (env/table-entries x)
             n       (count entries)
             arr     (ARRAY (str n ",2"))]
         (doseq [[i [k v]] (map-indexed vector entries)]
@@ -191,7 +191,7 @@
       :else nil)))
 (defn COPY    [x]
   (cond
-    (table? x) (atom @x)
+    (table? x) (let [t (atom @x :meta {:order (atom (if-let [o (:order (meta x))] @o {}))})] t)
     (array? x) (SNOBOL4clojure.env/->SnobolArray
                   (:dims x) (:dflt x) (atom @(:data x)))
     :else x))
@@ -532,33 +532,47 @@
   [a b]
   (if (and (number? a) (number? b)) (compare a b) (compare (str a) (str b))))
 
-(defn- table->sorted-array
-  "Convert TABLE to an Nx2 ARRAY (keys in column 1, values in column 2)
-   sorted on column col (1 by default, the keys). SORT sorts ascending,
-   RSORT descending."
-  [t col descending?]
-  (let [pick    (if (clojure.core/= 2 col) second first)
-        cmp     (if descending? #(sort-key-compare %2 %1) sort-key-compare)
-        entries (sort-by pick cmp (seq @t))
-        n       (count entries)
-        arr     (ARRAY (str n ",2"))]
+;; SORT and RSORT take a table or an array. A table sorts as the two-column array of its entries (keys in column 1, values in column 2, in the order the keys were
+;; first assigned); an array sorts its rows on column col (1 by default), a one-dimensional array being its own column. The sort is stable, ascending for SORT and
+;; descending for RSORT, so entries that tie keep the order they had. The result is a new array.
+(defn- table->array [t]
+  (let [entries (env/table-entries t)
+        arr     (ARRAY (str (count entries) ",2"))]
     (doseq [[i [k v]] (map-indexed vector entries)]
       (array-set arr [(inc i) 1] k)
       (array-set arr [(inc i) 2] v))
     arr))
 
+(defn- sort-array
+  "A new array with the rows of arr stably sorted on column col."
+  [arr col descending?]
+  (let [dims   (:dims arr)
+        lo1    (first (first dims))
+        hi1    (second (first dims))
+        two-d? (clojure.core/= 2 (count dims))
+        cols   (when two-d? (let [[lo hi] (second dims)] (range lo (inc hi))))
+        rows   (for [i (range lo1 (inc hi1))]
+                 (if two-d? (vec (for [j cols] (array-get arr [i j]))) [(array-get arr [i])]))
+        pick   (fn [row] (nth row (min (dec (long col)) (dec (count row)))))
+        cmp    (if descending? #(sort-key-compare %2 %1) sort-key-compare)
+        sorted (sort-by pick cmp rows)
+        out    (ARRAY (:proto arr))]
+    (doseq [[i row] (map vector (range lo1 (inc hi1)) sorted)]
+      (if two-d?
+        (doseq [[j v] (map vector cols row)] (array-set out [i j] v))
+        (array-set out [i] (first row))))
+    out))
+
+(defn- sort-any [A col descending?]
+  (cond
+    (table? A) (sort-array (table->array A) col descending?)
+    (array? A) (sort-array A col descending?)
+    :else nil))
+
 (defn SORT
-  ([A] (SORT A 1))
-  ([A col]
-   (cond
-     (table? A) (table->sorted-array A (long (env/num col)) false)
-     (array? A) A   ; ARRAY sort not yet defined — return as-is
-     :else nil)))
+  ([A]     (SORT A 1))
+  ([A col] (sort-any A (long (env/num col)) false)))
 
 (defn RSORT
-  ([A] (RSORT A 1))
-  ([A col]
-   (cond
-     (table? A) (table->sorted-array A (long (env/num col)) true)
-     (array? A) A
-     :else nil)))
+  ([A]     (RSORT A 1))
+  ([A col] (sort-any A (long (env/num col)) true)))

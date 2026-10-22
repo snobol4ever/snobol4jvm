@@ -1419,3 +1419,37 @@
       (is (= "1024 aaa\n1024 bbb\n1024 ccc\n1024 ddd\n5 sho\neof\n"
              (binding [*in* (java.io.BufferedReader. (java.io.StringReader. in))] (with-out-str (-main (.getPath f))))))
       (finally (.delete f)))))
+
+;; A TABLE keeps its entries in the order they were first assigned, and CONVERT(table, 'ARRAY'), SORT and RSORT start from that order. SORT(a, n) and RSORT(a, n)
+;; sort a two-column array on column n, ascending and descending, and the sort is stable: entries that tie stay in the order they had. SORT(table) sorts on
+;; the keys. The engine listed a table's entries sorted by key, ignored the column and the direction for arrays, and returned an array unsorted (Budne's tab
+;; prints the words most used first, ties in the order they first occurred). The oracle, sbl -bf, wrote exactly this output.
+(deftest sort-and-rsort-are-stable-on-a-column-and-tables-keep-their-order
+  (let [f (java.io.File/createTempFile "sortcol" ".sno")]
+    (try
+      (spit f (str "        t = TABLE()\n" "        t['pear'] = 3\n" "        t['apple'] = 5\n"
+                  "        t['fig'] = 3\n" "        t['kiwi'] = 1\n" "        t['date'] = 5\n"
+                  "        t['cherry'] = 3\n" "        arr = CONVERT(t,'ARRAY')\n" "        i = 1\n"
+                  "L0      OUTPUT = 'raw  ' arr<i,1> ' ' arr<i,2>   :F(R1)\n" "        i = i + 1                                :(L0)\n" "R1      b = RSORT(arr,2)\n"
+                  "        i = 1\n" "L1      OUTPUT = 'rs2  ' b<i,1> ' ' b<i,2>       :F(R2)\n" "        i = i + 1                                :(L1)\n"
+                  "R2      b = SORT(arr,2)\n" "        i = 1\n" "L2      OUTPUT = 's2   ' b<i,1> ' ' b<i,2>       :F(R3)\n"
+                  "        i = i + 1                                :(L2)\n" "R3      b = SORT(arr,1)\n" "        i = 1\n"
+                  "L3      OUTPUT = 's1   ' b<i,1> ' ' b<i,2>       :F(R4)\n" "        i = i + 1                                :(L3)\n" "R4      b = RSORT(arr)\n"
+                  "        i = 1\n" "L4      OUTPUT = 'rs   ' b<i,1> ' ' b<i,2>       :F(R5)\n" "        i = i + 1                                :(L4)\n"
+                  "R5      b = SORT(t)\n" "        i = 1\n" "L5      OUTPUT = 'st   ' b<i,1> ' ' b<i,2>       :F(R6)\n"
+                  "        i = i + 1                                :(L5)\n" "R6      OUTPUT = 'done'\n" "END\n"))
+      (is (= (str "raw  pear 3\n" "raw  apple 5\n" "raw  fig 3\n"
+                  "raw  kiwi 1\n" "raw  date 5\n" "raw  cherry 3\n"
+                  "rs2  apple 5\n" "rs2  date 5\n" "rs2  pear 3\n"
+                  "rs2  fig 3\n" "rs2  cherry 3\n" "rs2  kiwi 1\n"
+                  "s2   kiwi 1\n" "s2   pear 3\n" "s2   fig 3\n"
+                  "s2   cherry 3\n" "s2   apple 5\n" "s2   date 5\n"
+                  "s1   apple 5\n" "s1   cherry 3\n" "s1   date 5\n"
+                  "s1   fig 3\n" "s1   kiwi 1\n" "s1   pear 3\n"
+                  "rs   pear 3\n" "rs   kiwi 1\n" "rs   fig 3\n"
+                  "rs   date 5\n" "rs   cherry 3\n" "rs   apple 5\n"
+                  "st   apple 5\n" "st   cherry 3\n" "st   date 5\n"
+                  "st   fig 3\n" "st   kiwi 1\n" "st   pear 3\n"
+                  "done\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
