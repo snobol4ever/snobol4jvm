@@ -2511,3 +2511,35 @@
       (is (= "failed [abc]\nmatch failed\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A settable keyword other than &STLIMIT takes 0 to 16777216, else ERROR 210 (keyword value assigned is negative or too large), and &MAXLNGTH below 1024 is ERROR 287,
+;; as sbl -bf raises them; assigning &ERRTYPE signals the error at once (SPITBOL manual ch. 16, &ERRTYPE), with SPITBOL's own text for its numbers and, for another number,
+;; the string the program put in &ERRTEXT ("It is possible to assign a string to &ERRTEXT which is then used in a subsequent error report", ch. 16). The engine took any
+;; integer and wrote "error N" (SnoRungs keyword_replace_branch_5 and _8). The oracle, sbl -bf, wrote exactly this output.
+(deftest keyword-values-out-of-range-and-assigned-errtype-are-sbls-errors
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 100\n"
+                   "        &ANCHOR = -1\n"
+                   "        OUTPUT = 'anchor -1: ' &ERRTYPE ' ' &ERRTEXT ' ' &ANCHOR\n"
+                   "        &TRIM = 16777217\n"
+                   "        OUTPUT = 'trim 2**24+1: ' &ERRTYPE ' ' &TRIM\n"
+                   "        &ANCHOR = 16777216\n"
+                   "        OUTPUT = 'anchor 2**24: ' &ANCHOR\n"
+                   "        &STLIMIT = -1\n"
+                   "        OUTPUT = 'stlimit -1: ' &STLIMIT\n"
+                   "        &MAXLNGTH = 1023\n"
+                   "        OUTPUT = 'maxlngth 1023: ' &ERRTYPE ' ' &ERRTEXT ' ' &MAXLNGTH\n"
+                   "        &MAXLNGTH = 1024\n"
+                   "        OUTPUT = 'maxlngth 1024: ' &MAXLNGTH\n"
+                   "        &ERRTYPE = 22\n"
+                   "        OUTPUT = &ERRTYPE ' [' &ERRTEXT ']'\n"
+                   "        &ERRTEXT = 'MINE'\n"
+                   "        &ERRTYPE = 999\n"
+                   "        OUTPUT = &ERRTYPE ' [' &ERRTEXT ']'\n"
+                   "        &ERRTYPE = 236\n"
+                   "        OUTPUT = &ERRTYPE ' [' &ERRTEXT ']'\n"
+                   "END\n"))
+      (is (= "anchor -1: 210 keyword value assigned is negative or too large 0\ntrim 2**24+1: 210 1\nanchor 2**24: 16777216\nstlimit -1: -1\nmaxlngth 1023: 287 value assigned to keyword maxlngth is too small 16777216\nmaxlngth 1024: 1024\n22 [undefined function called]\n999 [MINE]\n236 [array referenced with wrong number of subscripts]\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

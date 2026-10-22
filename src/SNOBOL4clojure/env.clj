@@ -2,7 +2,8 @@
   ;; Global SNOBOL4 environment: keywords, constants, data types,
   ;; utility arithmetic aliases, and the DATATYPE dispatch table.
   ;; No dependencies on other SNOBOL4clojure namespaces.
-  (:require [clojure.pprint  :as pp])
+  (:require [clojure.pprint  :as pp]
+            [SNOBOL4clojure.errors :as errors])
   (:refer-clojure :exclude [= + - * / num]))
 
 ;; ── Utility arithmetic (avoid shadowing clojure.core in this ns) ─────────────
@@ -263,6 +264,12 @@
   ([_ns] (GLOBALS)))
 
 ;; ── Keyword assignment ───────────────────────────────────────────────────────
+;; The text of SPITBOL's own error n, as sbl -bf writes it (Appendix D in lower case), or nil for a number outside SPITBOL's. The manual's table lacks 274 to 280 (its
+;; extraction took the page number 274 and two more for entries), so the one of those sbl was seen to write is given here.
+(def ^:private error-text
+  (merge (into {} (for [[n m] errors/error-messages :when (not (#{274 276 278} n))] [n (clojure.string/lower-case m)]))
+         {274 "value assigned to keyword fullscan is zero"}))
+
 ;; &K = V, with SPITBOL's errors: an unknown keyword is 251, a value that is not
 ;; an integer is 208, a protected keyword is 209. Assigning &ERRTYPE raises the
 ;; error it names.
@@ -279,8 +286,19 @@
         (throw (ex-info "keyword value assigned is not integer" {:snobol/error 208})))
       (let [n (long n)]
         (cond
+          ;; "&ERRTYPE may be assigned a value; in this case, an immediate error is signaled", with SPITBOL's text for its own numbers and, for another number, the
+          ;; string the program assigned to &ERRTEXT (manual ch. 16)
           (clojure.core/= kw "ERRTYPE")
-          (throw (ex-info (str "error " n) {:snobol/error n}))
+          (throw (ex-info (or (error-text n) (str @&ERRTEXT)) {:snobol/error n}))
+          ;; every settable keyword but &STLIMIT takes 0 to 16777216 (sbl -bf: "210 keyword value assigned is negative or too large"); &PROFILE takes 0 and 1, and 2
+          ;; while it is 1 is "268 inconsistent value assigned to keyword profile"; &MAXLNGTH is at least 1024 ("287 value assigned to keyword maxlngth is too small")
+          (and (clojure.core/= kw "PROFILE") (clojure.core/= n 2) (clojure.core/= 1 (long @&PROFILE)))
+          (throw (ex-info "inconsistent value assigned to keyword profile" {:snobol/error 268}))
+          (and (not (clojure.core/= kw "STLIMIT")) (or (contains? keyword-defaults vr) (clojure.core/= vr #'&TRACE))
+               (or (neg? n) (clojure.core/> n 16777216) (and (clojure.core/= kw "PROFILE") (clojure.core/> n 1))))
+          (throw (ex-info "keyword value assigned is negative or too large" {:snobol/error 210}))
+          (and (clojure.core/= kw "MAXLNGTH") (clojure.core/< n 1024))
+          (throw (ex-info "value assigned to keyword maxlngth is too small" {:snobol/error 287}))
           ;; "Setting &FULLSCAN to 0 is an error" (manual ch. 16): the Quickscan heuristics are not supported
           (and (clojure.core/= kw "FULLSCAN") (zero? n))
           (throw (ex-info "value assigned to keyword fullscan is zero" {:snobol/error 274}))
