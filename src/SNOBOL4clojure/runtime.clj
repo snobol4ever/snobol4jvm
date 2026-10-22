@@ -174,7 +174,7 @@
                     (recur nxt err'))))))))
       (catch clojure.lang.ExceptionInfo e
         (case (get (ex-data e) :snobol/signal)
-          :end        (do (end-statement!) nil)          ; normal program end
+          :end        (if (pos? (long @&FNCLEVEL)) (throw e) (do (end-statement!) nil))   ; program end, from any level
           :return     nil          ; bubble up to DEFINE wrapper
           :step-limit (throw e)    ; propagate — caught by test-helpers/harness
           :freturn    (throw e)    ; bubble up to DEFINE wrapper

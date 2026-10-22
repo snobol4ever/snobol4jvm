@@ -2208,3 +2208,18 @@
     (is (= 38 (code "        OUTPUT = 'a'   :(NOWHERE)\nEND\n")))
     (is (= 38 (code "        X = 'LAB'\n        OUTPUT = 'b'   :(X)\nLAB     OUTPUT = 'c'\nEND\n")))
     (is (= :no-error (code "        X = 'LAB'\n        OUTPUT = 'd'   :($X)\nLAB     OUTPUT = 'e'\nEND\n")))))
+
+;; END reached inside a function ends the program, and only RETURN, FRETURN and NRETURN end a call: "END ... A program should terminate execution by transferring to
+;; label END" (SPITBOL manual ch. 16, Special names). The function wrapper took every signal for a return, so the program went on after the call. The oracle, sbl -bf, wrote
+;; exactly this output.
+(deftest end-reached-inside-a-function-ends-the-program
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "	DEFINE('G()')	:(GE)\n"
+                   "G	OUTPUT = 'in G'	:(END)\n"
+                   "GE	G()\n"
+                   "	OUTPUT = 'after G'\n"
+                   "END\n"))
+      (is (= "in G\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

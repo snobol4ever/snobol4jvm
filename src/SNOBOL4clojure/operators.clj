@@ -346,8 +346,10 @@
                                 outcome (try
                                           (when run-fn ((var-get run-fn) entry))
                                           :return   ; normal fall-through = return
+                                          ;; only the three returns end a call; END, the step limit and an error go on up (END in a function ends the program)
                                           (catch clojure.lang.ExceptionInfo e
-                                            (get (ex-data e) :snobol/signal :return))
+                                            (let [sig (:snobol/signal (ex-data e))]
+                                              (if (#{:return :freturn :nreturn} sig) sig (throw e))))
                                           (finally (swap! &FNCLEVEL dec)))]
                             ;; Collect result before restoring
                             (let [result ($$ f-sym)]
