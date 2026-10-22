@@ -2629,3 +2629,17 @@
       (is (= "7\n9\n9\nnn=[]\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; SUBSTR(s, i1) with the length left out is the rest of s: "If i2 is omitted or zero, the remaining characters of the argument string are extracted" (SPITBOL
+;; manual ch. 19, SUBSTR). The engine's dispatch read a third argument that was not there and died with an IndexOutOfBoundsException (X32T c). The oracle, sbl -bf, wrote
+;; exactly this output.
+(deftest substr-without-a-length-is-the-rest
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "	OUTPUT = SUBSTR('abcdef',3) ' ' SUBSTR('abcdef',3,0) ' [' SUBSTR('abcdef',7) '] ' SUBSTR('abcdef',2,3)\n"
+                   "	LINE = '*text'\n"
+                   "	OUTPUT = TRIM(' ' SUBSTR(LINE,2))\n"
+                   "END\n"))
+      (is (= "cdef cdef [] bcd\n text\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
