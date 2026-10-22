@@ -117,7 +117,9 @@
      END")
   (is (= 2 ($$ 'C1)))
   (is (= 2 ($$ 'C2)))
-  (is (= 0 ($$ 'C3))))
+  ;; no occurrence: COUNT returns the null string, not 0 (sbl -bf prints C3= and
+  ;; nothing after it; COUNT.INC only sets COUNT when a match is found)
+  (is (= "" ($$ 'C3))))
 
 (deftest gimpel_diff_set_difference
   "DIFF (ch.3.10) set difference of character sets."
