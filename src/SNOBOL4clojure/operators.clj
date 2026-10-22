@@ -646,7 +646,7 @@
       (float? E)   E
       (string? E)  E
       (integer? E) E
-      (symbol? E)  ($$ E)
+      (symbol? E)  (let [v ($$ E)] (if (identical? v FENCE) (FENCE) v))   ; a bare FENCE is the pattern, not the function that builds one
       (vector? E)  (let [evaled (eval-operands E)]
                     ;; nil in any SEQ element = sub-expression failed → whole SEQ fails
                     (when evaled

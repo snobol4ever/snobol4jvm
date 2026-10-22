@@ -1203,3 +1203,19 @@
       (spit f (str " &TRIM = 0\nL1 line = INPUT                          :F(DONE)\n OUTPUT = '[' line ']'                 :(L1)\nDONE OUTPUT = '&TRIM=' &TRIM\nEND\n"))
       (is (= "[a   ]\n[b\t]\n[c \t ]\n[   ]\n[]\n[d e  ]\n&TRIM=0\n" (run)))
       (finally (.delete f)))))
+
+;; FENCE written without an argument is a pattern, like ARB or REM: it matches the null string and makes the match fail, not retry, if the pattern after it
+;; has to back up over it. The name was read as the function and put into the pattern, and the matcher threw "No matching clause" (Budne's atn, the FENCE
+;; crosscheck 058). The oracle, sbl -bf, wrote exactly this output.
+(deftest a-bare-fence-is-a-pattern
+  (let [f (java.io.File/createTempFile "fence0" ".sno")]
+    (try
+      (spit f (str " 'AB' LEN(1) FENCE LEN(2)              :S(Y1)F(N1)\nY1 OUTPUT = 'a: matched'                 :(C1)\nN1 OUTPUT = 'a: aborted'\n"
+                   "C1 P = FENCE\n OUTPUT = 'b: ' DATATYPE(P)\n 'AB' LEN(1) P LEN(2)                  :S(Y2)F(N2)\n"
+                   "Y2 OUTPUT = 'c: matched'                 :(C2)\nN2 OUTPUT = 'c: aborted'\n"
+                   "C2 'ABC' (LEN(1) | LEN(2)) FENCE LEN(2)  :S(Y3)F(N3)\nY3 OUTPUT = 'd: matched'                 :(C3)\nN3 OUTPUT = 'd: failed'\n"
+                   "C3 Q = ARB\n OUTPUT = 'e: ' DATATYPE(Q) ' ' DATATYPE(FENCE)\n"
+                   "END\n"))
+      (is (= (str "a: aborted\nb: PATTERN\nc: aborted\nd: matched\ne: PATTERN PATTERN\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
