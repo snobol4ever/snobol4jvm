@@ -2562,3 +2562,27 @@
       (is (= "No such word\ndog\n1,2\n1000 11 5 2,3 INTEGER\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; An array subscript out of bounds fails the statement, in an assignment as in a read; Chapter 14 of the SPITBOL manual (-FAIL) warns that a failure without a Goto
+;; is ignored, "especially when array subscripts are out of bounds". The engine's assignment raised a Clojure exception (SnoRungs user_function_array_trim_replace_branch_1).
+;; The oracle, sbl -bf, wrote exactly this output.
+(deftest an-array-subscript-out-of-bounds-fails-an-assignment
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        A = ARRAY(3)\n"
+                   "        A<5> = 'x'              :S(S1)F(F1)\n"
+                   "S1      OUTPUT = 'assigned'     :(N2)\n"
+                   "F1      OUTPUT = 'assignment failed'\n"
+                   "N2      X = A<5>                :S(S2)F(F2)\n"
+                   "S2      OUTPUT = 'read [' X ']' :(N3)\n"
+                   "F2      OUTPUT = 'read failed'\n"
+                   "N3      A<0> = 'y'\n"
+                   "        OUTPUT = 'after a failing assignment without a branch'\n"
+                   "        B = ARRAY('2,2')\n"
+                   "        B<3,1> = 'z'            :F(F4)\n"
+                   "        OUTPUT = 'two-dim assigned'     :(END)\n"
+                   "F4      OUTPUT = 'two-dim failed'\n"
+                   "END\n"))
+      (is (= "assignment failed\nread failed\nafter a failing assignment without a branch\ntwo-dim failed\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

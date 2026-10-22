@@ -291,9 +291,9 @@
                   (cond
                     (table? container)
                     (table-set container (first ks) r)
+                    ;; a subscript out of bounds fails the statement, as a read of one does (manual ch. 14, -FAIL: "...especially when array subscripts are out of bounds")
                     (array? container)
-                    (or (array-set container (vec ks) r)
-                        (throw (ex-info "ARRAY: subscript out of bounds" {:keys ks})))
+                    (array-set container (vec ks) r)
                     ;; DATA field setter: accessor(instance) = val assigns the field of the object in place (the instance is already evaluated)
                     (fn? container)
                     (when (container (first ks) r) r)
