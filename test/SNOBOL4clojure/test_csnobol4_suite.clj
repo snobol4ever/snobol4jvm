@@ -6336,37 +6336,38 @@ t.sno:8 stmt 7: level 0 RETURN of F = '', time = xxx
 " (:stdout r)))))
 
 (deftest csnobol4-tab
-  "Budne suite: tab.sno"
-  (let [r (run-with-timeout "*	tabulate -- test SORT/RSORT
+  "Budne suite: tab.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [r (run-with-input "*	tabulate -- test SORT/RSORT
 
 *	&dump = 1
-	&anchor = 0
-	words = table(100)
-	wpat = span(&ucase &lcase \"'\") . word
+	&ANCHOR = 0
+	words = TABLE(100)
+	wpat = SPAN(&UCASE &LCASE \"'\") . word
 
-top	line = replace(input,&ucase,&lcase)		:f(eof)
+top	line = REPLACE(INPUT,&UCASE,&LCASE)		:f(eof)
 wloop	line wpat =					:f(top)
 	total = total + 1
-	words<word> = words<word> + 1			:(wloop)
+	words[word] = words[word] + 1			:(wloop)
 
-eof	output = \"total words: \" total
+eof	OUTPUT = \"total words: \" total
 
 * dump words by use, most frequently used word first; test rsort of array
-	arr = convert(words,\"array\")
+	arr = CONVERT(words,\"ARRAY\")
 *	output = prototype(arr)
-	arr = rsort(arr,2)
+	arr = RSORT(arr,2)
 	i = 1
-dump	output = rpad(arr<i,2>,5) arr<i,1>		:f(edump)
-	i = i + 1					:(dump)
+DUMP	OUTPUT = RPAD(arr[i,2],5) arr[i,1]		:f(edump)
+	i = i + 1					:(DUMP)
 
 * dump words alphabeticly; test sort of table
-edump	arr = sort(words,1)
+edump	arr = SORT(words,1)
 	i = 1
-dump2	output = rpad(arr<i,1>,15) arr<i,2>		:f(end)
+dump2	OUTPUT = RPAD(arr[i,1],15) arr[i,2]		:f(END)
 	i = i + 1					:(dump2)
 
-end
-
+END
+"
+           "
 Four score and seven years ago our fathers brought forth on this
 continent, a new nation, conceived in Liberty, and dedicated to the
 proposition that all men are created equal.
@@ -6392,8 +6393,9 @@ resolve that these dead shall not have died in vain--that this nation,
 under God, shall have a new birth of freedom--and that government of
 the people, by the people, for the people, shall not perish from the
 earth.
-" 5000)]
-    (is (= "total words: 271
+"
+           5000)]
+    (is (same-output? "total words: 271
 13   that
 11   the
 10   we
