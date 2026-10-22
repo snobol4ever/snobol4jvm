@@ -2380,3 +2380,45 @@
                                          "after DUMP(2)\n") "dm1.sno" main)
              (with-out-str (-main main))))
       (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))
+
+;; The operand of $ must name a variable: "The indirect reference operator ($) converts a string to a variable name" (SPITBOL manual ch. 15), a number converts by
+;; its string (ch. 17), and "The null string cannot be converted to a name" (ch. 17); a DATA object, an expression or an array is "239 Indirection operand is not name"
+;; (Appendix D). The engine made a variable of whatever it was given (SnoRungs code_eval_array_datatype_replace_branch_1, this program). The oracle, sbl -bf, wrote exactly
+;; this output.
+(deftest indirection-of-the-null-string-or-an-object-is-error-239
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 1000\n"
+                   "        DATA('PT(XX,YY)')\n"
+                   "        P = PT(1,2)\n"
+                   "        A = $P                          :F(F1)\n"
+                   "        OUTPUT = 'T1 ok DATA'           :(T2)\n"
+                   "F1      OUTPUT = 'T1 ERR ' &ERRTYPE\n"
+                   "T2      Q = *(1 + 1)\n"
+                   "        B = $Q                          :F(F2)\n"
+                   "        OUTPUT = 'T2 ok EXPR'           :(T3)\n"
+                   "F2      OUTPUT = 'T2 ERR ' &ERRTYPE\n"
+                   "T3      $UNSET1 = 'x'                   :F(F3)\n"
+                   "        OUTPUT = 'T3 ok LHSNULL'        :(T4)\n"
+                   "F3      OUTPUT = 'T3 ERR ' &ERRTYPE\n"
+                   "T4      $ARRAY(2) = 'x'                 :F(F4)\n"
+                   "        OUTPUT = 'T4 ok LHSARR'         :(T5)\n"
+                   "F4      OUTPUT = 'T4 ERR ' &ERRTYPE\n"
+                   "T5      OUTPUT = $UNSET2                :F(F5)\n"
+                   "        OUTPUT = 'T5 ok OUTNULL'        :(T6)\n"
+                   "F5      OUTPUT = 'T5 ERR ' &ERRTYPE\n"
+                   "T6      D = $$UNSET3                    :F(F6)\n"
+                   "        OUTPUT = 'T6 ok DBL'            :(T7)\n"
+                   "F6      OUTPUT = 'T6 ERR ' &ERRTYPE\n"
+                   "T7      E = $(1 - 1)                    :F(F7)\n"
+                   "        OUTPUT = 'T7 ok ZERO'           :(T8)\n"
+                   "F7      OUTPUT = 'T7 ERR ' &ERRTYPE\n"
+                   "T8      $3.5 = 'realname'\n"
+                   "        G = $'3.5'                      :F(F8)\n"
+                   "        OUTPUT = 'T8 realname=' G       :(T9)\n"
+                   "F8      OUTPUT = 'T8 ERR ' &ERRTYPE\n"
+                   "T9      OUTPUT = 'END errlimit=' &ERRLIMIT\n"
+                   "END\n"))
+      (is (= "T1 ERR 239\nT2 ERR 239\nT3 ERR 239\nT4 ERR 239\nT5 ERR 239\nT6 ERR 239\nT7 ok ZERO\nT8 realname=realname\nEND errlimit=994\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

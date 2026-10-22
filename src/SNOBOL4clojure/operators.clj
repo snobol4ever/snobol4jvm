@@ -643,9 +643,13 @@
 ;; What $v refers to: the element a NAME of an element names, as its subscript
 ;; form (A k ...) with k already evaluated, or else the variable v names.
 (defn- indirect-target [v]
-  (if (and (instance? NAME v) (list? (.n ^NAME v)))
-    (.n ^NAME v)
-    (symbol (name-string v))))
+  (cond
+    (and (instance? NAME v) (list? (.n ^NAME v))) (.n ^NAME v)
+    (instance? NAME v)                             (symbol (name-string v))
+    ;; "The indirect reference operator ($) converts a string to a variable name" (manual ch. 15); a number converts by its string (ch. 17, Integer to name);
+    ;; "The null string cannot be converted to a name" (ch. 17), and an object is no name: "239 Indirection operand is not name" (Appendix D)
+    (or (and (string? v) (not= "" v)) (number? v)) (symbol (sstr v))
+    :else (throw (ex-info "indirection operand is not name" {:snobol/error 239}))))
 
 (defn- eval-operands
   "Evaluate the operands left to right. The first one that fails (nil) fails the
