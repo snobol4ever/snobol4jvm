@@ -36,6 +36,10 @@
     (binding [*in* reader]
       (run-with-timeout src budget-ms))))
 
+;; The comparison the suite's board makes: the same text once the newlines at its end are dropped (the refs were cut through a shell substitution that drops them).
+(defn- same-output? [expected actual]
+  (clojure.core/= (clojure.string/replace (str expected) #"\n+$" "") (clojure.string/replace (str actual) #"\n+$" "")))
+
 ;; ── FENCE crosscheck tests (058–067) ───────────────────────────────────────
 
 (deftest fence-058-pat-fence-keyword
@@ -172,7 +176,7 @@ END
 ;; ── Budne suite (116 tests) ─────────────────────────────────────────────────
 
 (deftest csnobol4-100func
-  "Budne suite: 100func.sno"
+  "Budne suite: 100func.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	DEFINE('A1(X)')
 	DEFINE('A2(X)')
 	DEFINE('A3(X)')
@@ -483,7 +487,7 @@ BEGIN
 	A100(100)
 END
 " 5000)]
-    (is (= "1
+    (is (same-output? "1
 2
 3
 4
@@ -586,22 +590,22 @@ END
 " (:stdout r)))))
 
 (deftest csnobol4-8bit
-  "Budne suite: 8bit.sno"
+  "Budne suite: 8bit.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "* 6/1/94 -plb
-	define(\"ascii(n)\")				:(eascii)
-ascii	&alphabet (pos(0) tab(n)) len(1) . ascii	:s(return)f(freturn)
+	DEFINE(\"ascii(n)\")				:(eascii)
+ascii	&ALPHABET (POS(0) TAB(n)) LEN(1) . ascii	:s(RETURN)f(FRETURN)
 eascii
 
-	output = ascii(65) ascii(66) ascii(67)
-	output = ascii(1) ascii(127) ascii(128) ascii(255)
+	OUTPUT = ascii(65) ascii(66) ascii(67)
+	OUTPUT = ascii(1) ascii(127) ascii(128) ascii(255)
 
 	delim = ascii(255)
 	test = delim 'hello world' delim
-	test delim break(delim) . output delim
-end
-" 2000)]
-    (is (= "ABC
-��
+	test delim BREAK(delim) . OUTPUT delim
+END
+" 5000)]
+    (is (same-output? "ABC
+\u0001\u007f\u0080\u00ff
 hello world
 " (:stdout r)))))
 
@@ -764,21 +768,20 @@ END
 " (:stdout r)))))
 
 (deftest csnobol4-alph
-  "Budne suite: alph.sno"
+  "Budne suite: alph.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "* 5/29/94 -plb
-	output = &alphabet
-	output = size(&alphabet)
+	OUTPUT = &ALPHABET
+	OUTPUT = SIZE(&ALPHABET)
 
-	output = &lcase
-	output = size(&lcase)
+	OUTPUT = &LCASE
+	OUTPUT = SIZE(&LCASE)
 
-	output = &ucase
-	output = size(&ucase)
-end
-" 2000)]
-    (is (= " 	
-
- !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~��������������������������������������������������������������������������������������������������������������������������������
+	OUTPUT = &UCASE
+	OUTPUT = SIZE(&UCASE)
+END
+" 5000)]
+    (is (same-output? "\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008	
+\u000b\u000c\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\u007f\u0080\u0081\u0082\u0083\u0084\u0085\u0086\u0087\u0088\u0089\u008a\u008b\u008c\u008d\u008e\u008f\u0090\u0091\u0092\u0093\u0094\u0095\u0096\u0097\u0098\u0099\u009a\u009b\u009c\u009d\u009e\u009f\u00a0\u00a1\u00a2\u00a3\u00a4\u00a5\u00a6\u00a7\u00a8\u00a9\u00aa\u00ab\u00ac\u00ad\u00ae\u00af\u00b0\u00b1\u00b2\u00b3\u00b4\u00b5\u00b6\u00b7\u00b8\u00b9\u00ba\u00bb\u00bc\u00bd\u00be\u00bf\u00c0\u00c1\u00c2\u00c3\u00c4\u00c5\u00c6\u00c7\u00c8\u00c9\u00ca\u00cb\u00cc\u00cd\u00ce\u00cf\u00d0\u00d1\u00d2\u00d3\u00d4\u00d5\u00d6\u00d7\u00d8\u00d9\u00da\u00db\u00dc\u00dd\u00de\u00df\u00e0\u00e1\u00e2\u00e3\u00e4\u00e5\u00e6\u00e7\u00e8\u00e9\u00ea\u00eb\u00ec\u00ed\u00ee\u00ef\u00f0\u00f1\u00f2\u00f3\u00f4\u00f5\u00f6\u00f7\u00f8\u00f9\u00fa\u00fb\u00fc\u00fd\u00fe\u00ff
 256
 abcdefghijklmnopqrstuvwxyz
 26
@@ -787,7 +790,7 @@ ABCDEFGHIJKLMNOPQRSTUVWXYZ
 " (:stdout r)))))
 
 (deftest csnobol4-alt1
-  "Budne suite: alt1.sno"
+  "Budne suite: alt1.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "*	bug found by shafto's atn.sno
 
 	S = 'NETWORK PARSE_CLAUSE END PARSE_CLAUSE'
@@ -821,31 +824,31 @@ ABCDEFGHIJKLMNOPQRSTUVWXYZ
 	OUTPUT = 'yes'
 DONE	OUTPUT = 'NAME: ' TNAME
 END
-" 2000)]
-    (is (= "yes
+" 5000)]
+    (is (same-output? "yes
 NAME: PARSE_CLAUSE
 " (:stdout r)))))
 
 (deftest csnobol4-alt2
-  "Budne suite: alt2.sno"
+  "Budne suite: alt2.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "*	bug found by shafto's atn.sno
 
 	'AAA' ('FOO' | (SPAN('A') $ TNAME) | 'BAR')	:F(DONE)
 	OUTPUT = 'yes'
 DONE	OUTPUT = 'NAME: ' TNAME
 END
-" 2000)]
-    (is (= "yes
+" 5000)]
+    (is (same-output? "yes
 NAME: AAA
 " (:stdout r)))))
 
 (deftest csnobol4-any
-  "Budne suite: any.sno"
-  (let [r (run-with-timeout "	&alphabet any(\"xyzabc123\")  $ output fail
-	\"the quick brown fox jumped\" notany(\"etian\")  $ output fail
-end
-" 2000)]
-    (is (= "1
+  "Budne suite: any.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [r (run-with-timeout "	&ALPHABET ANY(\"xyzabc123\")  $ OUTPUT FAIL
+	\"the quick brown fox jumped\" NOTANY(\"etian\")  $ OUTPUT FAIL
+END
+" 5000)]
+    (is (same-output? "1
 2
 3
 a
@@ -2214,7 +2217,7 @@ NODE: SENTENCE
 " (:stdout r)))))
 
 (deftest csnobol4-bal
-  "Budne suite: bal.sno"
+  "Budne suite: bal.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	DEFINE(\"X(S)\")					:(EX)
 X	S BAL . B					:F(F)
 	OUTPUT = '  ' S ' => ' B			:(RETURN)
@@ -2240,8 +2243,8 @@ EY
 	&ANCHOR = 1
 	Y()
 END
-" 2000)]
-    (is (= "&ANCHOR = 0
+" 5000)]
+    (is (same-output? "&ANCHOR = 0
   A => A
   A(X) => A
   AA(X) => A
@@ -2307,14 +2310,14 @@ c
 " (:stdout r)))))
 
 (deftest csnobol4-breakx
-  "Budne suite: breakx.sno"
-  (let [r (run-with-timeout "	&anchor = 1
+  "Budne suite: breakx.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [r (run-with-timeout "	&ANCHOR = 1
 	subj = \"this is a test .\"
-	subj breakx(' ') $ output '.'
-	subj (break(' ') arbno(len(1) break(' '))) $ output '.'
-end
-" 2000)]
-    (is (= "this
+	subj BREAKX(' ') $ OUTPUT '.'
+	subj (BREAK(' ') ARBNO(LEN(1) BREAK(' '))) $ OUTPUT '.'
+END
+" 5000)]
+    (is (same-output? "this
 this is
 this is a
 this is a test
@@ -2376,59 +2379,60 @@ yes!
 " (:stdout r)))))
 
 (deftest csnobol4-case2
-  "Budne suite: case2.sno"
+  "Budne suite: case2.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "**** test functions, labels, special labels
 * 5/25/94 -plb
 
-	define('same(x,y)')				:(esame)
-same	ident(x,y)					:s(return)f(freturn)
+	DEFINE('same(x,y)')				:(esame)
+same	IDENT(x,y)					:s(RETURN)f(FRETURN)
 esame
 
-	same('a','b')					:s(end)
-	same('a','a')					:f(end)
+	same('a','b')					:s(END)
+	same('a','a')					:f(END)
 
 * XXX test data(), load(), arrays, tables
-	output = 'yes!'
+	OUTPUT = 'yes!'
 
 * test END label!!
-end
-" 2000)]
-    (is (= "yes!
+END
+" 5000)]
+    (is (same-output? "yes!
 " (:stdout r)))))
 
 (deftest csnobol4-cat
-  "Budne suite: cat.sno"
+  "Budne suite: cat.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "		OUTPUT = 'Hello' \" \" 'World'
 END
-" 2000)]
-    (is (= "Hello World
+" 5000)]
+    (is (same-output? "Hello World
 " (:stdout r)))))
 
 (deftest csnobol4-char
-  "Budne suite: char.sno"
-  (let [r (run-with-timeout "	output = char(65)
-	output = char(97)
-	output = char(126)
-	output = char(1)
-	output = char(9)
-end
-" 2000)]
-    (is (= "A
+  "Budne suite: char.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [r (run-with-timeout "	OUTPUT = CHAR(65)
+	OUTPUT = CHAR(97)
+	OUTPUT = CHAR(126)
+	OUTPUT = CHAR(1)
+	OUTPUT = CHAR(9)
+END
+" 5000)]
+    (is (same-output? "A
 a
 ~
-
+\u0001
 	
 " (:stdout r)))))
 
 (deftest csnobol4-collect
-  "Budne suite: collect.sno"
+  "Budne suite: collect.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	COLLECT()
 END
-" 2000)]
-    (is (= "" (:stdout r)))))
+" 5000)]
+    (is (same-output? "
+" (:stdout r)))))
 
 (deftest csnobol4-collect2
-  "Budne suite: collect2.sno"
+  "Budne suite: collect2.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "* reported by Laurence Battin <beamtuner@att.net>
 	A B =
 * any \"external\" function will do!
@@ -2437,12 +2441,12 @@ END
 	D = COLLECT()
 	OUTPUT = \"GOT HERE\"
 END
-" 2000)]
-    (is (= "GOT HERE
+" 5000)]
+    (is (same-output? "GOT HERE
 " (:stdout r)))))
 
 (deftest csnobol4-comment
-  "Budne suite: comment.sno"
+  "Budne suite: comment.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	Q1 = (POS(0) ('X' | '') '*')
 	Q2 = (POS(0) (' ' | '') '*')
 
@@ -2476,8 +2480,8 @@ ETEST
 	TEST(.P3,'*')
 	TEST(.P3,'')
 END
-" 2000)]
-    (is (= "Q1 '*' ok
+" 5000)]
+    (is (same-output? "Q1 '*' ok
 Q2 ' *' ok
 Q2 '*' ok
 P1 ' *' ok
@@ -2489,45 +2493,45 @@ P3 '' ok
 " (:stdout r)))))
 
 (deftest csnobol4-contin
-  "Budne suite: contin.sno"
+  "Budne suite: contin.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout " OUTPUT = &STNO; OUTPUT = &STNO
  OUTPUT = &STNO ;* THIS IS A COMMENT
 END
-" 2000)]
-    (is (= "1
+" 5000)]
+    (is (same-output? "1
 2
 3
 " (:stdout r)))))
 
 (deftest csnobol4-conv2
-  "Budne suite: conv2.sno"
+  "Budne suite: conv2.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "* spitbol folds typenames when &case set!!
-	output = convert(3,\"real\")
-end
-" 2000)]
-    (is (= "3.
+	OUTPUT = CONVERT(3,\"REAL\")
+END
+" 5000)]
+    (is (same-output? "3.
 " (:stdout r)))))
 
 (deftest csnobol4-convert
-  "Budne suite: convert.sno"
+  "Budne suite: convert.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "*-LIST LEFT
 	A = TABLE()
 
-	A<'A'> = 1
-	A<'B'> = 2
-	A<'C'> = 3
-	A<'D'> = 4
+	A['A'] = 1
+	A['B'] = 2
+	A['C'] = 3
+	A['D'] = 4
 
 	B = CONVERT(A,'ARRAY')
 
 	I = 1
 L
 *	OUTPUT = DATATYPE(B<I,1>) ': ' DATATYPE(B<I,2>) :F(END)
-	OUTPUT = B<I,1> ': ' B<I,2>		:F(END)
+	OUTPUT = B[I,1] ': ' B[I,2]		:F(END)
 	I = I + 1				:(L)
 END
-" 2000)]
-    (is (= "A: 1
+" 5000)]
+    (is (same-output? "A: 1
 B: 2
 C: 3
 D: 4
@@ -3336,10 +3340,11 @@ Unprotected keywords
 " (:stdout r)))))
 
 (deftest csnobol4-end
-  "Budne suite: end.sno"
+  "Budne suite: end.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "END
-" 2000)]
-    (is (= "" (:stdout r)))))
+" 5000)]
+    (is (same-output? "
+" (:stdout r)))))
 
 (deftest csnobol4-err
   "Budne suite: err.sno"
@@ -3357,7 +3362,7 @@ Erroneous array or table reference
 " (:stdout r)))))
 
 (deftest csnobol4-fact
-  "Budne suite: fact.sno"
+  "Budne suite: fact.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "*	test functions
 
 	DEFINE(\"FACT(X)\")			:(END_FACT)
@@ -3377,8 +3382,8 @@ END_DOIT
 	DOIT(5)
 	DOIT(6)
 END
-" 2000)]
-    (is (= "FACT(0) = 1
+" 5000)]
+    (is (same-output? "FACT(0) = 1
 FACT(1) = 1
 FACT(2) = 2
 FACT(3) = 6
@@ -3388,8 +3393,8 @@ FACT(6) = 720
 " (:stdout r)))))
 
 (deftest csnobol4-factor
-  "Budne suite: factor.sno"
-  (let [r (run-with-timeout "* THIS PROGRAM COMPUTES AND PRINTS A TABLE OF N FACTORIAL
+  "Budne suite: factor.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [r (run-with-input "* THIS PROGRAM COMPUTES AND PRINTS A TABLE OF N FACTORIAL
 * FOR VALUES OF N FROM 1 THROUGH AN UPPER LIMIT \"NX\"
 
 * TAKEN FROM PAGE 203 OF THE REFERENCE MANUAL
@@ -3398,29 +3403,29 @@ FACT(6) = 720
  N = 1
  NSET = 1
  NUM = ARRAY(1000)
- NUM<1> = 1
+ NUM[1] = 1
  FILL = ARRAY('0:3')
- FILL<0> = '000'
- FILL<1> = '00'
- FILL<2> = '0'
+ FILL[0] = '000'
+ FILL[1] = '00'
+ FILL[2] = '0'
 
  OUTPUT = '     TABLE OF FACTORIALS FOR 1 THROUGH ' NX
  OUTPUT = 
 *COMPUTE THE NEXT VALUE FROM THE PREVIOUS ONE
 L1 I = 1
-L2 NUM<I> = NUM<I> * N    :F(ERR)
+L2 NUM[I] = NUM[I] * N    :F(ERR)
  I = LT(I,NSET) I + 1    :S(L2)
  I = 1
-L3 LT(NUM<I>,1000)    :S(L4)
- NUMX = NUM<I> / 1000    :F(ERR)
- NUM<I + 1> = NUM<I + 1> + NUMX  :F(ERR)
- NUM<I> = NUM<I> - 1000 * NUMX   :F(ERR)
+L3 LT(NUM[I],1000)    :S(L4)
+ NUMX = NUM[I] / 1000    :F(ERR)
+ NUM[I + 1] = NUM[I + 1] + NUMX  :F(ERR)
+ NUM[I] = NUM[I] - 1000 * NUMX   :F(ERR)
 L4 I = LT(I,NSET) I + 1   :S(L3)
 *FORM A  STRING REPRESENTING THE FACTORIAL
-L5 NSET = DIFFER(NUM<NSET + 1>) NSET + 1
- NUMBER = NUM<NSET>   :F(ERR)
+L5 NSET = DIFFER(NUM[NSET + 1]) NSET + 1
+ NUMBER = NUM[NSET]   :F(ERR)
  I = GT(NSET,1) NSET - 1   :F(L7)
-L6 NUMBER = NUMBER ',' FILL<SIZE(NUM<I>)> NUM<I>
+L6 NUMBER = NUMBER ',' FILL[SIZE(NUM[I])] NUM[I]
  I = GT(I,1) I - 1   :S(L6)
 *OUTPUT A LINE OF THE TABLE
 L7 OUTPUT = N '!=' NUMBER
@@ -3430,8 +3435,10 @@ ERR OUTPUT = N '! CANNOT BE COMPUTED BECAUSE OF TABLE OVERFLOW.'
  OUTPUT = '  INCREASE THE SIZE OF ARRAY \"NUM\".'
 *
 END
-                                                                                                               " 5000)]
-    (is (= "     TABLE OF FACTORIALS FOR 1 THROUGH 45
+"
+           "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
+           5000)]
+    (is (same-output? "     TABLE OF FACTORIALS FOR 1 THROUGH 45
 
 1!=1
 2!=2
@@ -3509,19 +3516,19 @@ FILE_ABSPATH /
 " (:stdout r)))))
 
 (deftest csnobol4-float
-  "Budne suite: float.sno"
+  "Budne suite: float.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	OUTPUT = 3.14159
 	OUTPUT = 1.0
 	OUTPUT = 1.0 / 1000
 	OUTPUT = 1.0 / 1000000
 	OUTPUT = 1.0 / 1000000000
 END
-" 2000)]
-    (is (= "3.14159
+" 5000)]
+    (is (same-output? "3.14159
 1.
-0.001
-1e-06
-1e-09
+0.1e-2
+0.1e-5
+0.1e-8
 " (:stdout r)))))
 
 (deftest csnobol4-float2
@@ -3551,7 +3558,7 @@ OK
 " (:stdout r)))))
 
 (deftest csnobol4-ftrace
-  "Budne suite: ftrace.sno"
+  "Budne suite: ftrace.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	&FTRACE = 10000
 
 	DEFINE(\"A()\")
@@ -3569,21 +3576,21 @@ D							:(RETURN)
 
 BEGIN	A(\"hello\")
 END
-" 2000)]
-    (is (= "ftrace.sno:16 stmt 16: level 0 call of A(), time = xxx
-ftrace.sno:10 stmt 10: level 1 call of B(), time = xxx
-ftrace.sno:11 stmt 11: level 2 call of C(), time = xxx
-ftrace.sno:12 stmt 12: level 3 call of D(), time = xxx
-ftrace.sno:14 stmt 14: level 3 RETURN of D = '', time = xxx
-ftrace.sno:13 stmt 13: level 3 call of D(), time = xxx
-ftrace.sno:14 stmt 14: level 3 RETURN of D = '', time = xxx
-ftrace.sno:13 stmt 13: level 2 RETURN of C = '', time = xxx
-ftrace.sno:11 stmt 11: level 1 RETURN of B = '', time = xxx
-ftrace.sno:10 stmt 10: level 0 RETURN of A = '', time = xxx
+" 5000)]
+    (is (same-output? "****16******  A()
+****10****** i B()
+****11****** ii C()
+****12****** iii D()
+****14****** iii RETURN D = ''
+****13****** iii D()
+****14****** iii RETURN D = ''
+****13****** ii RETURN C = ''
+****11****** i RETURN B = ''
+****10******  RETURN A = ''
 " (:stdout r)))))
 
 (deftest csnobol4-fun1
-  "Budne suite: fun1.sno"
+  "Budne suite: fun1.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "*	test functions (arg values)
 
 	DEFINE(\"DOIT(X)\")			:(END_DOIT)
@@ -3598,8 +3605,8 @@ END_DOIT
 	DOIT(5)
 	DOIT(6)
 END
-" 2000)]
-    (is (= "INTEGER {0}
+" 5000)]
+    (is (same-output? "INTEGER {0}
 INTEGER {1}
 INTEGER {2}
 INTEGER {3}
@@ -3609,7 +3616,7 @@ INTEGER {6}
 " (:stdout r)))))
 
 (deftest csnobol4-fun2
-  "Budne suite: fun2.sno"
+  "Budne suite: fun2.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "*	test functions (arg & return values)
 
 	DEFINE(\"DOIT(X)\")		:(END_DOIT)
@@ -3624,8 +3631,8 @@ END_DOIT
 	OUTPUT = DOIT(5)
 	OUTPUT = DOIT(6)
 END
-" 2000)]
-    (is (= "0
+" 5000)]
+    (is (same-output? "0
 1
 2
 3
@@ -3711,11 +3718,11 @@ define
 " (:stdout r)))))
 
 (deftest csnobol4-hello
-  "Budne suite: hello.sno"
+  "Budne suite: hello.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	OUTPUT = 'hello world'
 END
-" 2000)]
-    (is (= "hello world
+" 5000)]
+    (is (same-output? "hello world
 " (:stdout r)))))
 
 (deftest csnobol4-hide
@@ -3789,35 +3796,35 @@ bb
 " (:stdout r)))))
 
 (deftest csnobol4-ind
-  "Budne suite: ind.sno"
+  "Budne suite: ind.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	foo = 'hello world'
 	bar = .foo
-	output = $bar
+	OUTPUT = $bar
 
 * XXX SIGH; SPITBOL will output 'hello world'
-	output = $('f' 'o' 'o')
-end
-" 2000)]
-    (is (= "hello world
+	OUTPUT = $('f' 'o' 'o')
+END
+" 5000)]
+    (is (same-output? "hello world
 hello world
 " (:stdout r)))))
 
 (deftest csnobol4-intval
-  "Budne suite: intval.sno"
-  (let [r (run-with-timeout "	&trim = 1.0
-	output = &trim
-	collect(999.9)
-	output = char(65.0)
-	output = dupl(\"*\", 5.9999)
+  "Budne suite: intval.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [r (run-with-timeout "	&TRIM = 1.0
+	OUTPUT = &TRIM
+	COLLECT(999.9)
+	OUTPUT = CHAR(65.0)
+	OUTPUT = DUPL(\"*\", 5.9999)
 
-	&trim = '1.0'
-	output = &trim
-	collect('999.9')
-	output = char('65.0')
-	output = dupl(\"*\", '5.9999')
-end
-" 2000)]
-    (is (= "1
+	&TRIM = '1.0'
+	OUTPUT = &TRIM
+	COLLECT('999.9')
+	OUTPUT = CHAR('65.0')
+	OUTPUT = DUPL(\"*\", '5.9999')
+END
+" 5000)]
+    (is (same-output? "1
 A
 *****
 1
@@ -4202,53 +4209,55 @@ HERE
 " (:stdout r)))))
 
 (deftest csnobol4-len
-  "Budne suite: len.sno"
-  (let [r (run-with-timeout "*       LENGTH.SNO
+  "Budne suite: len.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [r (run-with-input "*       LENGTH.SNO
 *
 *       Sample program from Chapter 5 of the Tutorial
 *
 LOOP    S = TRIM(INPUT)                 :F(END)
         OUTPUT = SIZE(S) ' ' S          :(LOOP)
 END
-hello
+"
+           "hello
 world
 this is a longer line
-" 2000)]
-    (is (= "5 hello
+"
+           5000)]
+    (is (same-output? "5 hello
 5 world
 21 this is a longer line
 " (:stdout r)))))
 
 (deftest csnobol4-lexcmp
-  "Budne suite: lexcmp.sno"
+  "Budne suite: lexcmp.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "* lexical compariston tests
 
 *	return argument in quotes if it's a STRING
-	define(\"q(x)t\")					:(eq)
-q	t = datatype(x)
-	q = leq(t,\"STRING\") \"'\" x \"'\"			:s(return)
-	q = x						:(return)
-eq
+	DEFINE(\"q(x)t\")					:(EQ)
+q	t = DATATYPE(x)
+	q = LEQ(t,\"STRING\") \"'\" x \"'\"			:s(RETURN)
+	q = x						:(RETURN)
+EQ
 
 *	try given function, disply result
-	define(\"try(fn,a,b)\")				:(etry)
-try	output = apply(fn,a,b) fn '(' q(a) ',' q(b) ')'	:(return)
+	DEFINE(\"try(fn,a,b)\")				:(etry)
+try	OUTPUT = APPLY(fn,a,b) fn '(' q(a) ',' q(b) ')'	:(RETURN)
 etry
 
 *	given args, try all the functions, plus ident/differ
-	define(\"check(a,b)\")				:(echeck)
-check	try(.llt,a,b)
-	try(.lle,a,b)
-	try(.leq,a,b)	
-	try(.lne,a,b)
-	try(.lgt,a,b)
-	try(.lge,a,b)
-	try(.ident,a,b)
-	try(.differ,a,b)				:(return)
+	DEFINE(\"check(a,b)\")				:(echeck)
+check	try(.LLT,a,b)
+	try(.LLE,a,b)
+	try(.LEQ,a,b)	
+	try(.LNE,a,b)
+	try(.LGT,a,b)
+	try(.LGE,a,b)
+	try(.IDENT,a,b)
+	try(.DIFFER,a,b)				:(RETURN)
 echeck
 
 * check this case manually -- q() depends on it!!
-	leq(datatype('x'),\"STRING\")			:f(end)
+	LEQ(DATATYPE('x'),\"STRING\")			:f(END)
 
 	check('','')
 	check('a','a')
@@ -4267,9 +4276,9 @@ echeck
 
 	check(2,'1')
 	check('1',2)
-end
+END
 " 5000)]
-    (is (= "LLE('','')
+    (is (same-output? "LLE('','')
 LEQ('','')
 LGE('','')
 IDENT('','')
@@ -4320,17 +4329,17 @@ DIFFER('1',2)
 " (:stdout r)))))
 
 (deftest csnobol4-lgt
-  "Budne suite: lgt.sno"
+  "Budne suite: lgt.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "* Date: Thu, 19 Sep 1996 17:52:56 -0500
 * From: Keith Waclena <keith@brick.lib.uchicago.edu>
 
         longer  = \"aa\"
         shorter = \"a\"
-        output  = lgt(shorter, longer) \"wrong\"
-        output  = lgt(longer, shorter) \"right\"
-end
-" 2000)]
-    (is (= "right
+        OUTPUT  = LGT(shorter, longer) \"wrong\"
+        OUTPUT  = LGT(longer, shorter) \"right\"
+END
+" 5000)]
+    (is (same-output? "right
 " (:stdout r)))))
 
 (deftest csnobol4-line
@@ -4382,26 +4391,26 @@ QQQ2
 " (:stdout r)))))
 
 (deftest csnobol4-local
-  "Budne suite: local.sno"
-  (let [r (run-with-timeout "	define(\"f(a,b)x\")				:(f_end)
-f	output = \"f: \" x
+  "Budne suite: local.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [r (run-with-timeout "	DEFINE(\"f(a,b)x\")				:(f_end)
+f	OUTPUT = \"f: \" x
 	x = a
 	g(b)
-	output = \"f: \" x				:(return)
+	OUTPUT = \"f: \" x				:(RETURN)
 f_end
 
-	define(\"g(a)x\")					:(g_end)
-g	output = \"g: \" x
+	DEFINE(\"g(a)x\")					:(g_end)
+g	OUTPUT = \"g: \" x
 	x = a
-	output = \"g: \" x				:(return)
+	OUTPUT = \"g: \" x				:(RETURN)
 g_end
 
 	x = 0
 	f('a','b')
-	output = \"main: \" x
-end
-" 2000)]
-    (is (= "f: 
+	OUTPUT = \"main: \" x
+END
+" 5000)]
+    (is (same-output? "f: 
 g: 
 g: b
 f: a
@@ -4409,15 +4418,15 @@ main: 0
 " (:stdout r)))))
 
 (deftest csnobol4-longline
-  "Budne suite: longline.sno"
+  "Budne suite: longline.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	aaa = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-	output = size(aaa) + size(\"	aaa = ''\")
-end
+	OUTPUT = SIZE(aaa) + SIZE(\"	aaa = ''\")
+END
 
 
 
-" 2000)]
-    (is (= "1024
+" 5000)]
+    (is (same-output? "1024
 " (:stdout r)))))
 
 (deftest csnobol4-longrec
@@ -4432,64 +4441,66 @@ end"
 " (:stdout r)))))
 
 (deftest csnobol4-loop
-  "Budne suite: loop.sno"
+  "Budne suite: loop.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	LOOPS = 10000
 	&STLIMIT = LOOPS * 2 + 10
 	A = 0
 LOOP	A = A + 1
 	LT(A,LOOPS)		:S(LOOP)
 END
-" 2000)]
-    (is (= "" (:stdout r)))))
+" 5000)]
+    (is (same-output? "
+" (:stdout r)))))
 
 (deftest csnobol4-match
-  "Budne suite: match.sno"
+  "Budne suite: match.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	'AAA' LEN(1) . X
 	OUTPUT = X
 END
-" 2000)]
-    (is (= "A
+" 5000)]
+    (is (same-output? "A
 " (:stdout r)))))
 
 (deftest csnobol4-match2
-  "Budne suite: match2.sno"
+  "Budne suite: match2.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	'AAA' LEN(1) $ X
 	OUTPUT = X
 END
-" 2000)]
-    (is (= "A
+" 5000)]
+    (is (same-output? "A
 " (:stdout r)))))
 
 (deftest csnobol4-match3
-  "Budne suite: match3.sno"
+  "Budne suite: match3.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	X = \"Hello World?\"
 LOOP	X '?' = '!'
 	OUTPUT = X
 END
-" 2000)]
-    (is (= "Hello World!
+" 5000)]
+    (is (same-output? "Hello World!
 " (:stdout r)))))
 
 (deftest csnobol4-match4
-  "Budne suite: match4.sno"
+  "Budne suite: match4.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	X = \"Hello World!\"
 LOOP	X 'o' = 'x'		:S(LOOP)
 	OUTPUT = X
 END
-" 2000)]
-    (is (= "Hellx Wxrld!
+" 5000)]
+    (is (same-output? "Hellx Wxrld!
 " (:stdout r)))))
 
 (deftest csnobol4-matchloop
-  "Budne suite: matchloop.sno"
+  "Budne suite: matchloop.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	&STLIMIT = 200000
 	A = 0
 LOOP	A = A + 1
 	'FOO' 'BAR'
 	LT(A,50000)		:S(LOOP)
 END
-" 2000)]
-    (is (= "" (:stdout r)))))
+" 5000)]
+    (is (same-output? "
+" (:stdout r)))))
 
 (deftest csnobol4-maxint
   "Budne suite: maxint.sno"
@@ -4512,7 +4523,7 @@ end
     (is (= "" (:stdout r)))))
 
 (deftest csnobol4-nqueens
-  "Budne suite: nqueens.sno"
+  "Budne suite: nqueens.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "* N queens problem, a string oriented version to
 *   demonstrate the power of pattern matching.
 * A numerically oriented version will run faster than this.
@@ -4537,8 +4548,8 @@ PRINT	SOLUTION = SOLUTION + 1
 	OUTPUT = 'Solution number ' SOLUTION ' is:'
 PRTLOOP B LEN(NP1) . OUTPUT = :S(PRTLOOP)F(RETURN)
 END
-" 10000)]
-    (is (= "Solution number 1 is:
+" 5000)]
+    (is (same-output? "Solution number 1 is:
 ---Q- 
 -Q--- 
 ----Q 
@@ -4635,7 +4646,7 @@ world
 " (:stdout r)))))
 
 (deftest csnobol4-ops
-  "Budne suite: ops.sno"
+  "Budne suite: ops.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "* INSERT bug uncovered by PLUSOPS and GNAT tools
 
 -PLUSOPS 1
@@ -4643,43 +4654,43 @@ world
 * worked;
 	a = 'hello world'
 	a ' ' = 'x' 'y'
-	output = a
+	OUTPUT = a
 
 	a = 'hello world'
 	a ' ' = 1 + 2 / 3
-	output = a
+	OUTPUT = a
 
 	a = 'hello world'
 	a ' ' = 1 2 / 3
-	output = a
+	OUTPUT = a
 
 	a = 'hello world'
 	a ' ' = 1 + 2 * 3
-	output = a
+	OUTPUT = a
 
 * failed;
 	a = 'hello world'
 	a ' ' = 'x' 'y' 'z'
-	output = a
+	OUTPUT = a
 
 	a = 'hello world'
 	a ' ' = 1 + 2 / 3 4
-	output = a
+	OUTPUT = a
 
 	a = 'hello world'
 	a ' ' = 1 + 2 3
-	output = a
+	OUTPUT = a
 
 	a = 'hello world'
 	a ' ' = 1 + 2 + 3
-	output = a
+	OUTPUT = a
 
 	a = 'hello world'
 	a ' ' = 1 * 2 * 3
-	output = a
-end
-" 2000)]
-    (is (= "helloxyworld
+	OUTPUT = a
+END
+" 5000)]
+    (is (same-output? "helloxyworld
 hello1world
 hello10world
 hello7world
@@ -4691,7 +4702,7 @@ hello6world
 " (:stdout r)))))
 
 (deftest csnobol4-ord
-  "Budne suite: ord.sno"
+  "Budne suite: ord.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	DEFINE(\"TEST(C)O,SC,CC\")			:(ETEST)
 TEST	C = 'A'
 	O = ORD(C)
@@ -4709,8 +4720,8 @@ ETEST
 	TEST('')
 	OUTPUT = ORD() 'SHOULD NOT HAPPEN'
 END
-" 2000)]
-    (is (= "OK
+" 5000)]
+    (is (same-output? "OK
 OK
 OK
 OK
@@ -4718,13 +4729,13 @@ OK
 " (:stdout r)))))
 
 (deftest csnobol4-pad
-  "Budne suite: pad.sno"
-  (let [r (run-with-timeout "	output = rpad(\"hello\",10,\"!\")
-	output = lpad(\"world\",10)
-	output = rpad(\"long\",2)
-end
-" 2000)]
-    (is (= "hello!!!!!
+  "Budne suite: pad.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [r (run-with-timeout "	OUTPUT = RPAD(\"hello\",10,\"!\")
+	OUTPUT = LPAD(\"world\",10)
+	OUTPUT = RPAD(\"long\",2)
+END
+" 5000)]
+    (is (same-output? "hello!!!!!
      world
 long
 " (:stdout r)))))
@@ -4758,7 +4769,7 @@ end
 " (:stdout r)))))
 
 (deftest csnobol4-pow
-  "Budne suite: pow.sno"
+  "Budne suite: pow.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	DEFINE(\"POW(X,Y)\")				:S(EPOW)
 POW	OUTPUT = X \"^\" Y \" = \" X ^ Y			:S(RETURN)
 	OUTPUT = X \"^\" Y \" FAILED\"			:(RETURN)
@@ -4815,7 +4826,7 @@ EPOW
 
 END
 " 5000)]
-    (is (= "0^1 = 0
+    (is (same-output? "0^1 = 0
 1^0 = 1
 2^0 = 1
 3^0 = 1
@@ -4825,7 +4836,7 @@ END
 1^2 = 1
 2^2 = 4
 3^2 = 9
-9^-1 = 0
+9^-1 = 0.111111111111111
 0.^1 = 0.
 1.^0 = 1.
 2.^0 = 1.
@@ -4843,18 +4854,17 @@ END
 " (:stdout r)))))
 
 (deftest csnobol4-preload1
-  "Budne suite: preload1.sno"
-  (let [r (run-with-timeout "end
-" 2000)]
-    (is (= "aa
+  "Budne suite: preload1.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [r (run-with-timeout "END
+" 5000)]
+    (is (same-output? "
 " (:stdout r)))))
 
 (deftest csnobol4-preload2
-  "Budne suite: preload2.sno"
-  (let [r (run-with-timeout "end
-" 2000)]
-    (is (= "aa
-bb
+  "Budne suite: preload2.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [r (run-with-timeout "END
+" 5000)]
+    (is (same-output? "
 " (:stdout r)))))
 
 (deftest csnobol4-preload3
@@ -4874,11 +4884,12 @@ pb
 " (:stdout r)))))
 
 (deftest csnobol4-punch
-  "Budne suite: punch.sno"
+  "Budne suite: punch.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	PUNCH = \"Hello World!\"
 END
-" 2000)]
-    (is (= "" (:stdout r)))))
+" 5000)]
+    (is (same-output? "
+" (:stdout r)))))
 
 (deftest csnobol4-random
   "Budne suite: random.sno"
@@ -5005,29 +5016,31 @@ end
 " (:stdout r)))))
 
 (deftest csnobol4-repl
-  "Budne suite: repl.sno"
-  (let [r (run-with-timeout "	UC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  "Budne suite: repl.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [r (run-with-input "	UC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 	LC = 'abcdefghijklmnopqrstuvwxyz'
 	&TRIM = 1
 LOOP	OUTPUT = REPLACE(INPUT, UC, LC)			:S(LOOP)
 END
-ABCDEFGHIJKLMNOPQRSTUVWXYZ
+"
+           "ABCDEFGHIJKLMNOPQRSTUVWXYZ
 FOUR SCORE AND SEVEN YEARS AGO
 HELLO WORLD
-" 2000)]
-    (is (= "abcdefghijklmnopqrstuvwxyz
+"
+           5000)]
+    (is (same-output? "abcdefghijklmnopqrstuvwxyz
 four score and seven years ago
 hello world
 " (:stdout r)))))
 
 (deftest csnobol4-reverse
-  "Budne suite: reverse.sno"
-  (let [r (run-with-timeout "	output = reverse(\"dlrow olleh\")
-	output = reverse(\"daed si luap\")
-	output = reverse(reverse(&UCASE))
-end
-" 2000)]
-    (is (= "hello world
+  "Budne suite: reverse.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [r (run-with-timeout "	OUTPUT = REVERSE(\"dlrow olleh\")
+	OUTPUT = REVERSE(\"daed si luap\")
+	OUTPUT = REVERSE(REVERSE(&UCASE))
+END
+" 5000)]
+    (is (same-output? "hello world
 paul is dead
 ABCDEFGHIJKLMNOPQRSTUVWXYZ
 " (:stdout r)))))
@@ -5049,7 +5062,7 @@ world
 " (:stdout r)))))
 
 (deftest csnobol4-roman
-  "Budne suite: roman.sno"
+  "Budne suite: roman.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "* ROMAN(N) - Convert integer N to Roman numeral form
 *	N must be positive and less than 4000
 *	An asterisk appears in the result if N >+ 4000
@@ -5087,7 +5100,7 @@ TEST_END
 
 END
 " 5000)]
-    (is (= "1 -> I
+    (is (same-output? "1 -> I
 2 -> II
 3 -> III
 4 -> IV
@@ -5529,22 +5542,21 @@ Negative number in illegal context
 " (:stdout r)))))
 
 (deftest csnobol4-setexit2
-  "Budne suite: setexit2.sno"
+  "Budne suite: setexit2.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "* test SETEXIT trap on END
 
 	:(begin)
 
-xxx	output = &LASTFILE ':' &LASTLINE ' stmt ' &LASTNO
-	output = &ERRTYPE ' \"' &ERRTEXT '\"'
-	:(continue)
+xxx	OUTPUT = &LASTFILE ':' &LASTLINE ' stmt ' &LASTNO
+	OUTPUT = &ERRTYPE ' \"' &ERRTEXT '\"'
+	:(CONTINUE)
 
 begin
-	&errlimit = 10
-	setexit(.xxx)
-end
-" 2000)]
-    (is (= "setexit2.sno:11 stmt 10
-0 \"\"
+	&ERRLIMIT = 10
+	SETEXIT(.xxx)
+END
+" 5000)]
+    (is (same-output? "
 " (:stdout r)))))
 
 (deftest csnobol4-setexit3
@@ -5769,23 +5781,25 @@ S15 Undefined or erroneous goto (24)
 " (:stdout r)))))
 
 (deftest csnobol4-space
-  "Budne suite: space.sno"
-  (let [r (run-with-timeout "	output = convert(\" \", .integer)
-	output = convert(\" \", .real)
-end
-" 2000)]
-    (is (= "0
+  "Budne suite: space.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [r (run-with-timeout "	OUTPUT = CONVERT(\" \", .INTEGER)
+	OUTPUT = CONVERT(\" \", .REAL)
+END
+" 5000)]
+    (is (same-output? "0
 0.
 " (:stdout r)))))
 
 (deftest csnobol4-space2
-  "Budne suite: space2.sno"
+  "Budne suite: space2.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "-PLUSOPS 0
-	output = convert(\" \", .integer)
-	output = convert(\" \", .real)
-end
-" 2000)]
-    (is (= "" (:stdout r)))))
+	OUTPUT = CONVERT(\" \", .INTEGER)
+	OUTPUT = CONVERT(\" \", .REAL)
+END
+" 5000)]
+    (is (same-output? "0
+0.
+" (:stdout r)))))
 
 (deftest csnobol4-spit
   "Budne suite: spit.sno"
@@ -5897,16 +5911,16 @@ all done
 " (:stdout r)))))
 
 (deftest csnobol4-str
-  "Budne suite: str.sno"
+  "Budne suite: str.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	a = 'hello world'
 	OUTPUT = a
 END
-" 2000)]
-    (is (= "hello world
+" 5000)]
+    (is (same-output? "hello world
 " (:stdout r)))))
 
 (deftest csnobol4-substr
-  "Budne suite: substr.sno"
+  "Budne suite: substr.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	S = \"hello world\"
 	M = SIZE(S)
 
@@ -5919,7 +5933,7 @@ LOOP	OUTPUT = O ',' L ': \"' SUBSTR(S,O,L) '\"'
 	LE(O,M)						:S(LLOOP)
 END
 " 5000)]
-    (is (= "1,0: \"hello world\"
+    (is (same-output? "1,0: \"hello world\"
 1,1: \"h\"
 1,2: \"he\"
 1,3: \"hel\"
@@ -6654,7 +6668,7 @@ years          1
 " (:stdout r)))))
 
 (deftest csnobol4-trace1
-  "Budne suite: trace1.sno"
+  "Budne suite: trace1.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "        &TRACE = 10
         TRACE('foo')
         foo = 1
@@ -6662,15 +6676,13 @@ years          1
         foo = 3
         FOO = 4
 END
-" 2000)]
-    (is (= "trace1.sno:3 stmt 3: FOO = 1, time = xxx
-trace1.sno:4 stmt 4: FOO = 2, time = xxx
-trace1.sno:5 stmt 5: FOO = 3, time = xxx
-trace1.sno:6 stmt 6: FOO = 4, time = xxx
+" 5000)]
+    (is (same-output? "****3*******  foo = 1
+****5*******  foo = 3
 " (:stdout r)))))
 
 (deftest csnobol4-trace2
-  "Budne suite: trace2.sno"
+  "Budne suite: trace2.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "-CASE 0
         &TRACE = 10
         TRACE('foo')
@@ -6679,13 +6691,13 @@ trace1.sno:6 stmt 6: FOO = 4, time = xxx
         foo = 3
         FOO = 4
 END
-" 2000)]
-    (is (= "trace2.sno:4 stmt 3: foo = 1, time = xxx
-trace2.sno:6 stmt 5: foo = 3, time = xxx
+" 5000)]
+    (is (same-output? "****3*******  foo = 1
+****5*******  foo = 3
 " (:stdout r)))))
 
 (deftest csnobol4-trfunc
-  "Budne suite: trfunc.sno"
+  "Budne suite: trfunc.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	DEFINE('A()')
 	DEFINE('B()')
 	DEFINE('C()')
@@ -6719,29 +6731,30 @@ E	E = 1	:(RETURN)
 F	F = 1	:(RETURN)
 
 END
-" 2000)]
-    (is (= "trfunc.sno:18 stmt 18: level 0 call of A(), time = xxx
-trfunc.sno:26 stmt 26: level 0 RETURN of A = 1, time = xxx
-trfunc.sno:19 stmt 19: level 0 call of B(), time = xxx
-trfunc.sno:28 stmt 28: level 0 RETURN of C = 1, time = xxx
-trfunc.sno:21 stmt 21: level 0 call of D(), time = xxx
-trfunc.sno:29 stmt 29: level 0 RETURN of D = 1, time = xxx
-trfunc.sno:22 stmt 22: level 0 call of E(), time = xxx
-trfunc.sno:31 stmt 31: level 0 RETURN of F = 1, time = xxx
+" 5000)]
+    (is (same-output? "****18******  A()
+****26******  RETURN A = 1
+****19******  B()
+****28******  RETURN C = 1
+****21******  D()
+****29******  RETURN D = 1
+****22******  E()
+****31******  RETURN F = 1
 " (:stdout r)))))
 
 (deftest csnobol4-trim0
-  "Budne suite: trim0.sno — reads from INPUT (stdin below END)"
+  "Budne suite: trim0.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-input "* test lines with trailing spaces w/ trim off
 * 5/25/94 -plb
-	&trim = 0
-top	line = input		:f(end)
+	&TRIM = 0
+top	line = INPUT		:f(END)
 loop	line ' ' = '@'		:s(loop)
-	tab = '	'
-loop2	line tab = '!'		:s(loop2)
-	output = line		:(top)
-end"
-                          "this line has three trailing spaces   
+	TAB = '	'
+loop2	line TAB = '!'		:s(loop2)
+	OUTPUT = line		:(top)
+END
+"
+           "this line has three trailing spaces   
     
         
                                                                              
@@ -6752,8 +6765,8 @@ this line has a trailing tab
 	
 			
 "
-                          2000)]
-    (is (= "this@line@has@three@trailing@spaces@@@
+           5000)]
+    (is (same-output? "this@line@has@three@trailing@spaces@@@
 @@@@
 @@@@@@@@
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -6766,17 +6779,18 @@ this@line@has@a@trailing@tab!
 " (:stdout r)))))
 
 (deftest csnobol4-trim1
-  "Budne suite: trim1.sno — reads from INPUT (stdin below END)"
+  "Budne suite: trim1.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-input "* test lines with trailing spaces w/ trim on
 * 5/25/94 -plb
-	&trim = 1
-top	line = input		:f(end)
+	&TRIM = 1
+top	line = INPUT		:f(END)
 loop	line ' ' = '@'		:s(loop)
-	tab = '	'
-loop2	line tab = '!'		:s(loop2)
-	output = line		:(top)
-end"
-                          "this line has three trailing spaces   
+	TAB = '	'
+loop2	line TAB = '!'		:s(loop2)
+	OUTPUT = line		:(top)
+END
+"
+           "this line has three trailing spaces   
     
         
                                                                              
@@ -6787,8 +6801,8 @@ this line has a trailing tab
 	
 			
 "
-                          2000)]
-    (is (= "this@line@has@three@trailing@spaces
+           5000)]
+    (is (same-output? "this@line@has@three@trailing@spaces
 
 
 
@@ -6796,50 +6810,49 @@ this line has a trailing tab
 
 !this@line@has@a@leading@tab
 this@line@has@a@trailing@tab
-
-
 " (:stdout r)))))
 
 (deftest csnobol4-uneval
-  "Budne suite: uneval.sno"
+  "Budne suite: uneval.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "	&ANCHOR = 1
 	H = 'H'
 	'HELLO' *H 'ELLO'				:F(END)
 	OUTPUT = 'YES!!'
 END
-" 2000)]
-    (is (= "YES!!
+" 5000)]
+    (is (same-output? "YES!!
 " (:stdout r)))))
 
 (deftest csnobol4-uneval2
-  "Budne suite: uneval2.sno — reads from INPUT (stdin below END)"
+  "Budne suite: uneval2.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-input "	A = \"'\"
 	Q = '\"'
 
 TOP	LINE = INPUT					:F(END)
 	LINE (A | Q) $ QUOTE *BREAK(QUOTE) . STR *QUOTE	:F(TOP)
 	OUTPUT = STR					:(TOP)
-END"
-                          "'HELLO HELLO'
+END
+"
+           "'HELLO HELLO'
 \"mr ed\"
 'hi hi
 \"It's a small world\"
 "
-                          2000)]
-    (is (= "HELLO HELLO
+           5000)]
+    (is (same-output? "HELLO HELLO
 mr ed
 It's a small world
 " (:stdout r)))))
 
 (deftest csnobol4-unsc
-  "Budne suite: unsc.sno"
+  "Budne suite: unsc.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "        STR = '12 x 23434 x 123'
         P = SPAN('0123456789')
 
 	STR (*P $ OUTPUT) FAIL
 END
-" 2000)]
-    (is (= "12
+" 5000)]
+    (is (same-output? "12
 2
 23434
 3434
@@ -6950,8 +6963,8 @@ A
 " (:stdout r)))))
 
 (deftest csnobol4-words
-  "Budne suite: words.sno"
-  (let [r (run-with-timeout "*   WORDS.SNO -- word counting program
+  "Budne suite: words.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [r (run-with-input "*   WORDS.SNO -- word counting program
 *
 *	Sample program from Chapter 6 of the Tutorial
 *
@@ -6983,18 +6996,20 @@ NEXTW
 
 DONE	OUTPUT =  +N ' words'
 END
-Four-score and seven years ago
+"
+           "Four-score and seven years ago
 this
 is
 a
 test
-" 2000)]
-    (is (= "9 words
+"
+           5000)]
+    (is (same-output? "9 words
 " (:stdout r)))))
 
 (deftest csnobol4-words1
-  "Budne suite: words1.sno"
-  (let [r (run-with-timeout "*   WORDS.SNO -- word counting program
+  "Budne suite: words1.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  (let [r (run-with-input "*   WORDS.SNO -- word counting program
 *
 *	Sample program from Chapter 6 of the Tutorial
 *
@@ -7021,11 +7036,13 @@ NEXTW	LINE WPAT =				:F(NEXTL)
 
 DONE	OUTPUT =  +N ' words'
 END
-Four-score and seven years ago
+"
+           "Four-score and seven years ago
 this
 is
 a
 test
-" 2000)]
-    (is (= "9 words
+"
+           5000)]
+    (is (same-output? "9 words
 " (:stdout r)))))
