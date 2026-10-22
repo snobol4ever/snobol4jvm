@@ -66,10 +66,11 @@
             (recur (inc i) (.append cur ch) stmts (not in-sq) in-dq ls line sl diags)
             (and (= ch \") (not in-sq))
             (recur (inc i) (.append cur ch) stmts in-sq (not in-dq) ls line sl diags)
-            ;; a comment line (* in column 1) is one comment: a semicolon in it separates nothing
+            ;; a comment line (* in column 1) is one comment: a semicolon in it separates nothing. Every statement a semicolon ends is one, an empty or blank one a
+            ;; statement SPITBOL numbers and never runs, as a blank line is (sbl -bf: X = 1 ;; Y = 2 is three statements, two executed)
             (and (= ch \;) (not in-sq) (not in-dq) (not (and (pos? (.length cur)) (= \* (.charAt cur 0)))))
             (let [s (string/trimr (str cur))]
-              (recur (inc i) (StringBuilder.) (if (seq s) (conj stmts [s sl]) stmts) false false ls line line diags))
+              (recur (inc i) (StringBuilder.) (conj stmts (if (seq s) [s sl] [:blank sl])) false false ls line line diags))
             (= ch \newline)
             (let [s (string/trimr (str cur))
                   next-i (inc i)
@@ -84,8 +85,11 @@
                   (recur (+ i 2) (.append cur \space) stmts false false (inc i) (inc line) sl diags)
                   :else
                   (recur (inc i) (StringBuilder.) (conj stmts [s sl]) false false (inc i) (inc line) (inc line) diags))
-                (let [blank? (blank-line? ls i)]
-                  (recur (inc i) (StringBuilder.) (if blank? (conj stmts [:blank line]) stmts) false false (inc i) (inc line) (inc line)
+                (let [blank? (blank-line? ls i)
+                      ;; a source line is read with its trailing blanks gone, but a CODE string, one record with no newline, is not: the blanks after its last
+                      ;; semicolon are a statement (sbl -bf: CODE(' X = 1 ; ') is two statements and the block's closing one)
+                      tail?  (and (pos? (.length cur)) (= i (dec n)) (not (string/ends-with? (str src) "\n")))]
+                  (recur (inc i) (StringBuilder.) (if (or blank? tail?) (conj stmts [:blank line]) stmts) false false (inc i) (inc line) (inc line)
                          ;; the line ended in a semicolon, which closed its last statement: a continuation after it is misplaced
                          (if (and cont? (not blank?)) (conj diags [(inc line) 214]) diags)))))
             :else

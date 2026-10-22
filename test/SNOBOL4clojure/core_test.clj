@@ -3758,3 +3758,33 @@
       (is (= 14 @SNOBOL4clojure.env/&STNO))
       (is (= 13 @SNOBOL4clojure.env/&STCOUNT))
       (finally (.delete f)))))
+
+
+;; "Multiple statements are separated by placing a semicolon (;) between each" (manual ch. 9, The CODE function): each statement a semicolon ends is numbered,
+;; an empty or blank one too, which is never run, as a blank line is (sbl -bf: X = 1 ;; Y = 2 is three statements and &STCOUNT counts two). The last statement
+;; on a line is one only when something is left of it, and a source line is read with its trailing blanks gone, but a CODE string is not: CODE(' X = 1 ; ') is
+;; two statements and the block's closing one. The engine dropped every empty statement (AIS TEST.sno: LOADEX joins spitlib.spt's lines with semicolons, so a
+;; blank line in a function body is an empty statement, and LTRACE's &STNO read 20 low).
+(deftest an-empty-statement-between-semicolons-is-numbered
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &STLIMIT = 100\n"
+                   "        X = 1 ;; Y = 2\n"
+                   "        OUTPUT = 'a ' &STNO\n"
+                   "        X = 1 ; ; Y = 2\n"
+                   "        OUTPUT = 'b ' &STNO\n"
+                   " ;\n"
+                   "        OUTPUT = 'c ' &STNO\n"
+                   "        X = 1 ;  \n"
+                   "        OUTPUT = 'd ' &STNO\n"
+                   "        C = CODE(' X = 1 ; Y = 2 ; ')\n"
+                   "        C = CODE(' OUTPUT = \"e \" &STNO :(N1)')\n"
+                   "        :<C>\n"
+                   "N1      C = CODE(' X = 1 ;; Y = 2 ;')\n"
+                   "        C = CODE(' OUTPUT = \"f \" &STNO \" \" &STCOUNT :(N2)')\n"
+                   "        :<C>\n"
+                   "N2      OUTPUT = 'g ' &STNO ' ' &STCOUNT\n"
+                   "END\n"))
+      (is (= "a 5\nb 9\nc 11\nd 13\ne 26\nf 32 18\ng 20 19\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
