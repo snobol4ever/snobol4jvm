@@ -42,7 +42,7 @@
                      | cap  <_> '**' <_> xp
   cap       ::=  ttl | cap  <_> '$' <_>  ttl
                      | cap  <_> '.' <_>  ttl
-  ttl       ::=  uop | ttl  <_  '~'  _>  uop
+  ttl       ::=  uop | uop  <_  '~'  _>  ttl
   uop       ::=  ndx | '@' uop | '~' uop | '?' uop | '&' uop | '+' uop
                      | '-' uop | '*' uop | '$' uop | '.' uop | '!' uop
                      | '%' uop | '/' uop | '#' uop | '=' uop | '|' uop

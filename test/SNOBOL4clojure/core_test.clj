@@ -2695,3 +2695,21 @@
       (is (= "imm ab ab\ncond abc abc\nnest a ab\nabcdef\nto output and abcdef\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; Binary ~ associates to the right and binds tighter than every other binary operator (SPITBOL manual ch. 15: ~ right 13, available through OPSYN): 'a' ~ 'b' ~ 'c'
+;; is 'a' ~ ('b' ~ 'c'), and 'x' ~ 'y' 'z' is ('x' ~ 'y') 'z'. The grammar associated it to the left, so aisnobol TEST's lists built with ~ came out nested the wrong way.
+;; The oracle, sbl -bf, wrote exactly this output.
+(deftest binary-tilde-associates-to-the-right
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DEFINE('CONS(A,B)')                     :(CONS_END)\n"
+                   "CONS    CONS = '(' A ' . ' B ')'                :(RETURN)\n"
+                   "CONS_END\n"
+                   "        OPSYN('~', 'CONS', 2)\n"
+                   "        OUTPUT = 'a' ~ 'b' ~ 'c' ~ 'nil'\n"
+                   "        OUTPUT = ('a' ~ 'b') ~ 'c'\n"
+                   "        OUTPUT = 'x' ~ 'y' 'z'\n"
+                   "END\n"))
+      (is (= "(a . (b . (c . nil)))\n((a . b) . c)\n(x . y)z\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
