@@ -1,7 +1,7 @@
 (ns SNOBOL4clojure.core-test
   (:require [clojure.test :refer :all]
             [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
-            [SNOBOL4clojure.test-helpers :refer [prog]]))
+            [SNOBOL4clojure.test-helpers :refer [prog prog-timeout]]))
 
 ;; Point the SNOBOL runtime at this namespace so that $$ resolves vars.
 (GLOBALS *ns*)
@@ -1912,3 +1912,15 @@
                                          "\n") "dmp_two.sno" main)
              (with-out-str (-main main))))
       (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))
+
+;; A repetition of ARBNO that matches the null string made no progress and fails, as SPITBOL's does; the engine expanded ARBNO(ARB) again at the same cursor for ever (ten
+;; SnoRungs arbno entries ran into the harness's time limit). The oracle, sbl -bf, answers match for this program.
+(deftest arbno-of-a-pattern-that-matches-the-null-string-ends
+  (prog-timeout 3000
+    "        P = (((ARBNO(ARB)) . V0 | '' ARB)) $ V0"
+    "        'ab+ab' POS(0) *P RPOS(0)       :S(OK)F(NO)"
+    "OK      R = 'match'                     :(DONE)"
+    "NO      R = 'nomatch'"
+    "DONE"
+    "END")
+  (is (= "match" ($$ 'R))))

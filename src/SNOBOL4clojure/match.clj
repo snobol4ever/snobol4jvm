@@ -406,11 +406,22 @@
           :proceed
           (let [[Σ Δ _ _ _ _ Ψ] ζ
                 P               (second (ζΠ ζ))
-                expanded        (list 'ALT "" (list 'SEQ P (ζΠ ζ)))]
+                ;; a repetition that matched the null string made no progress and fails, as SPITBOL's does, so ARBNO(ARB) and the like end
+                expanded        (list 'ALT "" (list 'SEQ P (list 'ARBNO-STEP Δ) (ζΠ ζ)))]
             (recur :proceed [Σ Δ Σ Δ expanded 1 (🡥 Ψ ζ)] Ω))
           :succeed
           (recur :succeed (ζ↑ ζ) Ω)
           (:recede :fail)
+          (recur :recede (🡡 Ω) (🡧 Ω)))
+
+        ;; ── ARBNO-STEP ───────────────────────────────────────────────────────
+        ;; The guard ARBNO puts after each repetition: the cursor must have moved from where the repetition began (the node's second element).
+        ARBNO-STEP
+        (case action
+          :proceed (if (clojure.core/= (ζΔ ζ) (second (ζΠ ζ)))
+                     (recur :recede (🡡 Ω) (🡧 Ω))
+                     (recur :succeed (ζ↑ ζ (ζΣ ζ) (ζΔ ζ)) Ω))
+          (:fail :recede)
           (recur :recede (🡡 Ω) (🡧 Ω)))
 
         ;; ── ABORT! ───────────────────────────────────────────────────────────
