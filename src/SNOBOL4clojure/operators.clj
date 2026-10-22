@@ -20,6 +20,7 @@
               ABORT BAL CONJ
               LEN POS RPOS RTAB TAB FAIL]]
             [SNOBOL4clojure.emitter   :refer [emitter]]
+            [SNOBOL4clojure.dump      :refer [dump-text]]
             [SNOBOL4clojure.grammar   :refer [parse-expression]]
             [SNOBOL4clojure.trace     :refer [fire-value! fire-call! fire-return! trace! stoptr!]])
   (:refer-clojure :exclude [= + - * / num]))
@@ -448,10 +449,11 @@
     ;; Not yet implemented: these keep the null result they had before an
     ;; undefined name became ERROR 022, so no program that calls them regresses.
     CLEAR     ε
-    DUMP      ε
     EJECT     ε
     BACKSPACE ε
     SETEXIT (apply SETEXIT args)
+    ;; DUMP(i) writes a dump now: 1 the variables and keywords, 2 and 3 the elements and fields too; any other value writes nothing (manual ch. 19, DUMP)
+    DUMP    (let [n (num (first args))] (when (and (integer? n) (clojure.core/<= 1 n 3)) (print (dump-text n))) ε)
     ATAN    (ATAN   (first args))
     CHOP    (CHOP   (first args))
     COS     (COS    (first args))

@@ -2303,3 +2303,80 @@
       (is (= "add 3 addition caused integer overflow\nsub 34 subtraction caused integer overflow\nmul 28 multiplication caused integer overflow\n3 -3 3.5 5.5 7.5 4.5\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; DUMP(i) writes a dump at once and returns the null string; DUMP(0) writes nothing (SPITBOL manual ch. 19, DUMP). At level 2 the dump goes on to "non-null array and
+;; table elements, and non-null field values of program-defined data types": sbl -bf lists every object the variables reach, through elements and fields too, in the order
+;; they were made, each named by the variable holding it or by its own display. The engine's DUMP did nothing, and its level 2 listed only the arrays and tables variables
+;; held. The oracle, sbl -bf, wrote exactly this output.
+(deftest dump-writes-at-once-and-level-2-lists-every-object-reached
+  (let [dir  (.toFile (java.nio.file.Files/createTempDirectory "srcpos" (make-array java.nio.file.attribute.FileAttribute 0)))
+        main (str dir "/dm1.sno")]
+    (try
+      (spit (str dir "/dm1.sno") (str "        OUTPUT = 'before'\n"
+                  "        Z = ARRAY(2)\n"
+                  "        DATA('NODE(V,N)')\n"
+                  "        A = NODE(1)\n"
+                  "        B = NODE(2, A)\n"
+                  "        Z<1> = B\n"
+                  "        A = 'gone'\n"
+                  "        X = DUMP(0)\n"
+                  "        OUTPUT = 'after DUMP(0) [' X ']'\n"
+                  "        DUMP(2)\n"
+                  "        OUTPUT = 'after DUMP(2)'\n"
+                  "END\n"))
+      (is (= (clojure.string/replace (str "before\n"
+                                         "after DUMP(0) []\n"
+                                         "\n"
+                                         "\n"
+                                         "\n"
+                                         "dump of natural variables\n"
+                                         "\n"
+                                         "A = 'gone'\n"
+                                         "B = NODE #3\n"
+                                         "OUTPUT = 'after DUMP(0) []'\n"
+                                         "Z = ARRAY(2) #1\n"
+                                         "\n"
+                                         "\n"
+                                         "dump of keyword values\n"
+                                         "\n"
+                                         "&ANCHOR = 0\n"
+                                         "&CASE = 0\n"
+                                         "&CODE = 0\n"
+                                         "&DUMP = 0\n"
+                                         "&ERRLIMIT = 0\n"
+                                         "&ERRTEXT = ''\n"
+                                         "&ERRTYPE = 0\n"
+                                         "&FILE = 'dm1.sno'\n"
+                                         "&FNCLEVEL = 0\n"
+                                         "&FTRACE = 0\n"
+                                         "&FULLSCAN = 1\n"
+                                         "&INPUT = 1\n"
+                                         "&LASTFILE = 'dm1.sno'\n"
+                                         "&LASTLINE = 9\n"
+                                         "&LASTNO = 9\n"
+                                         "&LINE = 10\n"
+                                         "&MAXLNGTH = 16777216\n"
+                                         "&OUTPUT = 1\n"
+                                         "&PROFILE = 0\n"
+                                         "&RTNTYPE = ''\n"
+                                         "&STCOUNT = 10\n"
+                                         "&STLIMIT = 2147483647\n"
+                                         "&STNO = 10\n"
+                                         "&TRACE = 0\n"
+                                         "&TRIM = 1\n"
+                                         "\n"
+                                         "ARRAY(2) #1\n"
+                                         "Z<1> = NODE #3\n"
+                                         "\n"
+                                         "NODE #2\n"
+                                         "V(NODE #2) = 1\n"
+                                         "\n"
+                                         "NODE #3\n"
+                                         "V(B) = 2\n"
+                                         "N(B) = NODE #2\n"
+                                         "\n"
+                                         "\n"
+                                         "\n"
+                                         "after DUMP(2)\n") "dm1.sno" main)
+             (with-out-str (-main main))))
+      (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))
