@@ -2834,3 +2834,26 @@
       (is (= "(21. 21.)\n21. |\n21.|3|21.21.|.12|21.\n29.|   21.|21\nkey k \na 21.\n2.71828182845905 5.43656365691809\nv=0.25e-1\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; DATA's creation and field functions are functions, not values of variables: "The DATA function implicitly defines a creation function and n new field reference
+;; functions" (SPITBOL manual ch. 19, DATA), so a parameter or a variable of the same name (DEFINE('MAKE(CARD)') beside DATA('CARD(NUM,NEXT)'), CARD = 'a variable')
+;; leaves them alone. The engine kept them as variable values, which the parameter overwrote: ERROR 022 (TPgm test8, SnoRungs user_function_arb_break_replace_branch_1).
+;; The oracle, sbl -bf, wrote exactly this output.
+(deftest data-functions-are-functions-not-variable-values
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DATA('CARD(NUM,NEXT)')\n"
+                   "        DEFINE('MAKE(CARD)')                    :(MAKE_END)\n"
+                   "MAKE    MAKE = CARD(NUM(CARD) + 1, CARD)        :(RETURN)\n"
+                   "MAKE_END\n"
+                   "        C = CARD(1)\n"
+                   "        D = MAKE(C)\n"
+                   "        OUTPUT = NUM(D) ' ' NUM(NEXT(D)) ' ' DATATYPE(D)\n"
+                   "        NEXT(C) = D\n"
+                   "        OUTPUT = NUM(NEXT(C))\n"
+                   "        CARD = 'a variable'\n"
+                   "        OUTPUT = CARD ' ' NUM(CARD(7))\n"
+                   "END\n"))
+      (is (= "2 1 CARD\n2\na variable 7\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

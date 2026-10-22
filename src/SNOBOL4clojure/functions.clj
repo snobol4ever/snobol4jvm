@@ -348,10 +348,13 @@
                     ([inst# val#] (when (and (instance? SNOBOL4clojure.env.DataObj inst#) (clojure.core/= ~tname (.type-name ^SNOBOL4clojure.env.DataObj inst#)))
                                     (aset ^"[Ljava.lang.Object;" (.fields ^SNOBOL4clojure.env.DataObj inst#) ~i val#)
                                     val#)))])]
+        ;; "The DATA function implicitly defines a creation function and n new field reference functions" (manual ch. 19, DATA): they are functions, kept with the
+        ;; DEFINEd ones in <FUNS> and marked :data, not values of variables, so a variable or a parameter of the same name (DEFINE('INSERT(LIST,CARD)') beside
+        ;; DATA('CARD(NUM,NEXT)')) leaves them alone
         `(do
-           (SNOBOL4clojure.env/snobol-set! '~(symbol tname) ~constructor-body)
+           (swap! SNOBOL4clojure.env/<FUNS> assoc ~tname (with-meta ~constructor-body {:data true}))
            ~@(for [[f form] accessor-forms]
-               `(SNOBOL4clojure.env/snobol-set! '~(symbol f) ~form)))))))
+               `(swap! SNOBOL4clojure.env/<FUNS> assoc ~f (with-meta ~form {:data true}))))))))
 
 (defn DATA [S]
   (when-let [form (DATA! S)]

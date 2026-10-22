@@ -283,7 +283,11 @@
                 (let [[container-sym & ks] N
                       r (concat-value r)
                       ;; the container is a variable's name, or the table or array itself when it came from a subscript (tt['blue']['green'])
-                      raw-container (if (symbol? container-sym) ($$ container-sym) container-sym)
+                      ;; a field of a DATA type, F(x) = v, when the name holds no table or array (A<k> and F(k) are one form in the IR)
+                      raw-container (if (symbol? container-sym)
+                                      (let [v ($$ container-sym) f (get @<FUNS> (name container-sym))]
+                                        (if (and (not (table? v)) (not (array? v)) (:data (meta f))) f v))
+                                      container-sym)
                       ;; NAME indirect reference — dereference to the actual array/table
                       container (if (instance? NAME raw-container)
                                   ($$ (symbol (str (.n raw-container))))
@@ -698,6 +702,7 @@
   "True for a form F(args) that calls a function the program DEFINEd (and not a subscript of a table or an array of that name)."
   [X]
   (and (list? X) (symbol? (first X)) (contains? @<FUNS> (name (first X)))
+       (not (:data (meta (get @<FUNS> (name (first X))))))   ; a DATA constructor or field is not a DEFINEd function
        (let [v (reference (first X))] (not (or (table? v) (array? v))))))
 
 (defn- name-of-call
