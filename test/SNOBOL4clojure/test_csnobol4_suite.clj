@@ -5564,7 +5564,7 @@ END
 " (:stdout r)))))
 
 (deftest csnobol4-setexit3
-  "Budne suite: setexit3.sno"
+  "Budne suite: setexit3.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [r (run-with-timeout "* test SETEXIT return value
 
 	OUTPUT = SETEXIT('FOO')
@@ -5575,10 +5575,9 @@ FOO
 BAR
 END
 " 2000)]
-    (is (= "
+    (is (same-output? "
 FOO
 BAR
-
 " (:stdout r)))))
 
 (deftest csnobol4-setexit4
