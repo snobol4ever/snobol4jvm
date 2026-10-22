@@ -257,15 +257,9 @@
                     (array? container)
                     (or (array-set container (vec ks) r)
                         (throw (ex-info "ARRAY: subscript out of bounds" {:keys ks})))
-                    ;; PDD field setter: accessor-fn(instance-sym) = val
-                    ;; The accessor fn called with 2 args returns the updated map;
-                    ;; we then rebind the instance variable.
+                    ;; DATA field setter: accessor(instance) = val assigns the field of the object in place (the instance is already evaluated)
                     (fn? container)
-                    (let [inst-sym (first ks)
-                          inst     ($$ inst-sym)
-                          updated  (container inst r)]
-                      (snobol-set! inst-sym updated)
-                      r)
+                    (when (container (first ks) r) r)
                     :else nil))
                 ;; normal variable assignment
                 (clojure.core/contains? #{'OUTPUT 'TERMINAL 'INPUT} N)
@@ -733,12 +727,12 @@
           (let [[[_ X] R] parms]
             (when-some [v (EVAL! X)]
               (INVOKE '= (indirect-target v) (EVAL! R))))
-          ;; ITEM(container, key) = v: the element, as container<key> = v
-          (and (equal op '=) (list? (first parms)) (equal (first (first parms)) 'ITEM) (clojure.core/= 3 (count (first parms))))
-          (let [[_ container-expr key-expr] (first parms)]
+          ;; ITEM(container, key...) = v: the element, as container<key...> = v
+          (and (equal op '=) (list? (first parms)) (equal (first (first parms)) 'ITEM) (clojure.core/<= 3 (count (first parms))))
+          (let [[_ container-expr & key-exprs] (first parms)]
             (when-some [c (EVAL! container-expr)]
-              (when-some [k (EVAL! key-expr)]
-                (when-some [v (EVAL! (second parms))] (INVOKE '= (list c k) v)))))
+              (when-some [ks (eval-operands key-exprs)]
+                (when-some [v (EVAL! (second parms))] (INVOKE '= (apply list c ks) v)))))
           ;; F(args) = v, F a function that returns a name: the value goes to the name it returns
           (and (equal op '=) (call-form? (first parms)))
           (when-some [r (name-of-call (first parms))]
@@ -755,8 +749,6 @@
                                              container-val (if (list? container-sym) (EVAL! container-sym) ($$ container-sym))]
                                          (cond
                                            (nil? container-val) nil
-                                           ;; PDD setter: keep keys as raw symbols
-                                           (fn? container-val)  N
                                            ;; TABLE/ARRAY: evaluate keys
                                            :else (apply list (if (list? container-sym) container-val container-sym) (map EVAL! (rest N)))))
                                        N)]

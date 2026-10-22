@@ -1497,3 +1497,24 @@
                    " ITEM(A,2) = 'two'\n OUTPUT = 'd: ' A<2> ' ' ITEM(A,2)\n X = ITEM(A,3)\n OUTPUT = 'e: [' X ']'\nEND\n"))
       (is (= "a: val\nb: v2\nc: v2!\nd: two two\ne: []\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A DATA object is a thing with an identity: assigning a field changes the object wherever it is referred to, two constructions are two objects, IDENT compares identity,
+;; and a structure is linked by reference. The engine built an immutable map and rebound the variable that held it on a field assignment, so a copy of the
+;; variable was left behind, a link kept the old object, and the field of an object in an array or a table element could not be assigned at all (Budne's sudoku links
+;; its 81 cells this way). COPY makes a new object. The oracle, sbl -bf, wrote exactly this output.
+(deftest a-data-object-has-identity-and-its-fields-are-assigned-in-place
+  (let [f (java.io.File/createTempFile "dataobj" ".sno")]
+    (try
+      (spit f (str "        DATA('node(val,next)')\n" "        a = node(1)\n" "        b = node(2)\n"
+                   "        next(a) = b\n" "        val(b) = 'two'\n" "        OUTPUT = 'a: ' val(a) ' ' val(next(a)) ' ' DATATYPE(a)\n"
+                   "        c = a\n" "        val(c) = 'shared'\n" "        OUTPUT = 'b: ' val(a) ' ' val(c)\n"
+                   "        OUTPUT = IDENT(a,c) 'c: same object'\n" "        d = node(1)\n" "        OUTPUT = DIFFER(a,d) 'd: different objects'\n"
+                   "        arr = ARRAY(2)\n" "        arr<1> = node('x')\n" "        arr<2> = node('y')\n"
+                   "        next(arr<1>) = arr<2>\n" "        val(arr<2>) = 'Y'\n" "        OUTPUT = 'e: ' val(next(arr<1>)) ' ' val(arr<2>)\n"
+                   "        t = TABLE()\n" "        t['k'] = node('tv')\n" "        val(t['k']) = 'TV'\n"
+                   "        OUTPUT = 'f: ' val(t['k'])\n" "        e = COPY(a)\n" "        val(e) = 'copy'\n"
+                   "        OUTPUT = 'g: ' val(a) ' ' val(e) ' ' IDENT(next(a),next(e)) 'same next'\n" "        OUTPUT = 'h: [' next(d) ']'\n" "END\n"))
+      (is (= (str "a: 1 two node\nb: shared shared\nc: same object\nd: different objects\ne: Y Y\nf: TV\n"
+                  "g: shared copy same next\nh: []\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

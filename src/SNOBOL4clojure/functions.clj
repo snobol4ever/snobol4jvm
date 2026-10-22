@@ -194,6 +194,10 @@
     (table? x) (let [t (atom @x :meta {:order (atom (if-let [o (:order (meta x))] @o {}))})] t)
     (array? x) (SNOBOL4clojure.env/->SnobolArray
                   (:dims x) (:dflt x) (atom @(:data x)))
+    ;; a DATA object: a new object with the same field values
+    (instance? SNOBOL4clojure.env.DataObj x)
+    (SNOBOL4clojure.env/->DataObj (.type-name ^SNOBOL4clojure.env.DataObj x) (.field-names ^SNOBOL4clojure.env.DataObj x)
+                                  (aclone ^objects (.fields ^SNOBOL4clojure.env.DataObj x)))
     :else x))
 
 ;; ── Type conversion & char functions ─────────────────────────────────────────
@@ -316,20 +320,21 @@
           fnames fields]
       ;; Register in the global registry
       (swap! data-type-registry assoc tname fnames)
-      ;; Build constructor: (TYPE f1 f2 ...) → {:__type__ "TYPE" "F1" f1 ...}
-      ;; Build accessors:   (F inst) → val   and   (F inst new-val) → updated inst
+      ;; Build the constructor: (TYPE f1 f2 ...) is a new DataObj, a field not given being the null string.
+      ;; Build the accessors: (F inst) reads the field and (F inst new-val) assigns it in place; an instance of another type is a failure.
       ;; We emit a form suitable for eval in the user namespace.
       (let [constructor-body
               `(fn [& args#]
-                 (let [field-names# ~fnames
-                       pairs# (map vector field-names# args#)]
-                   (into {:__type__ ~tname} pairs#)))
+                 (SNOBOL4clojure.env/->DataObj ~tname ~fnames (object-array (map-indexed (fn [i# _#] (nth args# i# ε)) ~fnames))))
             accessor-forms
-              (for [f fnames]
+              (for [[i f] (map-indexed vector fnames)]
                 [f
                  `(fn
-                    ([inst#]       (get inst# ~f ε))
-                    ([inst# val#]  (assoc inst# ~f val#)))])]
+                    ([inst#]      (when (and (instance? SNOBOL4clojure.env.DataObj inst#) (clojure.core/= ~tname (.type-name ^SNOBOL4clojure.env.DataObj inst#)))
+                                    (aget ^"[Ljava.lang.Object;" (.fields ^SNOBOL4clojure.env.DataObj inst#) ~i)))
+                    ([inst# val#] (when (and (instance? SNOBOL4clojure.env.DataObj inst#) (clojure.core/= ~tname (.type-name ^SNOBOL4clojure.env.DataObj inst#)))
+                                    (aset ^"[Ljava.lang.Object;" (.fields ^SNOBOL4clojure.env.DataObj inst#) ~i val#)
+                                    val#)))])]
         `(do
            (SNOBOL4clojure.env/snobol-set! '~(symbol tname) ~constructor-body)
            ~@(for [[f form] accessor-forms]

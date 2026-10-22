@@ -433,7 +433,10 @@
 (defmethod DATATYPE "class [LLjava.lang.Object;"                  [_] "ARRAY")
 (defmethod DATATYPE "class SNOBOL4clojure.env.SnobolArray"        [_] "ARRAY")
 (defmethod DATATYPE "class clojure.lang.Atom"                     [_] "TABLE")
-;; A program-defined (DATA) object is a map carrying its type name.
+;; A program-defined (DATA) object has an identity, as in SPITBOL: its fields are assigned in place, whoever refers to the object sees the change, two constructions
+;; are two objects, and IDENT compares identity. It holds its type name, its field names and a mutable array of field values.
+(deftype DataObj [type-name field-names ^objects fields])
+(defmethod DATATYPE "class SNOBOL4clojure.env.DataObj"            [X] (.type-name ^DataObj X))
 (defmethod DATATYPE "class clojure.lang.PersistentArrayMap"       [X] (get X :__type__ "TABLE"))
 (defmethod DATATYPE "class clojure.lang.PersistentHashMap"        [X] (get X :__type__ "TABLE"))
 (defmethod DATATYPE "class clojure.lang.PersistentVector"         [_] "PATTERN")
