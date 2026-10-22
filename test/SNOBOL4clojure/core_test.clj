@@ -3076,3 +3076,23 @@
       (is (= "ran 1\n" (first (run "c3.sno" "\tX = 1\n\n+\tY = 2\n\tOUTPUT = 'ran ' X\nEND\n"))))
       (is (= "ran 3\n" (first (run "c5.sno" "\tX = 1\n+\t+ 2\n\tOUTPUT = 'ran ' X\nEND\n"))))
       (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))
+
+;; An assignment evaluates its subject before its replacement: "If failure occurs when evaluating the subject or replacement components, the assignment does not
+;; occur" (SPITBOL manual ch. 14, Assignment statement), and sbl -bf evaluates the subject first, so A[3] = F() on a two-element array fails without calling F. The engine
+;; evaluated the replacement first (TPgm test6's X[I] = ITM(0,) made one object too many). The oracle, sbl -bf, wrote exactly this output.
+(deftest an-assignment-evaluates-its-subject-before-its-replacement
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DEFINE('F()')                           :(FEND)\n"
+                   "F       OUTPUT = 'F called'\n"
+                   "        F = 'v'                                 :(RETURN)\n"
+                   "FEND    A = ARRAY(2)\n"
+                   "        A[3] = F()                              :S(S1)F(F1)\n"
+                   "S1      OUTPUT = 'assigned'                     :(N2)\n"
+                   "F1      OUTPUT = 'assignment failed'\n"
+                   "N2      A[1] = F()\n"
+                   "        OUTPUT = A[1]\n"
+                   "END\n"))
+      (is (= "assignment failed\nF called\nv\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

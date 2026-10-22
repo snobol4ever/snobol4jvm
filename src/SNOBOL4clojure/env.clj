@@ -491,6 +491,8 @@
                          dims idx-vec))
         idx-vec))))
 
+(defn array-in-bounds? "True when idx-vec names an element of arr." [arr idx-vec] (some? (array-check-bounds arr idx-vec)))
+
 (defn array-get
   "Read arr at idx-vec (vector of ints). Returns nil on bounds failure."
   [^SnobolArray arr idx-vec]
