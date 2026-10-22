@@ -987,3 +987,30 @@
                   "g: X=init\nside j\nh: X=\ni: X=\nside l\nj: X=\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; The target of . $ and @ may be an element (T<2>, a table element, @T<1>), the
+;; variable a string names ($V), or a deferred expression (*T<I>) that is
+;; evaluated when the assignment is made, so a loop that moves I fills a
+;; different element each time. The engine could assign only to a plain variable
+;; and died with a ClassCastException on any other target (Gimpel's CRACK,
+;; PAT = BREAK(B) . *CRACK<I> LEN(1)). A conditional assignment of a pattern that
+;; fails assigns nothing (h); an immediate one assigns on every attempt (i). The
+;; oracle, sbl -bf, wrote exactly this output.
+(deftest a-capture-may-assign-to-an-element-or-a-named-variable
+  (let [f (java.io.File/createTempFile "captgt" ".sno")]
+    (try
+      (spit f (str " T = ARRAY(3)\n 'xyz' LEN(1) . T<2>\n OUTPUT = 'a: ' T<2>\n"
+                   " I = 3\n 'xyz' LEN(1) . *T<I>\n OUTPUT = 'b: ' T<3>\n"
+                   " 'xyz' LEN(1) $ T<1>\n OUTPUT = 'c: ' T<1>\n"
+                   " V = 'W'\n 'xyz' LEN(2) . $V\n OUTPUT = 'd: ' W\n"
+                   " U = TABLE()\n 'abc' LEN(1) . U<'k'>\n OUTPUT = 'e: ' U<'k'>\n"
+                   " 'abc' LEN(2) @T<1>\n OUTPUT = 'f: ' T<1>\n"
+                   " R = ARRAY(3)\n PAT = LEN(1) . *R<J>\n S = 'pqr'\n J = 0\n"
+                   "LOOP J = J + 1\n S PAT =                           :S(LOOP)\n"
+                   " OUTPUT = 'g: ' R<1> R<2> R<3>\n"
+                   " 'xyz' LEN(1) . T<2> LEN(5)\n OUTPUT = 'h: ' T<2>\n"
+                   " 'xyz' LEN(1) $ T<2> LEN(5)\n OUTPUT = 'i: ' T<2>\n"
+                   "END\n"))
+      (is (= "a: x\nb: x\nc: x\nd: xy\ne: a\nf: 2\ng: pqr\nh: x\ni: z\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

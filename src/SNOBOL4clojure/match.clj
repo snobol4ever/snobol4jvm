@@ -29,6 +29,11 @@
             [SNOBOL4clojure.trace      :refer [pattern-trace-active?]])
   (:refer-clojure :exclude [= + - * / num]))
 
+;; A capture's target is a variable's symbol, or a function of the value that makes the assignment: an element T<I>, a variable a string names ($V) or a
+;; deferred expression (*T<I>), which the evaluator has turned into that function (operators.clj, capture-target).
+(defn- assign! [target v]
+  (if (fn? target) (target v) (snobol-set! target v)))
+
 ;; ── Tracing (off by default) ──────────────────────────────────────────────────
 (def ^:dynamic *trace* false)
 
@@ -249,7 +254,7 @@
           :succeed
           (let [[_ _ var-sym start-pos] (ζΠ ζ)
                 matched-text  (subs full-subject start-pos (ζδ ζ))]
-            (snobol-set! var-sym matched-text)   ; assign immediately, unconditionally
+            (assign! var-sym matched-text)       ; assign immediately, unconditionally
             (recur :succeed (ζ↑ ζ) Ω))           ; leave child retry frames on Ω
           (:fail :recede)
           (recur :recede (🡡 Ω) (🡧 Ω)))          ; pop our own frame, pass recede
@@ -262,7 +267,7 @@
           :succeed
           (let [[_ _ var-sym] (ζΠ ζ)
                 matched-text  (subs full-subject (ζΔ ζ) (ζδ ζ))]
-            (snobol-set! var-sym matched-text)
+            (assign! var-sym matched-text)
             (recur :succeed (ζ↑ ζ) Ω))
           (:fail :recede)
           (recur :recede (🡡 Ω) (🡧 Ω)))
@@ -488,7 +493,7 @@
         CURSOR-IMM!
         (case action
           (:proceed :succeed)
-          (do (snobol-set! (second (ζΠ ζ)) (ζδ ζ))
+          (do (assign! (second (ζΠ ζ)) (ζδ ζ))
               (recur :succeed (ζ↑ ζ (ζΣ ζ) (ζδ ζ)) Ω))
           (:fail :recede)
           (recur :recede (🡡 Ω) (🡧 Ω)))
@@ -549,7 +554,7 @@
    Mirrors CSNOBOL4/v311 NMD procedure that walks the NAMICL name list."
   []
   (doseq [[var-sym text] (reverse @*pending-cond*)]
-    (snobol-set! var-sym text)))
+    (assign! var-sym text)))
 
 (defn SEARCH
   "Slide pattern P across string S, trying each start position 0..n, or

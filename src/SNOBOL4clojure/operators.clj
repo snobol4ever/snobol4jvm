@@ -611,6 +611,28 @@
         (when-not (nil? v) (recur (next ops) (conj vals v))))
       vals)))
 
+;; The target of . $ and @ says where the matcher puts a value. A plain variable is its symbol. Any other target becomes a function of the value: an element
+;; T<I> takes its subscripts now, a variable named by a string ($V) takes its name now, and a deferred expression (*T<I>) takes its subscripts when the assignment
+;; is made, so a loop that moves I fills a different element each time.
+(defn- assign-to [target v] (INVOKE '= target v))
+
+(defn- element-target [N] (apply list (first N) (map EVAL! (rest N))))
+
+(defn- capture-target [N]
+  (cond
+    (symbol? N)
+    N
+    (and (list? N) (equal (first N) '$) (clojure.core/= 2 (count N)))
+    (when-some [v (EVAL! (second N))]
+      (let [t (indirect-target v)] (fn [x] (assign-to t x))))
+    (and (list? N) (equal (first N) '*) (clojure.core/= 2 (count N)))
+    (let [X (second N)]
+      (fn [x] (assign-to (if (list? X) (element-target X) X) x)))
+    (list? N)
+    (let [t (element-target N)] (fn [x] (assign-to t x)))
+    true
+    N))
+
 (defn EVAL! [E]
   (when E
     (cond
@@ -646,16 +668,16 @@
                          (apply list (first x) (map EVAL! (rest x)))
                          x)))
               ;; Binary P . V — CAPTURE-COND (conditional assignment on match success).
-              (let [[P N] parms] (INVOKE '. (EVAL! P) N))))
+              (let [[P N] parms] (INVOKE '. (EVAL! P) (capture-target N)))))
           ;; Unary @V — cursor assignment. The matcher assigns the cursor to V by
           ;; name, so the operand is passed as written and not read as a value.
           (and (equal op 'at) (clojure.core/= 1 (count parms)))
-          (list 'CURSOR-IMM! (first parms))
+          (list 'CURSOR-IMM! (capture-target (first parms)))
           (equal op '$)     (if (clojure.core/= 1 (count parms))
                               ;; Unary $X — the variable X's value names (a string or a NAME)
                               (when-some [v (EVAL! (first parms))]
                                 (EVAL! (indirect-target v)))
-                              (let [[P N] parms] (INVOKE '$ (EVAL! P) N)))
+                              (let [[P N] parms] (INVOKE '$ (EVAL! P) (capture-target N))))
           ;; $X = V — assign the variable X's value names
           (and (equal op '=) (list? (first parms)) (clojure.core/= 2 (count (first parms)))
                (equal (first (first parms)) '$))
