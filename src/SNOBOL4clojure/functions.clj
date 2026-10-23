@@ -402,7 +402,15 @@
       (nth fields (dec (long n))))))
 
 ;; ── Date / time ───────────────────────────────────────────────────────────────
-(defn DATE   []    (.toString (java.util.Date.)))
+;; DATE(i) "produce date and time" (manual ch. 19). As sbl -bf answers it: mm/dd/yy hh:mm:ss, mm/dd/yyyy hh:mm:ss for 1, yyyy-mm-dd hh:mm:ss for 2, the first
+;; for any other integer; an argument that is not an integer is "330 date argument is not integer".
+(defn DATE
+  ([] (DATE 0))
+  ([i]
+   (let [n (if (or (nil? i) (clojure.core/= "" i)) 0 (SNOBOL4clojure.env/num i))]
+     (when-not (integer? n) (throw (ex-info "date argument is not integer" {:snobol/error 330})))
+     (.format (java.time.LocalDateTime/now)
+              (java.time.format.DateTimeFormatter/ofPattern (case (long n) 1 "MM/dd/yyyy HH:mm:ss" 2 "yyyy-MM-dd HH:mm:ss" "MM/dd/yy HH:mm:ss"))))))
 (defn TIME   []    (System/currentTimeMillis))
 
 ;; ── I/O ───────────────────────────────────────────────────────────────────────

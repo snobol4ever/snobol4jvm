@@ -5189,3 +5189,19 @@
       (is (= "a\n\fb\n93\n" (with-out-str (-main (.getPath f)))))
       (is (= "page one\n\f\npage two\n" (slurp out)))
       (finally (.delete f) (.delete out)))))
+
+;; DATE(i) as sbl -bf answers it: mm/dd/yy hh:mm:ss, mm/dd/yyyy hh:mm:ss for 1, yyyy-mm-dd hh:mm:ss for 2; a non-integer is "330 date argument is not integer".
+;; The engine answered java.util.Date's text, 28 characters (SnoRungs ladder__rung30_date).
+(deftest date-has-spitbols-shapes
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 1\n"
+                   "        OUTPUT = DATE()\n"
+                   "        OUTPUT = DATE(1)\n"
+                   "        OUTPUT = DATE(2)\n"
+                   "        DATE('x')\n"
+                   "        OUTPUT = &ERRTYPE\n"
+                   "END\n"))
+      (is (re-matches #"\d\d/\d\d/\d\d \d\d:\d\d:\d\d\n\d\d/\d\d/\d{4} \d\d:\d\d:\d\d\n\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\n330\n"
+                      (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
