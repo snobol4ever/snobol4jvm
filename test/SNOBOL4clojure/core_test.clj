@@ -5140,3 +5140,15 @@
                    "END\n"))
       (is (= "1 first ARRAY\nfield element\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; "Tracing keyword &STCOUNT produces a trace after every SPITBOL statement" (manual ch. 16), and the END statement is one: sbl -bf writes its line too, and calls
+;; a trace function for it. The engine counted END in &STCOUNT without the trace (SnoRungs keyword_35, user_function_keyword_11). sbl -bf's output.
+(deftest the-stcount-trace-fires-at-end
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &TRACE = 100\n"
+                   "        TRACE('STCOUNT', 'KEYWORD')\n"
+                   "        OUTPUT = 'a'\n"
+                   "END\n"))
+      (is (= "****3*******  &STCOUNT = 3\na\n****4*******  &STCOUNT = 4\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

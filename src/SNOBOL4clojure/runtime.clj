@@ -62,15 +62,17 @@
 
 (defn- label-name [tgt] (when (or (keyword? tgt) (string? tgt) (symbol? tgt)) (name tgt)))
 
-;; The END statement is executed like any other when control reaches it, by falling in or by a goto: it counts in &STCOUNT and is the statement &STNO and &LINE name afterwards.
+;; The END statement is executed like any other when control reaches it, by falling in or by a goto: it counts in &STCOUNT, fires the &STCOUNT trace as another
+;; statement does (sbl -bf: ****6*******  &STCOUNT = 6 for the END of a five-statement program), and is the statement &STNO and &LINE name afterwards.
 (defn- end-statement! []
   (when-let [n (@<STNO> :END)]
-    (when-not (neg? (long @&STLIMIT)) (swap! &STCOUNT inc))
-    (reset! &LASTNO @&STNO)
-    (reset! &STNO (get @<DISPNO> n n))
-    (reset! &LASTFILE @&FILE)
-    (reset! &LASTLINE @&LINE)
-    (let [[f l] (get @<POS> n ["" 0])] (reset! &FILE f) (reset! &LINE l))))
+    (let [counted (when-not (neg? (long @&STLIMIT)) (swap! &STCOUNT inc))]
+      (reset! &LASTNO @&STNO)
+      (reset! &STNO (get @<DISPNO> n n))
+      (reset! &LASTFILE @&FILE)
+      (reset! &LASTLINE @&LINE)
+      (let [[f l] (get @<POS> n ["" 0])] (reset! &FILE f) (reset! &LINE l))
+      (when (and counted (pos? (long @&TRACE))) (fire-keyword! "STCOUNT" counted)))))
 
 (defn RUN [at]
   (letfn
