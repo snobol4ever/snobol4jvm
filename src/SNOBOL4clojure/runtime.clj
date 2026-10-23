@@ -19,7 +19,7 @@
                                            snobol-nreturn! snobol-end!
                                            snobol-steplimit!]]
             [SNOBOL4clojure.trace :refer [fire-label! statement-trace-active?]]
-            [SNOBOL4clojure.operators :refer [EVAL!]]))
+            [SNOBOL4clojure.operators :refer [EVAL! INVOKE]]))
 
 ;; Special goto targets that trigger control-flow signals rather than label jumps. "If case-folding is in effect, they may appear with any combination of upper- or
 ;; lower-case letters" (manual ch. 16, Special names); without folding, as sbl -bf runs, RETURN, FRETURN and NRETURN are special in capitals only (:(return) is a label, or
@@ -104,6 +104,15 @@
            (if (instance? SNOBOL4clojure.env.CodeBlock v)
              (.entry ^SNOBOL4clojure.env.CodeBlock v)
              (throw (ex-info "goto operand in direct goto is not code" {:snobol/error 24}))))
+         ;; a function call is a call by name: the name it returns by NRETURN is the label (:(RET('C2')) goes to RETURN when RET returns .RETURN); a value returned
+         ;; is "21 Function called by name returned a value", and a failure "20 Goto evaluation failure" (manual, Appendix D), as sbl -bf has them
+         (and (list? tgt) (symbol? (first tgt)) (not (:subscript (meta tgt))))
+         (let [args (mapv EVAL! (rest tgt))
+               _    (when (some nil? args) (throw (ex-info "goto evaluation failure" {:snobol/error 20})))
+               r    (apply INVOKE (first tgt) args)]
+           (cond (instance? SNOBOL4clojure.env.NameResult r) (let [t (:target r)] (if (symbol? t) (keyword (name t)) t))
+                 (nil? r) (throw (ex-info "goto evaluation failure" {:snobol/error 20}))
+                 :else    (throw (ex-info "function called by name returned a value" {:snobol/error 21}))))
          :else tgt))
      (goto! [tgt]
        (if (special-targets tgt)

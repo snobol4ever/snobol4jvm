@@ -4612,3 +4612,26 @@
                    "4 same\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; A Goto field's label "may be a name, or the result of evaluating an expression" (manual ch. 14, Goto field): a function call there is a call by name, and the
+;; name it returns by NRETURN is the label, :(BYNAME('T1')) going to T1 and :(RET()) to RETURN when RET returns .RETURN, as sbl -bf runs them; a call that returns
+;; a value is "21 Function called by name returned a value". The engine took the call for a label's name, ERROR 038 (Gimpel statef: :(RET('C2'))).
+(deftest a-call-in-a-goto-field-names-the-label
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DEFINE('BYNAME(L)')\n"
+                   "        DEFINE('COUNTER()')\n"
+                   "        DEFINE('RET()')                           :(MAIN)\n"
+                   "BYNAME  BYNAME = L                                :(NRETURN)\n"
+                   "RET     RET = .RETURN                             :(NRETURN)\n"
+                   "COUNTER COUNTER = 'counted'                       :(RET())\n"
+                   "MAIN    :(BYNAME('T1'))\n"
+                   "        OUTPUT = 'fell'\n"
+                   "T1      OUTPUT = '1 at T1'\n"
+                   "        OUTPUT = '2 ' COUNTER()\n"
+                   "END\n"))
+      (is (= (str "1 at T1\n"
+                   "2 counted\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
