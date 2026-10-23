@@ -437,12 +437,14 @@
 ;; when it gets none), -l<n> line mode with records of at most n characters (the rest of a longer line is dropped), -a appends to the file. Other options are accepted and
 ;; change nothing here. Returns {:name "" :opts {\f 0 ...}}; an options-only argument has the null string for its name.
 (defn file-spec [s]
-  (let [[_ nm opts] (re-matches #"(?s)(.*?)\s*(?:\[([^\]]*)\])?\s*" (str s))
+  (let [[_ nm opts] (re-matches #"(?s)([^\[]*)(?:\[([^\]]*)\]?.*)?" (str s))
+        nm   (clojure.string/trimr (or nm ""))
         opts (for [o (clojure.string/split (or opts "") #"[\s,]+")
                    :let [[_ k n] (re-matches #"-([A-Za-z])(\d*)" o)]
                    :when k]
                [(Character/toLowerCase (.charAt ^String k 0)) (when (seq n) (Long/parseLong n))])]
-    {:name (clojure.string/trim (or nm "")) :opts (into {} opts)}))
+    ;; the name is the text before the bracket less its trailing blanks; a blank left in it, at its start or within, makes the argument :bad (ERROR 116, 160)
+    {:name nm :opts (into {} opts) :bad (boolean (re-find #"\s" nm))}))
 
 ;; A channel is an integer or a string; a NAME is the string of its name, and a string of digits the integer channel ('7' is 7), as INPUT, OUTPUT, ENDFILE,
 ;; REWIND and BACKSPACE take it under sbl -bf. Omitted or null, it is 0.
@@ -462,9 +464,10 @@
    A file named by the third argument that cannot be opened fails, as in sbl -bf. Returns ε on success, nil on failure."
   ([var-sym unit filename] (open-input-channel! var-sym unit filename true))
   ([var-sym unit filename quietly]
-  (let [{nm :name opts :opts} (file-spec (or filename ""))
+  (let [{nm :name opts :opts blank-in-name :bad} (file-spec (or filename ""))
         file-str (when-not (clojure.string/blank? nm) nm)
         bad      #(throw (ex-info "inappropriate file specification for input" {:snobol/error 116}))
+        _        (when blank-in-name (bad))
         rdr (if file-str
               (if (clojure.string/starts-with? file-str "|")
                 (bad)
@@ -549,9 +552,10 @@
    A file named by the third argument that cannot be opened fails, as in sbl -bf. Returns ε on success, nil on failure."
   ([var-sym unit filename] (open-output-channel! var-sym unit filename true))
   ([var-sym unit filename quietly]
-  (let [{nm :name opts :opts} (file-spec (or filename ""))
+  (let [{nm :name opts :opts blank-in-name :bad} (file-spec (or filename ""))
         file-str (when-not (clojure.string/blank? nm) nm)
         bad      #(throw (ex-info "inappropriate file specification for output" {:snobol/error 160}))
+        _        (when blank-in-name (bad))
         ;; a file's stream is kept, for SET to move
         out (when (and file-str (not (clojure.string/starts-with? file-str "|")))
               (try (java.io.FileOutputStream. (channel-file file-str) (contains? opts \a)) (catch Exception _ nil)))

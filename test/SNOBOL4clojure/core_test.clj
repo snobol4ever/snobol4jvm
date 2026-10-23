@@ -4526,3 +4526,40 @@
                    "5 A\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; A file argument is the file's name and, in square brackets after it, options; the name is the text before the bracket with its trailing blanks dropped, and what
+;; follows the closing bracket is ignored. A blank left in the name, at its start or within it, is "116 inappropriate file specification for input" (160 for
+;; OUTPUT), while a file that cannot be opened fails, as sbl -bf has them. The engine trimmed the name at both ends, read a name followed by more words as a file of
+;; that name, and took a name with text after its bracket for standard input (Gimpel dextern: INPUT(.LIB_FILE, .LIB_, "Library File Name") is ERROR 116).
+(deftest a-blank-in-a-file-name-is-an-inappropriate-file-specification
+  (let [dir (.toFile (java.nio.file.Files/createTempDirectory "fsp" (make-array java.nio.file.attribute.FileAttribute 0)))
+        f   (java.io.File. dir "fs.sno")]
+    (try
+      (spit (java.io.File. dir "in.txt") "one\ntwo\n")
+      (spit f (str "        &ERRLIMIT = 20\n"
+                        "        INPUT(.A, 6, 'in.txt ')                :F(F1)\n"
+                        "        OUTPUT = '1 [' A ']'\n"
+                        "F1      INPUT(.B, 7, 'in.txt [-r2] x')         :F(F2)\n"
+                        "        OUTPUT = '2 [' B ']'\n"
+                        "F2      INPUT(.C, 8, ' in.txt')                :S(F3)\n"
+                        "        OUTPUT = '3 fails ' &ERRTYPE\n"
+                        "F3      &ERRTYPE = 0\n"
+                        "        INPUT(.D, 9, 'in.txt extra')           :S(F4)\n"
+                        "        OUTPUT = '4 fails ' &ERRTYPE\n"
+                        "F4      &ERRTYPE = 0\n"
+                        "        OUTPUT(.E, 10, 'o ut.txt')             :S(F5)\n"
+                        "        OUTPUT = '5 fails ' &ERRTYPE\n"
+                        "F5      &ERRTYPE = 0\n"
+                        "        INPUT(.G, 11, 'nosuchfile')            :S(F6)\n"
+                        "        OUTPUT = '6 fails ' &ERRTYPE\n"
+                        "F6\n"
+                        "END\n"))
+      (is (= (str "1 [one]\n"
+                   "2 [on]\n"
+                   "3 fails 116\n"
+                   "4 fails 116\n"
+                   "5 fails 160\n"
+                   "6 fails 0\n")
+             (binding [SNOBOL4clojure.env/*file-dir* (.getPath dir)] (with-out-str (-main (.getPath f))))))
+      (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))
