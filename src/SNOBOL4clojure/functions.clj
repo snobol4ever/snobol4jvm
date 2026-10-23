@@ -444,6 +444,16 @@
                [(Character/toLowerCase (.charAt ^String k 0)) (when (seq n) (Long/parseLong n))])]
     {:name (clojure.string/trim (or nm "")) :opts (into {} opts)}))
 
+;; A channel is an integer or a string; a NAME is the string of its name, and a string of digits the integer channel ('7' is 7), as INPUT, OUTPUT, ENDFILE,
+;; REWIND and BACKSPACE take it under sbl -bf. Omitted or null, it is 0.
+(defn channel-key [u]
+  (if (integer? u)
+    u
+    (let [t (clojure.string/trim (if (nil? u) "" (sstr u)))]
+      (cond (clojure.core/= "" t)        0
+            (re-matches #"[+-]?\d+" t)  (Long/parseLong t)
+            :else                        t))))
+
 (defn open-input-channel!
   "Register var-sym as an input channel on unit.
    filename nil or empty → stdin sentinel (reads via read-line, :file stored as nil).
@@ -475,7 +485,7 @@
 
 ;; REWIND(unit): an input file starts again from its first record. A unit no INPUT or OUTPUT opened is ERROR 174, as sbl -bf raises it (standard input among them).
 (defn rewind-channel! [unit]
-  (let [u  (if (integer? unit) unit (long (env/num unit)))
+  (let [u  (channel-key unit)
         ch (get @<CHANNELS> u)]
     (cond
       (nil? ch) (throw (ex-info "rewind file does not exist" {:snobol/error 174}))
@@ -591,9 +601,7 @@
   ([unit]
    (let [fail (fn [n m] (throw (ex-info m {:snobol/error n})))
          _    (when (or (nil? unit) (clojure.core/= "" unit)) (fail 316 "backspace argument is not a suitable name"))
-         u    (cond (integer? unit) unit
-                    (string? unit)  (let [t (clojure.string/trim unit)] (when (re-matches #"[+-]?\d+" t) (Long/parseLong t))))
-         ch   (when u (get @<CHANNELS> u))
+         ch   (get @<CHANNELS> (channel-key unit))
          _    (when-not ch (fail 317 "backspace file does not exist"))
          f    (when (:file ch) (channel-file (:file ch)))
          back (fn [p]

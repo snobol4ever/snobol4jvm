@@ -4456,3 +4456,43 @@
                    "4 [w]\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; A channel is an integer or a string, and a NAME is the string of its name, as INPUT, OUTPUT, ENDFILE, REWIND and BACKSPACE take it under sbl -bf; '7' is
+;; the channel 7. The engine took only an integer and died converting a string to one (Gimpel dextern: INPUT(.LIB_FILE, .LIB_, ...)).
+(deftest a-channel-may-be-a-string-or-a-name
+  (let [dir (.toFile (java.nio.file.Files/createTempDirectory "chn" (make-array java.nio.file.attribute.FileAttribute 0)))
+        f   (java.io.File. dir "c.sno")]
+    (try
+      (spit (java.io.File. dir "in.txt") "one\ntwo\n")
+      (spit f (str "        &ERRLIMIT = 10\n"
+                        "        INPUT(.X, 'chan', 'in.txt')                :S(A1)\n"
+                        "        OUTPUT = 'input fails ' &ERRTYPE           :(A2)\n"
+                        "A1      OUTPUT = '1 ' X ' ' X\n"
+                        "A2      REWIND('chan')\n"
+                        "        OUTPUT = '2 ' X\n"
+                        "        INPUT(.Y, .LIB, 'in.txt')                  :S(B1)\n"
+                        "        OUTPUT = 'name fails ' &ERRTYPE            :(B2)\n"
+                        "B1      OUTPUT = '3 ' Y\n"
+                        "B2      OUTPUT(.O, 'outc', 'out.txt')\n"
+                        "        O = 'written'\n"
+                        "        ENDFILE('outc')\n"
+                        "        INPUT(.Z, 'zz', 'out.txt')\n"
+                        "        OUTPUT = '4 ' Z\n"
+                        "        REWIND(.LIB)\n"
+                        "        OUTPUT = '5 ' Y\n"
+                        "        INPUT(.W, '7', 'in.txt')\n"
+                        "        REWIND(7)\n"
+                        "        OUTPUT = '6 ' W\n"
+                        "        BACKSPACE('chan')\n"
+                        "        OUTPUT = '7 ' X\n"
+                        "END\n"))
+      (is (= (str "1 one two\n"
+                   "2 one\n"
+                   "3 one\n"
+                   "4 written\n"
+                   "5 one\n"
+                   "6 one\n"
+                   "7 one\n")
+             (binding [SNOBOL4clojure.env/*file-dir* (.getPath dir)] (with-out-str (-main (.getPath f))))))
+      (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))

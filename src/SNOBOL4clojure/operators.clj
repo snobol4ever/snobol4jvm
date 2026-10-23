@@ -13,7 +13,7 @@
             [SNOBOL4clojure.functions :refer
              [ASCII CHAR ORD DATE TIME REMDR ATAN CHOP COS EXP LN SIN SQRT TAN INTEGER integer-predicate REAL SETEXIT HOST STRING SIZE TRIM DUPL REVERSE LPAD RPAD REPLACE SUBSTR
               ITEM PROTOTYPE CONVERT COPY FIELD SORT RSORT DATA
-              open-input-channel! open-output-channel! close-channel! write-to-channel! rewind-channel!]]
+              open-input-channel! open-output-channel! close-channel! write-to-channel! rewind-channel! channel-key]]
             [SNOBOL4clojure.match     :refer [MATCH SEARCH FULLMATCH]]
             [SNOBOL4clojure.patterns  :refer
              [ANY BREAK BREAKX NOTANY SPAN ARBNO FENCE
@@ -618,7 +618,7 @@
                                (instance? SNOBOL4clojure.env.NAME name-arg)
                                (symbol (str (.n ^SNOBOL4clojure.env.NAME name-arg)))
                                :else (symbol (str name-arg)))]
-                (open-input-channel! var-sym (long (or unit 0)) filename (not= 4 (count args))))
+                (open-input-channel! var-sym (channel-key unit) filename (not= 4 (count args))))
     input     (apply INVOKE 'INPUT args)
     OUTPUT    (let [name-arg (first args)
                     unit     (second args)
@@ -632,9 +632,9 @@
                                (instance? SNOBOL4clojure.env.NAME name-arg)
                                (symbol (str (.n ^SNOBOL4clojure.env.NAME name-arg)))
                                :else (symbol (str name-arg)))]
-                (open-output-channel! var-sym (long (or unit 0)) filename (not= 4 (count args))))
+                (open-output-channel! var-sym (channel-key unit) filename (not= 4 (count args))))
     output    (apply INVOKE 'OUTPUT args)
-    ENDFILE   (close-channel! (first args))
+    ENDFILE   (close-channel! (channel-key (first args)))
     endfile   (apply INVOKE 'ENDFILE args)
     DETACH    (let [v (first args)
                     sym (cond
