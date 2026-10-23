@@ -382,7 +382,8 @@
                                                (clojure.string/split s #",")))))
                   f-sym     (symbol fname)
                   ;; Entry point: explicit .label arg, or the keyword of fname, in the case it is written (sbl -bf folds no name)
-                  entry     (if (and (>= (count args) 2) entry-arg)
+                  ;; a null name is an absent one: "If absent, a label with the same name as the function is the assumed entry point" (manual ch. 19, DEFINE)
+                  entry     (if (and (>= (count args) 2) entry-arg (not (clojure.core/= "" (sstr entry-arg))))
                               ;; entry-arg may be a NAME (symbol) from (.label) notation
                               (if (symbol? entry-arg)
                                 (keyword (str (name entry-arg)))

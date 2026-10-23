@@ -4563,3 +4563,27 @@
                    "6 fails 0\n")
              (binding [SNOBOL4clojure.env/*file-dir* (.getPath dir)] (with-out-str (-main (.getPath f))))))
       (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))
+
+
+;; "Name is optional, and specifies a label as the first statement of the function body. If absent, a label with the same name as the function is the assumed entry
+;; point" (manual ch. 19, DEFINE); a null name is an absent one, as an argument left out is the null string, so DEFINE('THRICE(X)', '') enters at THRICE, as sbl
+;; -bf has it. The engine took the null string for a label of that name, so the
+;; function had no body (Gimpel ftrace: FTRACE passes its LABEL, null when its caller gives none, to DEFINE).
+(deftest a-null-entry-label-is-the-function-name
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DEFINE('THRICE(X)', '')                 :(THRICE_END)\n"
+                   "THRICE  THRICE = X X X                          :(RETURN)\n"
+                   "THRICE_END\n"
+                   "        OUTPUT  =  '1 ' THRICE('z')\n"
+                   "        DEFINE('F2(X)', .F2B)                   :(F2_END)\n"
+                   "F2B     F2 = X '!'                              :(RETURN)\n"
+                   "F2_END  OUTPUT = '2 ' F2('q')\n"
+                   "        DEFINE('F3(X)', 'F2B')\n"
+                   "        OUTPUT = '3 ' F3('r')\n"
+                   "END\n"))
+      (is (= (str "1 zzz\n"
+                   "2 q!\n"
+                   "3 \n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
