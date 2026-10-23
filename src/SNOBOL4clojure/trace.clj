@@ -120,7 +120,7 @@
   [text]
   (when (pos? @&TRACE)
     (swap! &TRACE dec)
-    (trace-println (star-field) "  " text)))
+    (trace-println (star-field) " " text)))
 
 ;; "Name2 is the optional name of a program-defined function that will be called when a trace occurs. It is called with two arguments: the name of the item being
 ;; traced, and argument s2" (manual ch. 19, TRACE); "When a program-defined trace function is invoked, keywords &TRACE and &FTRACE are temporarily set to zero.
@@ -141,13 +141,13 @@
 ;; ── Fire helpers — called from runtime / operators / functions ────────────────
 
 (defn fire-value!
-  "Fire VALUE trace for `sym` being assigned `new-val`.
-   Called from operators.clj INVOKE '= after the assignment."
+  "Fire VALUE trace for `sym` being assigned `new-val`. Called from operators.clj INVOKE '= after the assignment. The line is the statement's star field, an i
+   for each function level, then name = value, as sbl -bf writes it (****4******* i G = 3 for an assignment in a function called from level 0)."
   [sym new-val]
   (when-let [entry (@registry (reg-key sym :value))]
     (if-let [f (and (pos? @&TRACE) (trace-fn entry))]
       (call-trace-fn! f sym entry)
-      (emit-line! (str sym " = " (trace-val new-val))))
+      (emit-line! (str (apply str (repeat @&FNCLEVEL \i)) " " sym " = " (trace-val new-val))))
     (:label entry)))
 
 (defn fire-access!

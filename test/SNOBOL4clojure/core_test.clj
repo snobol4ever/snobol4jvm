@@ -5002,3 +5002,28 @@
                   "x=5 trace=15\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; "To give a visual impression of depth of nesting, the letter 'I' is included in the trace output for each additional level of function call" (manual ch. 19,
+;; TRACE). sbl -bf writes a VALUE trace's line as its others: the star field, an i for each function level, then name = value; the engine wrote two blanks at
+;; every level. Expected output is sbl -bf's, an assignment and a conditional one at level 1 and one at level 2.
+(deftest a-value-trace-marks-each-function-level
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &TRACE = 20\n"
+                   "        DEFINE('F(Y)')                  :(FE)\n"
+                   "F       G = Y\n"
+                   "        'ab' 'a' . G\n"
+                   "        H = G(Y)                        :(RETURN)\n"
+                   "FE      DEFINE('G(Z)')                  :(GE)\n"
+                   "G       K = Z                           :(RETURN)\n"
+                   "GE      TRACE('G', 'VALUE')\n"
+                   "        TRACE('K', 'VALUE')\n"
+                   "        X = F(1)\n"
+                   "        G = 'top'\n"
+                   "END\n"))
+      (is (= (str "****3******* i G = 1\n"
+                  "****4******* i G = 'a'\n"
+                  "****7******* ii K = 1\n"
+                  "****11******  G = 'top'\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
