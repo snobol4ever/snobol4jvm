@@ -5118,3 +5118,25 @@
                         ["'FOO', 'NOSUCH'" "ok"] ["'', 'SIZE'" "155"] ["'FOO', ''" "154"]]]
         (is (= (str want "\n") (run a)) a))
       (finally (.delete f)))))
+
+;; F(x) with parentheses is a call, A[x] or A<x> a subscript: an assignment to F(x), F a field of a DATA type, sets the field whatever a variable F holds. The
+;; engine took a(x) = a for a subscript of the array a local a held, ERROR 238 (SnoRungs demo_treebank, user_function_rem_array_replace_branch_1). sbl -bf's output.
+(deftest a-field-call-is-not-a-subscript
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DATA('LIST(N,A)')\n"
+                   "        DEFINE('PUT(X,V)A')                     :(PUT_END)\n"
+                   "PUT     A = ARRAY(2)\n"
+                   "        A[1] = V\n"
+                   "        A(X) = A\n"
+                   "        N(X) = 1                                :(RETURN)\n"
+                   "PUT_END L = LIST(0)\n"
+                   "        PUT(L, 'first')\n"
+                   "        OUTPUT = N(L) ' ' A(L)[1] ' ' DATATYPE(A(L))\n"
+                   "        A = ARRAY(3)\n"
+                   "        A(L) = 'field'\n"
+                   "        A[2] = 'element'\n"
+                   "        OUTPUT = A(L) ' ' A[2]\n"
+                   "END\n"))
+      (is (= "1 first ARRAY\nfield element\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

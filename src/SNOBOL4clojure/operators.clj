@@ -320,12 +320,13 @@
                 (let [[container-sym & ks] N
                       r (concat-value r)
                       ;; the container is a variable's name, or the table or array itself when it came from a subscript (tt['blue']['green'])
-                      ;; a field of a DATA type, F(x) = v, when the name holds no table or array (A<k> and F(k) are one form in the IR)
+                      ;; a field of a DATA type, F(x) = v: written with parentheses, or with brackets when the name holds no table or array (the subscript form
+                      ;; carries :subscript; sbl -bf: a(x) = a sets the field a while a local a holds an array)
                       raw-container (cond
                                       (:container (meta N)) (:container (meta N))   ; the element a name of an element holds
                                       (symbol? container-sym)
                                       (let [v ($$ container-sym) f (get @<FUNS> (name container-sym))]
-                                        (if (and (not (table? v)) (not (array? v)) (:data (meta f))) f v))
+                                        (if (and (:data (meta f)) (or (not (:subscript (meta N))) (and (not (table? v)) (not (array? v))))) f v))
                                       :else container-sym)
                       ;; NAME indirect reference — dereference to the actual array/table
                       container (if (instance? NAME raw-container)
@@ -762,7 +763,7 @@
 ;; is made, so a loop that moves I fills a different element each time.
 (defn- assign-to [target v] (INVOKE '= target v))
 
-(defn- element-target [N] (apply list (first N) (map EVAL! (rest N))))
+(defn- element-target [N] (with-meta (apply list (first N) (map EVAL! (rest N))) (meta N)))
 
 ;; The operators whose result is a value and never a name: an expression made with one of them cannot be the target of an assignment.
 (def ^:private value-operators '#{= ?= ? | at + - sharp / * % ** ^ ! . tilde & SEQ})
@@ -919,13 +920,16 @@
                                          (cond
                                            (nil? container-val) nil
                                            ;; TABLE/ARRAY: evaluate keys
-                                           :else (apply list (if (list? container-sym) container-val container-sym) (map EVAL! (rest N)))))
+                                           ;; the form keeps its :subscript mark, which tells A[k] from F(k)
+                                           :else (with-meta (apply list (if (list? container-sym) container-val container-sym) (map EVAL! (rest N))) (meta N))))
                                        N)]
                               ;; the subject is evaluated before the replacement: an element out of bounds fails the statement and the replacement is never
                               ;; evaluated (sbl -bf: A[3] = F() on a two-element array does not call F)
-                              (when (and N' (not (and (list? N') (array? (if (symbol? (first N')) ($$ (first N')) (first N')))
-                                                      (not (SNOBOL4clojure.env/array-in-bounds? (if (symbol? (first N')) ($$ (first N')) (first N')) (vec (rest N')))))))
-                                (INVOKE '= N' (EVAL! R))))
+                              ;; (F(x) with parentheses is a field of a DATA type F, whatever a variable F holds)
+                              (let [c      (when (list? N') (if (symbol? (first N')) ($$ (first N')) (first N')))
+                                    field? (and (list? N') (symbol? (first N')) (not (:subscript (meta N'))) (:data (meta (get @<FUNS> (name (first N'))))))]
+                                (when (and N' (not (and (array? c) (not field?) (not (SNOBOL4clojure.env/array-in-bounds? c (vec (rest N')))))))
+                                  (INVOKE '= N' (EVAL! R)))))
           ;; "Replacement occurs only if evaluation of the subject, pattern, and replacement succeeded" (manual ch. 14): a pattern that fails to evaluate fails the statement
           ;; an element or field subject takes its subscripts before the pattern is evaluated and matched (sbl -bf: A<I> BUMP() = 'W' fills A<2> when BUMP
           ;; moves I from 2)
