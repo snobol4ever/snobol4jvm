@@ -5424,3 +5424,20 @@
                    "END\n"))
       (is (= "A B ? matched\nN + 1 4 matched\nalt ok\nchain C\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; COLLECT() answers the free words: the heap's words less those the program's data occupies as SPITBOL lays it out (manual ch. 20, Space Considerations), so storage
+;; the program lets go of shows as freed, whatever the JVM's own heap does (Gimpel timegc: COLLECT() - STREM was -67 on the JVM heap; sbl frees 38).
+(deftest collect-counts-the-storage-a-program-lets-go-of
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        A = ARRAY(3)\n"
+                   "        A[1] = DUPL('*', 100); A[2] = DUPL('*', 100)\n"
+                   "        S = DUPL(' ', 78) 'X'\n"
+                   "        C1 = COLLECT()\n"
+                   "        A[1] =; S =\n"
+                   "        C2 = COLLECT()\n"
+                   "        OUTPUT = GT(C2, C1) 'freed'\n"
+                   "        OUTPUT = DATATYPE(C2)\n"
+                   "END\n"))
+      (is (= "freed\nINTEGER\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

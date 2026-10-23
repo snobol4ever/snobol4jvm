@@ -535,11 +535,11 @@
     TRACE   (let [[nm ty lbl f] args] (trace! nm (or ty "VALUE") lbl f) ε)
     STOPTR  (let [[nm ty] args] (stoptr! nm (or ty "VALUE")) ε)
     ;; "The COLLECT function forces a garbage collection ... If this amount of storage cannot be obtained, the COLLECT function fails. When successful, it returns the
-    ;; number of free words" (manual ch. 19, COLLECT): the JVM heap's limit less the bytes the collection left in use, in words of 8 bytes, DATATYPE INTEGER (the
-    ;; JVM resizes its heap after a collection, so its free memory alone does not grow as storage is retrieved)
+    ;; number of free words" (manual ch. 19, COLLECT): the JVM heap's limit in words of 8 bytes less the words the program's data occupies as SPITBOL lays it out
+    ;; (env/storage-words), DATATYPE INTEGER. The JVM heap's own use moves with the engine's work, so storage the program lets go of shows as freed only when it is
+    ;; counted this way (Gimpel timegc: the words two collections apart are not negative)
     COLLECT (do (System/gc)
-                (let [rt   (Runtime/getRuntime)
-                      free (quot (clojure.core/- (.maxMemory rt) (clojure.core/- (.totalMemory rt) (.freeMemory rt))) 8)
+                (let [free (clojure.core/- (quot (.maxMemory (Runtime/getRuntime)) 8) (SNOBOL4clojure.env/storage-words))
                       want (SNOBOL4clojure.env/num (first args))]
                   (when-not (and (integer? want) (clojure.core/> want free)) free)))
     CLEAR     (SNOBOL4clojure.env/clear-vars! (first args))

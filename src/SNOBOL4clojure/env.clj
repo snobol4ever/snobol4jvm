@@ -691,3 +691,38 @@
       (when-let [m (re-find #"class SNOBOL4clojure\.env\.(.*)"  cn)]  (m 1))
       ;; NAME type specifically
       (when (re-find #"NAME" cn) "NAME"))))
+
+;; ── Storage, as COLLECT counts it ──────────────────────────────────────────────
+;; The words of SPITBOL storage the program's data occupies, by the sizes the manual gives (ch. 20, Space Considerations), in sbl x64's words of 8 bytes, 8
+;; characters to a word: a variable's block 8 words and its name; a string 2 and its characters, the null string nothing; an integer or a real 2; a name 2; an array
+;; 3 and its elements when it has one dimension from 1, else 8 + 2 per dimension and its elements; a table 4 and its hash headers, then 4 for each non-null element;
+;; an object of a DATA type 3 and its fields; a pattern 3 for each of its nodes. Every value the variables reach is counted once, through elements and fields.
+(defn- words-of-text [s] (quot (clojure.core/+ (count s) 7) 8))
+
+(defn storage-words []
+  (let [seen (java.util.IdentityHashMap.)
+        size (fn size [v]
+               (cond
+                 (nil? v)                         0
+                 (string? v)                      (if (clojure.core/= "" v) 0 (clojure.core/+ 2 (words-of-text v)))
+                 (number? v)                      2
+                 (or (keyword? v) (symbol? v))    0
+                 (.containsKey seen v)            0
+                 :else
+                 (do (.put seen v true)
+                     (cond
+                       (instance? NAME v)         2
+                       (instance? SnobolArray v)
+                       (let [dims (:dims v)
+                             n    (reduce clojure.core/* 1 (map (fn [[lo hi]] (max 0 (inc (clojure.core/- hi lo)))) dims))]
+                         (clojure.core/+ (if (and (clojure.core/= 1 (count dims)) (clojure.core/= 1 (ffirst dims))) 3 (clojure.core/+ 8 (clojure.core/* 2 (count dims))))
+                                         n (size (:dflt v)) (reduce clojure.core/+ 0 (map size (vals @(:data v))))))
+                       (table? v)
+                       (clojure.core/+ 4 (long (:size (meta v) 11))
+                                       (reduce clojure.core/+ 0 (for [[k x] @v :when (not (or (nil? x) (clojure.core/= "" x)))]
+                                                                  (clojure.core/+ 4 (size k) (size x)))))
+                       (instance? DataObj v)
+                       (let [fs (.fields ^DataObj v)] (clojure.core/+ 3 (alength fs) (reduce clojure.core/+ 0 (map size fs))))
+                       (or (seq? v) (vector? v))  (clojure.core/+ 3 (reduce clojure.core/+ 0 (map size v)))
+                       :else                      2))))]
+    (reduce clojure.core/+ 0 (for [[sym v] @<VARS>] (clojure.core/+ 8 (words-of-text (name sym)) (size v))))))
