@@ -4430,3 +4430,29 @@
                    "3 one\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; A subscript left out, T[] or A<>, is the null string, as an argument left out is (sbl -bf: T[] = 'x' and T[''] are one entry). The grammar had no empty
+;; subscript, so T[] = 'x' parsed into nothing and a read of T[] failed (Gimpel mfread: READ_TBL[] = RDATA(.INPUT) is the entry MFREAD(P) reads).
+(deftest a-subscript-left-out-is-the-null-string
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        T = TABLE()\n"
+                   "        T[] = 'x'\n"
+                   "        OUTPUT = '1 [' T[''] ']'\n"
+                   "        DEFINE('G(U)') :(GE)\n"
+                   "G       OUTPUT = '2 [' T[U] '] ' DATATYPE(U) ' ' IDENT(U, '') 'id' :(RETURN)\n"
+                   "GE      G()\n"
+                   "        T[''] = 'y'\n"
+                   "        OUTPUT = '3 [' T[] ']'\n"
+                   "        A = ARRAY(2)\n"
+                   "        V = 'v'\n"
+                   "        T[V] = 'w' ; U = 'v'\n"
+                   "        OUTPUT = '4 [' T[U] ']'\n"
+                   "END\n"))
+      (is (= (str "1 [x]\n"
+                   "2 [x] STRING id\n"
+                   "3 [y]\n"
+                   "4 [w]\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
