@@ -877,6 +877,9 @@
                       (cond (instance? SNOBOL4clojure.env.NameResult r) (NAME. (:target r))
                             (nil? r)                                    nil
                             :else (throw (ex-info "function called by name returned a value" {:snobol/error 21})))))
+                  ;; .&K is the name of the keyword K, which $ reads and assigns (sbl -bf: K = .&ANCHOR; $K = 1 sets &ANCHOR)
+                  (and (list? x) (equal (first x) '&) (clojure.core/= 2 (count x)))
+                  (NAME. x)
                   ;; .$X is the name of the variable or element X names (sbl -bf: IDENT(.$M, .VB) when M is 'VB')
                   (and (list? x) (equal (first x) '$) (clojure.core/= 2 (count x)))
                   (when-some [v (EVAL! (second x))] (NAME. (indirect-target v)))

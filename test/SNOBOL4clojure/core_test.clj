@@ -5463,3 +5463,16 @@
                    "END\n"))
       (is (= "F called\nafter name NAME\nX=v\n21\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; .&K is the name of the keyword K, which $ reads and assigns (sbl -bf: K = .&ANCHOR; $K = 1 sets &ANCHOR). The engine took ANCHOR for a variable whose value
+;; named the keyword, and $K = 1 was ERROR 251 (snoflake indirect-integer-and-keyword).
+(deftest the-name-of-a-keyword-is-the-keyword
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        K = .&ANCHOR\n"
+                   "        OUTPUT = DATATYPE(K)\n"
+                   "        $K = 1\n"
+                   "        OUTPUT = &ANCHOR ' ' $K\n"
+                   "END\n"))
+      (is (= "NAME\n1 1\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
