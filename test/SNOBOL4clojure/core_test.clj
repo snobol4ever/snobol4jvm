@@ -5369,3 +5369,22 @@
       (doseq [[v want] [["5" "0 [q][]"] ["LEN(1)" "243 [][]"] ["ARRAY(2)" "243 [][]"] ["''" "243 [][]"] ["'abc'" "0 [][q]"]]]
         (is (= (str want "\n") (run v)) v))
       (finally (.delete f)))))
+
+;; With &ERRLIMIT above 0, an error in EVAL's evaluation or during a match is trapped as any is: one of &ERRLIMIT spent, and the label SETEXIT armed taken (sbl
+;; -bf; spitbol_x64_tests setexit: EVAL('n1 / n0') goes to its handler with 262). At &ERRLIMIT 0 the same errors fail EVAL or the match, never fatally.
+(deftest an-error-in-eval-or-a-match-goes-to-setexit-under-errlimit
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 5\n"
+                   "        X = 1; Z = 0\n"
+                   "        SETEXIT(.TRAP)\n"
+                   "        R = EVAL('X / Z')               :S(Y)F(N)\n"
+                   "Y       OUTPUT = 'succeeded'            :(END)\n"
+                   "N       OUTPUT = 'failed ' &ERRTYPE     :(END)\n"
+                   "TRAP    OUTPUT = 'trapped ' &ERRTYPE ' lim ' &ERRLIMIT\n"
+                   "        SETEXIT(.TRAP2)\n"
+                   "        'x' ? (*(1 / Z) | 'x')          :S(END)F(END)\n"
+                   "TRAP2   OUTPUT = 'trapped again ' &ERRTYPE ' lim ' &ERRLIMIT\n"
+                   "END\n"))
+      (is (= "trapped 14 lim 4\ntrapped again 14 lim 3\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

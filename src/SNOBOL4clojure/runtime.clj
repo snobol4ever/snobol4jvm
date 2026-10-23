@@ -41,13 +41,13 @@
 (defrecord Trapped [label ex])
 
 ;; e, an error raised in a statement's body or its Goto field: trapped under &ERRLIMIT not 0, it gives a Trapped (a handler was armed) or false (the statement fails).
-;; An error with &ERRLIMIT at 0, one that ABORT passes on, and every other signal go on up. In a function a pattern match called, while the match is in progress,
-;; the error fails the statement whatever &ERRLIMIT is, spending one of it when it is above 0, and SETEXIT is not consulted (sbl -bf, measured: a division by zero in
-;; a function called from 'x' ? ('x' . *G()) takes the statement's :F branch with &ERRTYPE 14, and the program goes on).
+;; An error with &ERRLIMIT at 0, one that ABORT passes on, and every other signal go on up -- but in a function a pattern match called, while the match is in
+;; progress, an error with &ERRLIMIT at 0 fails the statement, SETEXIT not consulted (sbl -bf, measured: a division by zero in a function called from
+;; 'x' ? ('x' . *G()) takes the statement's :F branch with &ERRTYPE 14, and the program goes on; at &ERRLIMIT 5 it goes to the label SETEXIT armed).
 (defn- trap [^clojure.lang.ExceptionInfo e]
   (let [{n :snobol/error abort :snobol/abort} (ex-data e)]
     (if (and n (not abort) (or (pos? (long @&ERRLIMIT)) SNOBOL4clojure.env/*matching*))
-      (let [h (when-not SNOBOL4clojure.env/*matching* @<SETEXIT>)]
+      (let [h (when (pos? (long @&ERRLIMIT)) @<SETEXIT>)]
         (when (pos? (long @&ERRLIMIT)) (swap! &ERRLIMIT dec))
         (reset! &ERRTYPE n)
         (fire-keyword! "ERRTYPE" n)

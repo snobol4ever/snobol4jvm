@@ -1024,14 +1024,16 @@
 ;; EVAL(s) compiles the expression s and evaluates it, failing when s is not a legal expression; EVAL(n) of a number is n; "If the argument is an unevaluated expression,
 ;; it is evaluated, and the result returned" (manual ch. 19, EVAL). A syntax error fails it with &ERRTYPE and &ERRTEXT set, as sbl -bf sets them (221 and kin).
 ;; "EVAL fails if evaluation of the argument fails, or if the argument contains a syntax error. The SPITBOL keyword &ERRTEXT will contain a string describing the
-;; error" (manual ch. 9): an error raised while the expression is evaluated fails EVAL as a syntax error does, &ERRTYPE and &ERRTEXT set and one of &ERRLIMIT spent
-;; when it is above 0, and is never fatal (sbl -bf: EVAL('X / Z') with Z = 0 fails with 14 at &ERRLIMIT 0, and so does EVAL(*(X / Z))).
+;; error" (manual ch. 9): with &ERRLIMIT at 0 an error raised while the expression is evaluated fails EVAL as a syntax error does, &ERRTYPE and &ERRTEXT set, and is
+;; not fatal (sbl -bf: EVAL('X / Z') with Z = 0 fails with 14, and so does EVAL(*(X / Z))); above 0 it is trapped as any error is, one of &ERRLIMIT spent and the
+;; label SETEXIT armed taken, or the statement failed (spitbol_x64_tests setexit: EVAL('n1 / n0') goes to the handler with 262).
 (defn- evaluated-or-fail [f]
   (try (f)
        (catch clojure.lang.ExceptionInfo e
-         (if-let [n (:snobol/error (ex-data e))]
-           (compile-failed! n (or (SNOBOL4clojure.env/error-message n) (ex-message e)))
-           (throw e)))))
+         (let [n (:snobol/error (ex-data e))]
+           (if (and n (zero? (long @SNOBOL4clojure.env/&ERRLIMIT)))
+             (compile-failed! n (or (SNOBOL4clojure.env/error-message n) (ex-message e)))
+             (throw e))))))
 
 (defn EVAL [X]
   (cond

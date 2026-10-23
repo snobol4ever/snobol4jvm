@@ -578,17 +578,17 @@
   []
   (every? (fn [[var-sym text]] (assign! var-sym text)) @*pending-cond*))
 
-;; While a match is in progress an execution error is not fatal (sbl -bf, measured; the manual is silent): raised in a statement of a function the match called,
-;; that statement fails (runtime.clj trap); raised in an expression the matcher evaluates itself (*X, a deferred target), it ends the match, which fails, no
-;; alternative tried ('x' ? (*(1 / Z) | 'x') fails). Either way &ERRTYPE and &ERRTEXT record it and one of &ERRLIMIT is spent when it is above 0.
+;; While a match is in progress an execution error with &ERRLIMIT at 0 is not fatal (sbl -bf, measured; the manual is silent): raised in a statement of a
+;; function the match called, that statement fails (runtime.clj trap); raised in an expression the matcher evaluates itself (*X, a deferred target), it ends the
+;; match, which fails, no alternative tried ('x' ? (*(1 / Z) | 'x') fails), &ERRTYPE and &ERRTEXT recording it. With &ERRLIMIT above 0 the error is trapped as
+;; any is, by the statement that made the match: one of &ERRLIMIT spent, and the label SETEXIT armed taken, or the statement failed.
 (defn- matching [f]
   (binding [SNOBOL4clojure.env/*matching* true]
     (try (f)
          (catch clojure.lang.ExceptionInfo e
            (let [{n :snobol/error abort :snobol/abort} (ex-data e)]
-             (if (and n (not abort))
-               (do (when (pos? (long @SNOBOL4clojure.env/&ERRLIMIT)) (swap! SNOBOL4clojure.env/&ERRLIMIT dec))
-                   (reset! SNOBOL4clojure.env/&ERRTYPE n)
+             (if (and n (not abort) (zero? (long @SNOBOL4clojure.env/&ERRLIMIT)))
+               (do (reset! SNOBOL4clojure.env/&ERRTYPE n)
                    (fire-keyword! "ERRTYPE" n)
                    (reset! SNOBOL4clojure.env/&ERRTEXT (ex-message e))
                    nil)
