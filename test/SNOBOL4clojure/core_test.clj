@@ -4974,3 +4974,31 @@
                    "END\n"))
       (is (= "X=[a]\nY=[a]\nW=[ab] Z=[]\nV=[]\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; "'A' or 'ACCESS' Produces a trace every time the named item is referenced. If you say X = N, that does not change the value of N, but it is a reference"
+;; (manual ch. 10, Debugging). As sbl -bf writes it, the referencing statement's star field, an i for each function level, then name = value: a reference in a
+;; function's body, through $'N' and $.N, as a match's subject and as a replacement's. TRACE took no ACCESS type (ERROR 199; SnoRungs ladder__rung22_access_*).
+(deftest an-access-trace-fires-on-each-reference
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &TRACE = 20\n"
+                   "        DEFINE('F(Y)')                  :(START)\n"
+                   "F       F = N + Y                       :(RETURN)\n"
+                   "START   N = 5\n"
+                   "        TRACE('N', 'ACCESS')\n"
+                   "        X = F(1)\n"
+                   "        X = $'N'\n"
+                   "        X = $.N\n"
+                   "        N ? 'Z'\n"
+                   "        N 'Q' = 'R'\n"
+                   "        N = 7\n"
+                   "        OUTPUT = 'x=' X ' trace=' &TRACE\n"
+                   "END\n"))
+      (is (= (str "****3******* i N = 5\n"
+                  "****7*******  N = 5\n"
+                  "****8*******  N = 5\n"
+                  "****9*******  N = 5\n"
+                  "****10******  N = 5\n"
+                  "x=5 trace=15\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

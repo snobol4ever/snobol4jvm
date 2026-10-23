@@ -3,7 +3,7 @@
 
   TRACE(name, type [, label [, fn]])
     Register a trace trigger on `name`. The type is read in any case by its first letter:
-    V(ALUE) fires when the named variable is assigned a value. A name is read in the case it is written.
+    V(ALUE) fires when the named variable is assigned a value, A(CCESS) each time its value is referenced. A name is read in the case it is written.
     L(ABEL), C(ALL), R(ETURN), F(UNCTION = call and return), K(EYWORD) are registered too; a type that begins with
     another letter is ERROR 199.
 
@@ -26,16 +26,17 @@
   (:import  [SNOBOL4clojure.env NAME]))
 
 ;; ── Registry ───────────────────────────────────────────�
-;; Maps [name kind] -> {:label lbl :fn fn-name}. A name is kept as written; a kind is :value :label :call :return :keyword.
+;; Maps [name kind] -> {:label lbl :fn fn-name}. A name is kept as written; a kind is :value :access :label :call :return :keyword.
 
 (def ^:private registry <TRACES>)
 
 (defn- trace-kinds
-  "The kinds a trace type registers, by its first letter in any case: V value, L label, C call, R return, F both of a function's, K keyword.
+  "The kinds a trace type registers, by its first letter in any case: V value, A access, L label, C call, R return, F both of a function's, K keyword.
    Any other letter is ERROR 199, trace second argument is not trace type."
   [type]
   (case (first (clojure.string/upper-case (str type)))
     \V [:value]
+    \A [:access]
     \L [:label]
     \C [:call]
     \R [:return]
@@ -148,6 +149,17 @@
       (call-trace-fn! f sym entry)
       (emit-line! (str sym " = " (trace-val new-val))))
     (:label entry)))
+
+(defn fire-access!
+  "Fire the ACCESS trace of the variable `sym`, whose value `v` a statement has just fetched: \"Produces a trace every time the named item is referenced. If you say
+   X = N, that does not change the value of N, but it is a reference\" (manual ch. 10, Debugging). As sbl -bf writes it: the referencing statement's star field, an
+   i for each function level, then name = value; or the trace function is called. Either costs 1 of &TRACE. Called only while &TRACE is above 0."
+  [sym v]
+  (when-let [entry (@registry (reg-key sym :access))]
+    (if-let [f (trace-fn entry)]
+      (call-trace-fn! f sym entry)
+      (do (swap! &TRACE dec)
+          (trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " " sym " = " (trace-val v))))))
 
 (defn fire-keyword!
   "Fire the KEYWORD trace of the keyword named kw (ERRTYPE, FNCLEVEL or STCOUNT, the ones SPITBOL traces) now holding new-val: the trace function is called, or the

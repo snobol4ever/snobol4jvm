@@ -23,7 +23,7 @@
             [SNOBOL4clojure.dump      :refer [dump-text]]
             [SNOBOL4clojure.grammar   :refer [parse-expression]]
             [SNOBOL4clojure.syntax    :refer [syntax-error]]
-            [SNOBOL4clojure.trace     :refer [fire-value! fire-call! fire-return! fire-keyword! trace! stoptr!]])
+            [SNOBOL4clojure.trace     :refer [fire-value! fire-access! fire-call! fire-return! fire-keyword! trace! stoptr!]])
   (:refer-clojure :exclude [= + - * / num]))
 
 ;; ── Numeric conversion macros ─────────────────────────────────────────────────
@@ -362,7 +362,9 @@
                   v))))
     ;; the subject is a variable, or an element or field whose subscripts the evaluator has already taken
     ?=      (let [[n p R] args
-                  subject (sstr (if (list? n) (apply INVOKE (or (:container (meta n)) (first n)) (rest n)) ($$ n)))
+                  subject (sstr (if (list? n)
+                                  (apply INVOKE (or (:container (meta n)) (first n)) (rest n))
+                                  (let [v ($$ n)] (when (pos? (long @SNOBOL4clojure.env/&TRACE)) (fire-access! n v)) v)))   ; the subject is a reference
                   pat     p]                      ; already evaluated by EVAL! dispatch
               (when-let [[start end] (SEARCH subject pat)]
                 ;; The replacement is evaluated after the match, so it sees the
@@ -756,7 +758,8 @@
       (float? E)   E
       (string? E)  E
       (integer? E) E
-      (symbol? E)  (let [v ($$ E)] (if (identical? v FENCE) (FENCE) v))   ; a bare FENCE is the pattern, not the function that builds one
+      ;; a reference to a variable fires its ACCESS trace (trace.clj); a bare FENCE is the pattern, not the function that builds one
+      (symbol? E)  (let [v ($$ E)] (when (pos? (long @SNOBOL4clojure.env/&TRACE)) (fire-access! E v)) (if (identical? v FENCE) (FENCE) v))
       ;; (e1, e2, ...): the value of the first expression that succeeds, the later ones not evaluated; failure if none does
       (and (vector? E) (clojure.core/= :comma (first E)))
       (some EVAL! (rest E))
