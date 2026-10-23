@@ -5166,3 +5166,26 @@
                   (apply str (repeat 19 \r)) "'\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; EJECT(channel) "sends an ASCII form-feed character (decimal 12) to the I/O channel specified, or to the listing file if channel is omitted" (manual ch. 19,
+;; EJECT). sbl -bf writes it as a record of its own on an output channel and alone, with no line end, on the listing; an unopened channel is 093. The engine's
+;; EJECT did nothing (SnoRungs ladder__rung29_eject, simple_output_54).
+(deftest eject-writes-a-form-feed
+  (let [f   (java.io.File/createTempFile "gen" ".sno")
+        out (java.io.File/createTempFile "gen" ".txt")]
+    (try
+      (spit f (str "        OUTPUT(.O, 3, '" (.getPath out) "')\n"
+                   "        O = 'page one'\n"
+                   "        EJECT(3)\n"
+                   "        O = 'page two'\n"
+                   "        ENDFILE(3)\n"
+                   "        OUTPUT = 'a'\n"
+                   "        EJECT()\n"
+                   "        OUTPUT = 'b'\n"
+                   "        &ERRLIMIT = 1\n"
+                   "        EJECT(99)\n"
+                   "        OUTPUT = &ERRTYPE\n"
+                   "END\n"))
+      (is (= "a\n\fb\n93\n" (with-out-str (-main (.getPath f)))))
+      (is (= "page one\n\f\npage two\n" (slurp out)))
+      (finally (.delete f) (.delete out)))))

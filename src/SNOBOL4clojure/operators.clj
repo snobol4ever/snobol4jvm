@@ -542,9 +542,17 @@
                   (when-not (and (integer? want) (clojure.core/> want free)) free)))
     CLEAR     (SNOBOL4clojure.env/clear-vars! (first args))
     BACKSPACE (apply SNOBOL4clojure.functions/BACKSPACE args)
-    ;; Not yet implemented: these keep the null result they had before an
-    ;; undefined name became ERROR 022, so no program that calls them regresses.
-    EJECT     ε
+    ;; EJECT(channel) "sends an ASCII form-feed character (decimal 12) to the I/O channel specified, or to the listing file if channel is omitted" (manual ch. 19,
+    ;; EJECT). As sbl -bf writes it: a record of its own on an output channel; the form feed alone, with no line end, on the listing, standard output here; nothing
+    ;; on an input channel; a channel nothing opened is "093 EJECT file does not exist".
+    EJECT     (let [u (first args)]
+                (if (or (nil? u) (clojure.core/= ε u))
+                  (do (print "\f") (flush) ε)
+                  (let [ch (get @<CHANNELS> (channel-key u))]
+                    (cond
+                      (nil? ch)                                (throw (ex-info "EJECT file does not exist" {:snobol/error 93}))
+                      (clojure.core/= :output (:type ch))      (let [w ^java.io.PrintWriter (:writer ch)] (.println w "\f") (.flush w) ε)
+                      :else                                    ε))))
     SETEXIT (apply SETEXIT args)
     HOST    (apply HOST args)
     ;; DUMP(i) writes a dump now: 1 the variables and keywords, 2 and 3 the elements and fields too; any other value writes nothing (manual ch. 19, DUMP)
