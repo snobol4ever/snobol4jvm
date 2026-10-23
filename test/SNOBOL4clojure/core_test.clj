@@ -5205,3 +5205,21 @@
       (is (re-matches #"\d\d/\d\d/\d\d \d\d:\d\d:\d\d\n\d\d/\d\d/\d{4} \d\d:\d\d:\d\d\n\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\n330\n"
                       (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; HOST's machine functions as sbl -bf (x64) answers them: HOST(1, cmd) runs cmd in the shell and returns its wait status (exit 3 is 768); HOST(2, n) the nth word
+;; of the command line, failing past the last; HOST(3) the index of the program's first own argument; HOST(4, name) an environment variable, failing when unset;
+;; a null name is 254. The engine had only HOST(0) and HOST(-1) (SnoRungs ladder__rung30_host).
+(deftest host-answers-the-machine-functions
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 5\n"
+                   "        OUTPUT = HOST(1, 'exit 3') ' ' HOST(1) ' ' DATATYPE(HOST(2)) ' ' HOST(3)\n"
+                   "        IDENT(HOST(2, 1), HOST(2, HOST(3) - 1))  :F(END)\n"
+                   "        HOST(2, 99)                             :S(END)\n"
+                   "        HOST(4, 'NO_SUCH_VARIABLE_SET_HERE')    :S(END)\n"
+                   "        OUTPUT = DIFFER(HOST(4, 'PATH')) 'path'\n"
+                   "        HOST(4, '')\n"
+                   "        OUTPUT = &ERRTYPE\n"
+                   "END\n"))
+      (is (= "768 0 STRING 2\npath\n254\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

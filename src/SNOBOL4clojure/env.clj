@@ -107,6 +107,8 @@
 (def <DIAGNOSTICS> (atom []))   ; the compile-time errors of the last source compiled, as [line code] pairs
 (def <SOURCE> (atom nil))   ; the last source compiled, its -INCLUDEs spliced in, as {:text t :stmts its [text line] statements :cards the -INCLUDE lines}, for the listing
 (def <HOST0> (atom ""))   ; what HOST(0) returns: the -u text, or else the program's own arguments joined by blanks
+(def <ARGV>  (atom []))   ; the command line HOST(2, n) answers from: the engine's jar, then -main's arguments
+(def <ARGI>  (atom 0))    ; what HOST(3) returns: the index in <ARGV> of the program's first own argument
 (def <LASTOUT> (atom nil))   ; the last value assigned to OUTPUT, which a dump lists as the variable OUTPUT
 (def <ASSOC-LAST> (atom {}))   ; an associated variable (INPUT, OUTPUT, a channel's) -> the last record read or written through it, which a dump lists as its value
 (def <SETEXIT> (atom nil))   ; the label SETEXIT named (a keyword), or nil when no handler is armed
@@ -304,6 +306,8 @@
    (reset! <LASTOUT>  nil)
    (reset! <ASSOC-LAST> {})
    (reset! <HOST0>    "")
+   (reset! <ARGV>     [])
+   (reset! <ARGI>     0)
    (reset! <PRIMS-READ> #{})
    (reset! &RTNTYPE   ε)
    (reset! &ERRTYPE   0)

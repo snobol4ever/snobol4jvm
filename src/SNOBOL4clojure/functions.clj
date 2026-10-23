@@ -727,8 +727,27 @@
   ([i & more]
    (let [n   (SNOBOL4clojure.env/num i)
          bad #(throw (ex-info "erroneous argument for host" {:snobol/error 254}))]
+     ;; As sbl -bf (x64) answers them: HOST(1, cmd) runs cmd in the shell, its output going where the program's goes, and returns the shell's wait status (an
+     ;; exit code times 256, or the signal that ended it); HOST(2, n) the nth word of the command line, 0 the engine (here its jar), failing past the last;
+     ;; HOST(3) the index of the program's first own argument; HOST(4, name) the environment variable name, failing when it is unset. A null or non-integer
+     ;; n and a null name are 254.
      (cond
        (and (integer? n) (zero? n)) (str @SNOBOL4clojure.env/<HOST0>)
+       (and (integer? n) (clojure.core/= 1 n))
+       (let [cmd (str (or (first more) ""))]
+         (if (clojure.core/= "" cmd)
+           0
+           (do (flush)
+               (let [p    (-> (ProcessBuilder. ^java.util.List ["/bin/sh" "-c" cmd]) (.inheritIO) (.start))
+                     code (long (.waitFor p))]
+                 (if (clojure.core/> code 128) (clojure.core/- code 128) (clojure.core/* code 256))))))
+       (and (integer? n) (clojure.core/= 2 n))
+       (let [k (if (or (nil? (first more)) (clojure.core/= "" (first more))) 0 (SNOBOL4clojure.env/num (first more)))]
+         (if (integer? k) (get @SNOBOL4clojure.env/<ARGV> k) (bad)))
+       (and (integer? n) (clojure.core/= 3 n)) (long @SNOBOL4clojure.env/<ARGI>)
+       (and (integer? n) (clojure.core/= 4 n))
+       (let [nm (str (or (first more) ""))]
+         (if (clojure.core/= "" nm) (bad) (System/getenv nm)))
        (and (integer? n) (clojure.core/= -1 n))
        (let [k (SNOBOL4clojure.env/num (first more))
              frames #(long (count (.getStackTrace (Thread/currentThread))))]

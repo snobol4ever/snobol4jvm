@@ -203,7 +203,8 @@
    -INCLUDE files resolve against the program's own directory, then SNO_LIB,
    then the current one. INPUT reads stdin."
   [& args]
-  (let [[engine args] (if (clojure.core/= "--engine" (first args)) [(second args) (nnext args)] ["interp" args])
+  (let [argv          (into [(System/getProperty "java.class.path")] args)
+        [engine args] (if (clojure.core/= "--engine" (first args)) [(second args) (nnext args)] ["interp" args])
         ;; -u STR before the file is HOST(0)'s text; the arguments after the file are the program's own, which HOST(0) joins when there is no -u
         [u args]      (if (clojure.core/= "-u" (first args)) [(second args) (nnext args)] [nil args])
         [file & prog-args] args]
@@ -221,6 +222,8 @@
             rc (case engine
         "interp" (do (env/GLOBALS)
                      (reset! env/<HOST0> (or u (clojure.string/join " " (remove #{"--"} prog-args))))
+                     (reset! env/<ARGV> argv)
+                     (reset! env/<ARGI> (clojure.core/- (count argv) (count prog-args)))
                      ;; "-NOERRORS is the default, and suppresses execution if there is a compilation error" (manual ch. 14): the listing -LIST asks for is
                      ;; written as the program is compiled, a compile error on its page in sbl -bf's shape, and a program with one is not run; -main answers 231,
                      ;; sbl's exit code for it
