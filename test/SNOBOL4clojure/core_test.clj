@@ -514,8 +514,9 @@
 
 ;; ABORT ends the whole match: the scanner tries no later start position. The
 ;; engine returned nil for ABORT, which SEARCH reads as "no match here", so it
-;; moved on and a later position could match. A bare FENCE() backed into ends
-;; only the attempt at its own position, as SPITBOL scans on past it.
+;; moved on and a later position could match. FENCE() is FENCE(''), the function
+;; given the null string, which the scanner backs up past to a later position
+;; (only the bare pattern FENCE ends the match).
 ;; The oracle, sbl -bf: F, F and F for the three ABORT matches, S for FENCE().
 (deftest abort-ends-the-scan
   (let [f (java.io.File/createTempFile "abort" ".sno")]
@@ -4904,5 +4905,31 @@
                   "fails 218 [syntax error: duplicated goto field]\n"
                   "eval fails 221 [syntax error: missing operand]\n"
                   "eval fails 232 [syntax error: unmatched string quote]\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
+;; "If the pattern matcher is backing up to try other alternatives, and encounters FENCE, the match fails ... If FENCE appears as the first component of a pattern,
+;; SPITBOL cannot back up through it to try another subject starting position" (manual ch. 9, FENCE; 'ABC' ? FENCE 'B' is Failure). FENCE(P) only keeps the
+;; scanner out of P, so a later start position may still match. Expected output is sbl -bf's (SnoRungs fence_branch_1 and kin).
+(deftest backing-up-into-fence-fails-the-whole-match
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        'ABC' ? FENCE 'B'                       :S(Y1)F(N1)\n"
+                   "Y1      OUTPUT = 'fence first Y'                :(T2)\n"
+                   "N1      OUTPUT = 'fence first N'\n"
+                   "T2      '1AB+' ? ANY('AB') FENCE '+'            :S(Y2)F(N2)\n"
+                   "Y2      OUTPUT = 'any fence Y'                  :(T3)\n"
+                   "N2      OUTPUT = 'any fence N'\n"
+                   "T3      'XAB+' ? ('A' | 'B') FENCE '+'          :S(Y3)F(N3)\n"
+                   "Y3      OUTPUT = 'alt fence Y'                  :(T4)\n"
+                   "N3      OUTPUT = 'alt fence N'\n"
+                   "T4      'ABC' ? (FENCE 'B' | 'C')               :S(Y4)F(N4)\n"
+                   "Y4      OUTPUT = 'fence in alt Y'               :(T5)\n"
+                   "N4      OUTPUT = 'fence in alt N'\n"
+                   "T5      'ABC' ? FENCE('A' | 'B') 'C'            :S(Y5)F(N5)\n"
+                   "Y5      OUTPUT = 'fence fn Y'                   :(END)\n"
+                   "N5      OUTPUT = 'fence fn N'\n"
+                   "END\n"))
+      (is (= "fence first N\nany fence N\nalt fence N\nfence in alt N\nfence fn Y\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))

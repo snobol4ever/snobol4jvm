@@ -147,10 +147,13 @@
     (let [λ (ζλ ζ)]
       (animate action full-subject ζ)
       (case λ
+        ;; Ω emptied fails the match at this start position; backing up into a bare FENCE's :ABORT sentinel fails it outright: "if the pattern matcher is
+        ;; backing up to try other alternatives, and encounters FENCE, the match fails ... SPITBOL cannot back up through it to try another subject starting
+        ;; position" (manual ch. 9, FENCE: 'ABC' ? FENCE 'B' is Failure)
         nil
         (case action
           (:proceed :succeed) [start-Δ (ζδ ζ)]
-          (:recede :fail)     nil)
+          (:recede :fail)     (when (clojure.core/= :ABORT ζ) :abort))
 
         ALT
         (case action

@@ -249,7 +249,9 @@
     BREAKX  (BREAKX (first args))
     NOTANY  (NOTANY (first args))
     SPAN    (SPAN   (first args))
-    FENCE   (if (seq args) (FENCE (first args)) (FENCE))
+    ;; FENCE() is the function given the null string, FENCE(''), which the scanner backs up past; the bare FENCE that ends the match is the pattern the variable
+    ;; FENCE holds (sbl -bf: 'ABC' FENCE() 'B' succeeds, 'ABC' FENCE 'B' fails)
+    FENCE   (FENCE (if (seq args) (first args) ε))
     ARBNO   (ARBNO  (first args))
     ABORT   ABORT
     BAL     BAL
