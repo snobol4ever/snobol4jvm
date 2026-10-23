@@ -194,6 +194,9 @@
                          ["."]))))
 
 ;; ── -main ─────────────────────────────────────────────────────────────────────
+;; The listing file, sbl's -o=file: SCRIP_SNO_LIST_SINK, the name the harness gives a port for it, unless this is bound
+(def ^:dynamic *list-sink* nil)
+
 (defn -main
   "SNOBOL4/Clojure — run a .sno file: [--engine interp|vm] <file.sno>.
    The default engine is the Stage 1 interpreter, the one the test suite runs.
@@ -210,15 +213,19 @@
       (System/exit 1))
     (let [src (slurp file :encoding "ISO-8859-1")   ; a program is bytes
           dir (or (.getParent (java.io.File. ^String file)) ".")]
-      ;; -main answers the exit code the program answers: 231 for a refused compile, nil for a run
-      (let [rc (case engine
+      ;; -main answers the exit code the program answers: 231 for a refused compile, nil for a run. What sbl -bf writes on standard output that is not the program's
+      ;; own -- the listing, a compile error's page, an execution error's report, the termination dump -- goes to the listing file "-o=file" names (manual ch. 13),
+      ;; which the harness names to a port as SCRIP_SNO_LIST_SINK; standard error gets its share either way
+      (let [sink (some-> (or *list-sink* (System/getenv "SCRIP_SNO_LIST_SINK")) not-empty (java.io.FileWriter. java.nio.charset.StandardCharsets/ISO_8859_1))
+            listed (fn [f] (if sink (binding [*out* sink] (f) (flush)) (f)))
+            rc (case engine
         "interp" (do (env/GLOBALS)
                      (reset! env/<HOST0> (or u (clojure.string/join " " (remove #{"--"} prog-args))))
                      ;; "-NOERRORS is the default, and suppresses execution if there is a compilation error" (manual ch. 14): the listing -LIST asks for is
                      ;; written as the program is compiled, a compile error on its page in sbl -bf's shape, and a program with one is not run; -main answers 231,
                      ;; sbl's exit code for it
                      (let [entry (comp/CODE src (include-dirs dir (System/getenv "SNO_LIB")) file)]
-                       (listing/write-listing! file)
+                       (listed #(listing/write-listing! file))
                        (if (seq @env/<DIAGNOSTICS>)
                          231
                          ;; an execution error that ends the program (and the statement limit, "244 Statement count exceeds value of STLIMIT keyword") is
@@ -234,10 +241,11 @@
                                       (reset! env/&ERRTYPE code)
                                       (reset! env/&ERRTEXT text)
                                       ;; the statement the limit stops is not executed
-                                      (fatal/report! code text (if n @env/&STCOUNT (dec (long steps))) t0))))
-                                (finally (when (pos? (long @env/&DUMP)) (print (dump/dump-text @env/&DUMP)))))))))
+                                      (listed #(fatal/report! code text (if n @env/&STCOUNT (dec (long steps))) t0)))))
+                                (finally (when (pos? (long @env/&DUMP)) (listed #(print (dump/dump-text @env/&DUMP))))))))))
         "vm"     (print (vm/run-program! src)))]
         (flush)
+        (when sink (.close ^java.io.Writer sink))
         (when (integer? rc) rc)))))
 
 ;; ── Re-export transpiler (Stage 23B) ─────────────────────────────────────────

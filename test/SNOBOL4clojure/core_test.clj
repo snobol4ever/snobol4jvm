@@ -4933,3 +4933,22 @@
       (is (= "fence first N\nany fence N\nalt fence N\nfence in alt N\nfence fn Y\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; What sbl -bf writes on standard output that is not the program's own -- the listing -LIST asks for, an execution error's report -- goes to the listing file
+;; -o=file names (manual ch. 13), which the harness names to a port as SCRIP_SNO_LIST_SINK; standard output keeps the program's output (snoflake
+;; control-hide-list-control-line: sbl -bf -o=sink prints 1 alone).
+(deftest the-listing-goes-to-the-listing-file
+  (let [f    (java.io.File/createTempFile "gen" ".sno")
+        sink (java.io.File/createTempFile "gen" ".lst")]
+    (try
+      (spit f (str "-LIST\n"
+                   " OUTPUT = &STNO\n"
+                   " Z = 0\n"
+                   " X = 1 / Z\n"
+                   "END\n"))
+      (let [out (binding [*list-sink* (.getPath sink)] (with-out-str (-main (.getPath f))))
+            lst (slurp sink)]
+        (is (= "1\n" out))
+        (is (re-find #"(?m)^1        OUTPUT = &STNO$" lst))
+        (is (re-find #"ERROR 014 -- division caused integer overflow" lst)))
+      (finally (.delete f) (.delete sink)))))
