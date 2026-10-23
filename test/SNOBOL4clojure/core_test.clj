@@ -5027,3 +5027,21 @@
                   "****11******  G = 'top'\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; "The following binary operations are undefined and are available for user definition using OPSYN(): & @ # % ~" (manual ch. 15, Binary Operators). Until
+;; OPSYN defines one it is "029 undefined operator referenced"; once it does, it calls the function. The evaluator read binary & as the keyword operator, so
+;; 'l' & 'r' was the null string whether OPSYN had defined & or not, and @ # % ~ computed a number (SnoRungs user_function_opsyn_*). sbl -bf's answers.
+(deftest the-unused-binary-operators-are-opsyns-to-define
+  (doseq [op ["&" "@" "#" "%" "~"]]
+    (let [f (java.io.File/createTempFile "gen" ".sno")]
+      (try
+        (spit f (str "        X = 'a' " op " 'b'\nEND\n"))
+        (is (re-find #"ERROR 029 -- undefined operator referenced" (with-out-str (-main (.getPath f)))) op)
+        (spit f (str "        DEFINE('R(A,B)')                :(E)\n"
+                     "R       R = A '+' B                     :(RETURN)\n"
+                     "E       OPSYN('" op "', 'R', 2)\n"
+                     "        OUTPUT = 'a' " op " 'b'\n"
+                     "        OUTPUT = 7 " op " 2\n"
+                     "END\n"))
+        (is (= "a+b\n7+2\n" (with-out-str (-main (.getPath f)))) op)
+        (finally (.delete f))))))

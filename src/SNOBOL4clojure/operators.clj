@@ -675,6 +675,11 @@
 (def ^:private unused-unary-ops
   {'! "!", '% "%", '/ "/", 'sharp "#", '= "=", '| "|"})
 
+;; "The following binary operations are undefined and are available for user definition using OPSYN(): & @ # % ~" (manual ch. 15, Binary Operators), each with
+;; the name OPSYN files it under; the emitter spells them &, at, sharp, % and tilde.
+(def ^:private unused-binary-ops
+  {'& "&", 'at "@", 'sharp "#", '% "%", 'tilde "~"})
+
 ;; What $v refers to: the element a NAME of an element names, as its subscript
 ;; form (A k ...) with k already evaluated, or else the variable v names.
 (defn- indirect-target [v]
@@ -779,10 +784,13 @@
               (cond (table? c) (table-get c (first ks))
                     (array? c) (array-get c (vec ks))
                     :else (throw (ex-info "subscripted operand is not table or array" {:snobol/error 235})))))
-          ;; The unused unary operators are ERROR 029 until OPSYN defines one.
-          (and (clojure.core/= 1 (count parms))
-               (contains? unused-unary-ops op)
-               (nil? (get @<FUNS> (opsyn-key (unused-unary-ops op) 1))))
+          ;; The unused unary and binary operators are ERROR 029 until OPSYN defines one.
+          (or (and (clojure.core/= 1 (count parms))
+                   (contains? unused-unary-ops op)
+                   (nil? (get @<FUNS> (opsyn-key (unused-unary-ops op) 1))))
+              (and (clojure.core/= 2 (count parms))
+                   (contains? unused-binary-ops op)
+                   (nil? (get @<FUNS> (opsyn-key (unused-binary-ops op) 2)))))
           (throw (ex-info "undefined operator referenced" {:snobol/error 29}))
           ;; Unary ?X — interrogation: the null string if X succeeds, failure if not
           (and (equal op '?) (clojure.core/= 1 (count parms)))
@@ -879,9 +887,11 @@
                                        :else N)]
                               (when N' (when-some [p (EVAL! P)] (INVOKE '?= N' p R))))
           ;; the protected keywords &ABORT, &ARB, &BAL, &FAIL, &FENCE, &REM and &SUCCEED hold "the primitive pattern" of their name (manual ch. 16)
-          (and (equal op '&) (pattern-keywords (str (first parms))))
+          (and (equal op '&) (clojure.core/= 1 (count parms)) (pattern-keywords (str (first parms))))
           ((pattern-keywords (str (first parms))))
-          (equal op '&)     (let [[N]     parms
+          ;; unary &K is the keyword K; binary & is an operator OPSYN may define (above, and the dispatch below)
+          (and (equal op '&) (clojure.core/= 1 (count parms)))
+                            (let [[N]     parms
                                   kw-sym  (symbol (str "&" N))
                                   ;; &-keywords are defs in env.clj; fall back to user ns
                                   v       (or (when-let [vr (ns-resolve (find-ns 'SNOBOL4clojure.env) kw-sym)]
