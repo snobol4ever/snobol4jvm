@@ -11,9 +11,9 @@
     {:comment   (fn [cmt]    [:comment cmt])
      :control   (fn [ctl]    [:control ctl])
      :stmt      (fn [& ss]   (apply conj ss))
-     ;; a label of letters, digits, underscores and points is a keyword, as the goto target naming it is; the points are the N rule's (HSORT.END)
-     :label     (fn [L]      {:label (if (re-find #"^[0-9A-Z_a-z.]+$" L)
-                                       (keyword L) (str L))})
+     ;; "Labels must begin with a letter or digit, optionally followed by an arbitrary string of characters" (manual ch. 14, Label field): L+, X-, Q# and HSORT.END
+     ;; are labels, each a keyword, as the goto target naming it is
+     :label     (fn [L]      {:label (keyword L)})
      :body      (fn [B]      {:body B})
      :invoking  (fn [S]      S)
      ;; "It is left associative" (manual, Appendix, SPITBOL extensions): S ? P1 ? P2 matches P2 against the text P1 matched

@@ -4701,3 +4701,28 @@
                    "X=bb\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; "Labels must begin with a letter or digit, optionally followed by an arbitrary string of characters. The label field is terminated by the character blank, tab, or
+;; semicolon" (manual ch. 14, Label field), so L+, X- and Q# are labels a computed Goto reaches, :($('L' OP)), as sbl -bf runs it, and after a semicolon the next
+;; statement's label begins at once (X- ;X*). The engine kept a label holding
+;; anything but letters, digits, underscores and points as a string and registered only keyword labels, so such a label never existed (Gimpel tr: TR_+ ;TR_- ;TR_*
+;; ;TR_/, reached by :S($('TR_' OP))).
+(deftest a-label-may-hold-any-character-but-a-blank
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        OP = '+'\n"
+                   "        :($('L' OP))\n"
+                   "        OUTPUT = 'fell'\n"
+                   "L+      OUTPUT = 'at L+'\n"
+                   "        OP = '-'  :($('X' OP))\n"
+                   "X- ;X*  OUTPUT = 'at X- or X*'\n"
+                   "        :($('Q#'))\n"
+                   "        OUTPUT = 'fell2'\n"
+                   "Q#      OUTPUT = 'at Q#'\n"
+                   "END\n"))
+      (is (= (str "at L+\n"
+                   "at X- or X*\n"
+                   "at Q#\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
