@@ -106,6 +106,8 @@
 (def <PRIMS-READ> (atom #{}))   ; the primitive pattern variables (BAL, ARB, ...) the program has read, which a dump lists as SPITBOL lists them
 (def <DIAGNOSTICS> (atom []))   ; the compile-time errors of the last source compiled, as [line code] pairs
 (def <SOURCE> (atom nil))   ; the last source compiled, its -INCLUDEs spliced in, as {:text t :stmts its [text line] statements :cards the -INCLUDE lines}, for the listing
+;; True while a pattern match is in progress, in the functions it calls too: an execution error is then not fatal (match.clj matching, runtime.clj trap)
+(def ^:dynamic *matching* false)
 (def <HOST0> (atom ""))   ; what HOST(0) returns: the -u text, or else the program's own arguments joined by blanks
 (def <ARGV>  (atom []))   ; the command line HOST(2, n) answers from: the engine's jar, then -main's arguments
 (def <ARGI>  (atom 0))    ; what HOST(3) returns: the index in <ARGV> of the program's first own argument

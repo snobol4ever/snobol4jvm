@@ -26,7 +26,7 @@
               POS# RPOS# LEN# TAB# RTAB# BOL# EOL#
               SUCCEED! FAIL! ARB! BAL! ARBNO! ABORT!]]
             [SNOBOL4clojure.patterns   :refer [POS RPOS]]
-            [SNOBOL4clojure.trace      :refer [pattern-trace-active?]])
+            [SNOBOL4clojure.trace      :refer [pattern-trace-active? fire-keyword!]])
   (:refer-clojure :exclude [= + - * / num]))
 
 ;; A capture's target is a variable's symbol, or a function of the value that makes the assignment: an element T<I>, a variable a string names ($V) or a
@@ -578,6 +578,22 @@
   []
   (every? (fn [[var-sym text]] (assign! var-sym text)) @*pending-cond*))
 
+;; While a match is in progress an execution error is not fatal (sbl -bf, measured; the manual is silent): raised in a statement of a function the match called,
+;; that statement fails (runtime.clj trap); raised in an expression the matcher evaluates itself (*X, a deferred target), it ends the match, which fails, no
+;; alternative tried ('x' ? (*(1 / Z) | 'x') fails). Either way &ERRTYPE and &ERRTEXT record it and one of &ERRLIMIT is spent when it is above 0.
+(defn- matching [f]
+  (binding [SNOBOL4clojure.env/*matching* true]
+    (try (f)
+         (catch clojure.lang.ExceptionInfo e
+           (let [{n :snobol/error abort :snobol/abort} (ex-data e)]
+             (if (and n (not abort))
+               (do (when (pos? (long @SNOBOL4clojure.env/&ERRLIMIT)) (swap! SNOBOL4clojure.env/&ERRLIMIT dec))
+                   (reset! SNOBOL4clojure.env/&ERRTYPE n)
+                   (fire-keyword! "ERRTYPE" n)
+                   (reset! SNOBOL4clojure.env/&ERRTEXT (ex-message e))
+                   nil)
+               (throw e)))))))
+
 (defn SEARCH
   "Slide pattern P across string S, trying each start position 0..n, or
    only position 0 while &ANCHOR is non-zero.
@@ -587,16 +603,17 @@
   [S P]
   (binding [*trace*        (or *trace* (pattern-trace-active? S))
             *pending-cond* (volatile! [])]
-    (let [chars (seq S)
-          n     (if (zero? @&ANCHOR) (count S) 0)]
-      (loop [i 0]
-        (when (<= i n)
-          (vswap! *pending-cond* (constantly []))          ; reset for each start pos
-          (let [result (engine (drop i chars) i P i S)]
-            (cond
-              (clojure.core/= :abort result) nil      ; ABORT: no later start position
-              result (when (commit-pending!) result)
-              :else  (recur (inc i)))))))))
+    (matching
+      #(let [chars (seq S)
+             n     (if (zero? @&ANCHOR) (count S) 0)]
+         (loop [i 0]
+           (when (<= i n)
+             (vswap! *pending-cond* (constantly []))          ; reset for each start pos
+             (let [result (engine (drop i chars) i P i S)]
+               (cond
+                 (clojure.core/= :abort result) nil      ; ABORT: no later start position
+                 result (when (commit-pending!) result)
+                 :else  (recur (inc i))))))))))
 
 (defn MATCH
   "Match pattern P against string S anchored at position 0.
@@ -604,9 +621,10 @@
    Equivalent to SEARCH with POS(0) prepended."
   [S P]
   (binding [*pending-cond* (volatile! [])]
-    (let [result (engine (seq S) 0 (list 'SEQ (POS 0) P) 0 S)
-          result (when-not (clojure.core/= :abort result) result)]
-      (when (and result (commit-pending!)) result))))
+    (matching
+      #(let [result (engine (seq S) 0 (list 'SEQ (POS 0) P) 0 S)
+             result (when-not (clojure.core/= :abort result) result)]
+         (when (and result (commit-pending!)) result)))))
 
 (defn FULLMATCH
   "Match pattern P against the entirety of string S (anchored both ends).
@@ -614,9 +632,10 @@
    Equivalent to SEARCH with POS(0) prepended and RPOS(0) appended."
   [S P]
   (binding [*pending-cond* (volatile! [])]
-    (let [result (engine (seq S) 0 (list 'SEQ (POS 0) P (RPOS 0)) 0 S)
-          result (when-not (clojure.core/= :abort result) result)]
-      (when (and result (commit-pending!)) result))))
+    (matching
+      #(let [result (engine (seq S) 0 (list 'SEQ (POS 0) P (RPOS 0)) 0 S)
+             result (when-not (clojure.core/= :abort result) result)]
+         (when (and result (commit-pending!)) result)))))
 
 (defn REPLACE
   "Match pattern P against S; if matched, replace the matched span with R.

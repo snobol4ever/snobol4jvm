@@ -5328,6 +5328,32 @@
       (is (= "div fails 14 [division caused integer overflow] lim 0\nexpr fails 14\nkeyword fails 251\nlim 4\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
 
+;; While a pattern match is in progress an execution error is not fatal (sbl -bf, measured; the manual is silent): in a statement of a function the match called
+;; (here through H), the statement fails with &ERRTYPE set and the function goes on; in an expression the matcher evaluates itself, the match fails, no alternative
+;; tried. One of &ERRLIMIT is spent when it is above 0. The engine ended the program (SnoRungs ladder__rung32_an_error_in_a_function_called_from_a_deferred_*).
+(deftest an-error-during-a-match-fails-instead-of-ending-the-program
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 5\n"
+                   "        DEFINE('G()')                         :(G_END)\n"
+                   "G       Z = 0\n"
+                   "        X = 1 / Z                             :S(GS)F(GF)\n"
+                   "GS      OUTPUT = 'G stmt succeeded'           :(GR)\n"
+                   "GF      OUTPUT = 'G stmt failed ' &ERRTYPE ' lim ' &ERRLIMIT\n"
+                   "GR      G = .DUMMY                            :(NRETURN)\n"
+                   "G_END   DEFINE('H()')                         :(H_END)\n"
+                   "H       H = G()                               :(NRETURN)\n"
+                   "H_END   'x' ? ('x' . *H())                    :S(B)\n"
+                   "        OUTPUT = 'A: match failed'\n"
+                   "B       Z = 0\n"
+                   "        'x' ? (*(1 / Z) | 'x')                :S(C)F(C2)\n"
+                   "C       OUTPUT = 'C: matched'                 :(END)\n"
+                   "C2      OUTPUT = 'C: failed ' &ERRTYPE ' lim ' &ERRLIMIT\n"
+                   "END\n"))
+      ;; (H = G() takes the value G names, the null string, and H's NRETURN of it is 243, which spends one more of &ERRLIMIT)
+      (is (= "G stmt failed 14 lim 4\nA: match failed\nC: failed 14 lim 2\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
 ;; A function that returns by NRETURN returns a name: the NAME its variable holds, or the variable a string or a number spells; the null string or any other value
 ;; is "243 function result in NRETURN is not name" (sbl -bf). The engine made the call fail instead.
 (deftest nreturn-of-a-value-that-is-no-name-is-error-243
