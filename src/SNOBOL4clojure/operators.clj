@@ -32,6 +32,13 @@
 
 (declare APPLY)
 
+;; The variable INPUT or OUTPUT associates: a name (.V), or a string that is the variable's name
+(defn- channel-variable [name-arg]
+  (cond
+    (symbol? name-arg)                            name-arg
+    (instance? SNOBOL4clojure.env.NAME name-arg)  (symbol (str (.n ^SNOBOL4clojure.env.NAME name-arg)))
+    :else                                         (symbol (str name-arg))))
+
 ;; ── Operator helpers ──────────────────────────────────────────────────────────
 (defn annihilate    [_x]        nil)
 (defn match-replace [_n _s _p]  nil)
@@ -593,56 +600,14 @@
                 (when-some [p (when meta (nth (:locals meta) (dec (long n)) nil))]
                   (NAME. (symbol p))))
     local     (apply INVOKE 'LOCAL args)
-    ;; ── Named I/O channel registration (Sprint 25D) ──────────────────────────
-    ;; Argument conventions across SNOBOL4 implementations (researched 2026-03-08):
-    ;;
-    ;;  Original SNOBOL4 (Green Book / mainframe):
-    ;;    INPUT('name', unit, length)      — 3 args; length=max record len; filename via JCL
-    ;;
-    ;;  Catspaw SNOBOL4+ / Minnesota SNOBOL4 / Burks tutorial (de facto modern standard):
-    ;;    INPUT('name', unit, length, 'file') — 4 args; length=record len (default 80)
-    ;;    INPUT('name', unit,, 'file')        — 4 args, empty length = use default
-    ;;
-    ;;  CSNOBOL4 / SPITBOL (our primary target — Gimpel/AI-SNOBOL corpora):
-    ;;    INPUT('name', unit, options, 'file') — 4 args; arg3 = I/O option string
-    ;;    INPUT(.name, unit,, 'file')          — NAME indirect first arg
-    ;;    INPUT(.name, unit, 'file')           — 3 args (grammar drops empty slot)
-    ;;
-    ;;  SITBOL20 / PDP-10:
-    ;;    INPUT('name', 'device/file', 'format') — 3 args; NO unit number; arg2 = device
-    ;;
-    ;; Our strategy: Catspaw/CSNOBOL4/SPITBOL 4-arg form is the primary target.
-    ;; arg3 (length/options) is stored but currently ignored (safe for Gimpel corpus).
-    ;; Grammar collapses INPUT(.VAR, 5,, 'file') → 3 args by dropping empty arg3 slot.
-    ;; We detect file position by arg count: 2→stdin, 3→file=args[2], 4→file=args[3].
-    ;; A future &IOCOMPAT keyword can switch arg2=device (SITBOL) vs arg2=unit (modern).
-    INPUT     (let [name-arg (first args)
-                    unit     (second args)
-                    filename (case (count args)
-                               2 nil          ; INPUT(.VAR, unit) — stdin
-                               3 (nth args 2) ; INPUT(.VAR, unit, 'file')
-                               4 (nth args 3) ; INPUT(.VAR, unit, reclen, 'file')
-                               nil)
-                    var-sym  (cond
-                               (symbol? name-arg) name-arg
-                               (instance? SNOBOL4clojure.env.NAME name-arg)
-                               (symbol (str (.n ^SNOBOL4clojure.env.NAME name-arg)))
-                               :else (symbol (str name-arg)))]
-                (open-input-channel! var-sym (channel-key unit) filename (not= 4 (count args))))
+    ;; ── Named I/O channel registration ───────────────────────────────────────
+    ;; INPUT(name, channel, file) and OUTPUT(name, channel, file) (manual ch. 19, INPUT): what the channel and the file argument name is functions/association.
+    ;; sbl -bf reads three arguments; a fourth, CSNOBOL4's and Catspaw's file name (INPUT(.V, unit, len, 'file')), is not read.
+    INPUT     (let [[name-arg unit filename] args]
+                (open-input-channel! (channel-variable name-arg) unit filename))
     input     (apply INVOKE 'INPUT args)
-    OUTPUT    (let [name-arg (first args)
-                    unit     (second args)
-                    filename (case (count args)
-                               2 nil
-                               3 (nth args 2)
-                               4 (nth args 3)
-                               nil)
-                    var-sym  (cond
-                               (symbol? name-arg) name-arg
-                               (instance? SNOBOL4clojure.env.NAME name-arg)
-                               (symbol (str (.n ^SNOBOL4clojure.env.NAME name-arg)))
-                               :else (symbol (str name-arg)))]
-                (open-output-channel! var-sym (channel-key unit) filename (not= 4 (count args))))
+    OUTPUT    (let [[name-arg unit filename] args]
+                (open-output-channel! (channel-variable name-arg) unit filename))
     output    (apply INVOKE 'OUTPUT args)
     ENDFILE   (close-channel! (channel-key (first args)))
     endfile   (apply INVOKE 'ENDFILE args)

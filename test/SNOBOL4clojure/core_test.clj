@@ -270,7 +270,7 @@
         name (str "filedir-" (System/nanoTime) ".txt")]
     (try
       (binding [SNOBOL4clojure.env/*file-dir* dir]
-        (RUN (CODE (str "        OUTPUT(.O, 9,, '" name "')\n"
+        (RUN (CODE (str "        OUTPUT(.O, 9, '" name "')\n"
                         "        O = 'written'\n"
                         "        ENDFILE(9)\n"
                         "END\n"))))

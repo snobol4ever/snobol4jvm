@@ -188,13 +188,16 @@
 
 ;; ── INPUT without filename — stdin association ─────────────────────────────────
 (deftest t-io-input-stdin-register
-  "INPUT(.RDR, unit) with no filename registers without crashing.
+  "INPUT(.RDR, unit) with no file is ERROR 116 under SPITBOL; standard input on a unit is the option -f0, INPUT(.RDR, 9, '[-f0]') (sbl -bf, manual ch. 19, INPUT).
    We do not actually read from stdin in tests; just verify registration."
   (let [r (run-with-timeout
-             "        INPUT(.RDR,9)\n        OUTPUT = 'ok'\nEND\n"
+             "        INPUT(.RDR,9,'[-f0]')\n        OUTPUT = 'ok'\nEND\n"
              1000)]
     (is (= :ok (:exit r)))
-    (is (= "ok\n" (:stdout r)))))
+    (is (= "ok\n" (:stdout r))))
+  (let [r (run-with-timeout "        INPUT(.RDR,19)\n        OUTPUT = 'ok'\nEND\n" 1000)]   ; a unit not yet open (unit 9 is, above, and would be shared)
+    (is (= :error (:exit r)))
+    (is (= "inappropriate file specification for input" (:thrown r)))))
 
 ;; ── Loop reading an entire file ────────────────────────────────────────────────
 (deftest t-io-loop-read-file

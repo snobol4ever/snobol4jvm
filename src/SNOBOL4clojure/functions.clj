@@ -483,27 +483,48 @@
             (re-matches #"[+-]?\d+" t)  (Long/parseLong t)
             :else                        t))))
 
+(defn- null-arg? [x] (or (nil? x) (clojure.core/= "" x)))
+
+;; "If the third argument, s, is omitted, the file name can be provided by setting a system environment variable with the same name as the channel ... If s is
+;; omitted, and no channel association appears on the command line or as an environment variable, then the standard system input and output channels are assumed"
+;; (manual ch. 19, INPUT). sbl -bf takes the standard channel only when the channel is omitted as well: a channel with no file is the stream that channel already
+;; has, else the file an environment variable of its name names, else ERROR 116 (160 for OUTPUT), and so is a file with no channel. A fourth argument, CSNOBOL4's
+;; file name, is not read (sbl -bf: INPUT(.X, 8, , 'f') is ERROR 116). Returns [key file-argument channel-to-share], or calls bad.
+(defn- association [type unit filename bad]
+  (let [{nm :name opts :opts} (file-spec (or filename ""))]
+    (cond
+      (null-arg? unit)                                       (if (null-arg? filename) [0 nil nil] (bad))
+      (or (not (clojure.string/blank? nm)) (contains? opts \f)) [(channel-key unit) filename nil]
+      :else
+      (let [k  (channel-key unit)
+            ch (get @<CHANNELS> k)
+            e  (when (string? unit) (not-empty (System/getenv (clojure.string/trim unit))))]
+        (cond
+          (and ch (clojure.core/= type (:type ch))) [k nil ch]
+          e                                         [k e nil]
+          :else                                     (bad))))))
+
 (defn open-input-channel!
-  "Register var-sym as an input channel on unit.
-   filename nil or empty → stdin sentinel (reads via read-line, :file stored as nil).
-   filename provided     → open file as BufferedReader.
-   A pipe spec (\"|cmd\") is ERROR 116, as SPITBOL raises it; so is a file that cannot be opened when it came as the fourth argument (quietly is false).
-   A file named by the third argument that cannot be opened fails, as in sbl -bf. Returns ε on success, nil on failure."
-  ([var-sym unit filename] (open-input-channel! var-sym unit filename true))
-  ([var-sym unit filename quietly]
-  (let [{nm :name opts :opts blank-in-name :bad} (file-spec (or filename ""))
+  "Register var-sym as an input channel: INPUT(name, unit, file) as sbl -bf takes it (association above).
+   No file and no unit → stdin (reads via read-line, :file stored as nil); a file → a BufferedReader. A pipe spec (\"|cmd\") is ERROR 116, as SPITBOL raises it.
+   A file that cannot be opened fails, as in sbl -bf. Returns ε on success, nil on failure."
+  [var-sym unit filename]
+  (let [bad      #(throw (ex-info "inappropriate file specification for input" {:snobol/error 116}))
+        [unit filename shared] (association :input unit filename bad)
+        {nm :name opts :opts blank-in-name :bad} (file-spec (or filename ""))
         file-str (when-not (clojure.string/blank? nm) nm)
-        bad      #(throw (ex-info "inappropriate file specification for input" {:snobol/error 116}))
         _        (when blank-in-name (bad))
-        rdr (if file-str
-              (if (clojure.string/starts-with? file-str "|")
-                (bad)
-                (or (try (java.io.BufferedReader. (java.io.InputStreamReader. (java.io.FileInputStream. (channel-file file-str)) "ISO-8859-1"))
-                         (catch Exception _ nil))
-                    (if quietly nil (bad))))
+        rdr (cond
+              shared   nil
+              file-str (if (clojure.string/starts-with? file-str "|")
+                         (bad)
+                         (try (java.io.BufferedReader. (java.io.InputStreamReader. (java.io.FileInputStream. (channel-file file-str)) "ISO-8859-1"))
+                              (catch Exception _ nil)))
               ;; stdin: wrap *in* but mark :file nil so close-channel! won't close it
-              (env/stdin-reader))]
-    (when rdr
+              :else    (env/stdin-reader))]
+    (cond
+      shared (do (swap! <CHANNELS> assoc var-sym shared) ε)
+      rdr
       ;; :at is the position of the next read, which SET answers and moves
       (let [ch (cond-> {:type :input :unit unit :var var-sym :reader rdr :file file-str :at (atom 0)}
                  (get opts \r) (assoc :raw (get opts \r))
@@ -511,7 +532,7 @@
                  (get opts \l) (assoc :maxlen (get opts \l)))]
         (swap! <CHANNELS> assoc var-sym ch)
         (swap! <CHANNELS> assoc unit    ch)
-        ε)))))
+        ε))))
 
 ;; REWIND(unit): an input file starts again from its first record. A unit no INPUT or OUTPUT opened is ERROR 174, as sbl -bf raises it (standard input among them).
 (defn rewind-channel! [unit]
@@ -572,31 +593,32 @@
        :else (fail 296)))))
 
 (defn open-output-channel!
-  "Register var-sym as an output channel on unit.
-   filename nil or empty → stdout (writes via PrintWriter, :file stored as nil).
-   filename provided     → open file as PrintWriter.
-   A pipe spec (\"|cmd\") is ERROR 160, as SPITBOL raises it; so is a file that cannot be opened when it came as the fourth argument (quietly is false).
-   A file named by the third argument that cannot be opened fails, as in sbl -bf. Returns ε on success, nil on failure."
-  ([var-sym unit filename] (open-output-channel! var-sym unit filename true))
-  ([var-sym unit filename quietly]
-  (let [{nm :name opts :opts blank-in-name :bad} (file-spec (or filename ""))
+  "Register var-sym as an output channel: OUTPUT(name, unit, file) as sbl -bf takes it (association above).
+   No file and no unit → stdout (writes via PrintWriter, :file stored as nil); a file → a PrintWriter. A pipe spec (\"|cmd\") is ERROR 160, as SPITBOL raises it.
+   A file that cannot be opened fails, as in sbl -bf. Returns ε on success, nil on failure."
+  [var-sym unit filename]
+  (let [bad      #(throw (ex-info "inappropriate file specification for output" {:snobol/error 160}))
+        [unit filename shared] (association :output unit filename bad)
+        {nm :name opts :opts blank-in-name :bad} (file-spec (or filename ""))
         file-str (when-not (clojure.string/blank? nm) nm)
-        bad      #(throw (ex-info "inappropriate file specification for output" {:snobol/error 160}))
         _        (when blank-in-name (bad))
         ;; a file's stream is kept, for SET to move
-        out (when (and file-str (not (clojure.string/starts-with? file-str "|")))
+        out (when (and file-str (not shared) (not (clojure.string/starts-with? file-str "|")))
               (try (java.io.FileOutputStream. (channel-file file-str) (contains? opts \a)) (catch Exception _ nil)))
-        wtr (if file-str
-              (if (clojure.string/starts-with? file-str "|")
-                (bad)
-                (if out (java.io.PrintWriter. (java.io.OutputStreamWriter. ^java.io.OutputStream out "ISO-8859-1")) (if quietly nil (bad))))
+        wtr (cond
+              shared   nil
+              file-str (if (clojure.string/starts-with? file-str "|")
+                         (bad)
+                         (when out (java.io.PrintWriter. (java.io.OutputStreamWriter. ^java.io.OutputStream out "ISO-8859-1"))))
               ;; stdout (or, with -f2, stderr): wrap the stream but mark :file nil so close-channel! won't close it
-              (java.io.PrintWriter. ^java.io.Writer (if (clojure.core/= 2 (get opts \f)) *err* *out*) true))]
-    (when wtr
+              :else    (java.io.PrintWriter. ^java.io.Writer (if (clojure.core/= 2 (get opts \f)) *err* *out*) true))]
+    (cond
+      shared (do (swap! <CHANNELS> assoc var-sym shared) ε)
+      wtr
       (let [ch (cond-> {:type :output :unit unit :var var-sym :writer wtr :file file-str} out (assoc :stream out))]
         (swap! <CHANNELS> assoc var-sym ch)
         (swap! <CHANNELS> assoc unit    ch)
-        ε)))))
+        ε))))
 
 (defn close-channel!
   "Close and deregister a channel by unit number or var symbol."

@@ -4647,11 +4647,9 @@ Q----
 LOOP	OUTPUT = FOO			:S(LOOP)
 END
 " 2000)]
-    (is (= "	INPUT(.FOO,10,,\"openi.sno\")
-
-LOOP	OUTPUT = FOO			:S(LOOP)
-END
-" (:stdout r)))))
+    ;; the file is CSNOBOL4's fourth argument, which SPITBOL does not read: unit 10 with no file is ERROR 116 (sbl -bf, manual ch. 19, INPUT)
+    (is (= :error (:exit r)))
+    (is (= "inappropriate file specification for input" (:thrown r)))))
 
 (deftest csnobol4-openo
   "Budne suite: openo.sno"
@@ -4661,7 +4659,9 @@ END
 	FOO = \"world\"
 END
 " 2000)]
-    (is (= "" (:stdout r)))))
+    ;; the file is CSNOBOL4's fourth argument, which SPITBOL does not read: unit 10 with no file is ERROR 160 (sbl -bf, manual ch. 19, OUTPUT)
+    (is (= :error (:exit r)))
+    (is (= "inappropriate file specification for output" (:thrown r)))))
 
 (deftest csnobol4-openo2
   "Budne suite: openo2.sno"
@@ -4670,9 +4670,9 @@ END
 LOOP	OUTPUT = FOO			:S(LOOP)
 END
 " 2000)]
-    (is (= "hello
-world
-" (:stdout r)))))
+    ;; the file is CSNOBOL4's fourth argument, which SPITBOL does not read: unit 10 with no file is ERROR 116 (sbl -bf, manual ch. 19, INPUT)
+    (is (= :error (:exit r)))
+    (is (= "inappropriate file specification for input" (:thrown r)))))
 
 (deftest csnobol4-ops
   "Budne suite: ops.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
