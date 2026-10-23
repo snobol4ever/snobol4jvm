@@ -92,10 +92,14 @@
    Rebind to a writer in tests to capture trace output."
   nil)
 
+;; A trace line is cut into pieces of 120 columns, each on a line of its own, as sbl -bf writes a long one (the call of a function given a long string).
 (defn- trace-println [& args]
-  (let [w (or *trace-output* *out*)]
+  (let [w (or *trace-output* *out*)
+        l (apply str args)]
     (binding [*out* w]
-      (println (apply str args)))))
+      (if (<= (count l) 120)
+        (println l)
+        (doseq [p (partition-all 120 l)] (println (apply str p)))))))
 
 (defn- star-field
   "Four asterisks and the number of the statement being executed, filled with asterisks to 12 characters."

@@ -5152,3 +5152,17 @@
                    "END\n"))
       (is (= "****3*******  &STCOUNT = 3\na\n****4*******  &STCOUNT = 4\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; sbl -bf writes a trace line longer than 120 columns in pieces of 120, each on a line of its own (SnoRungs user_function_dupl_size_1, user_function_keyword_14).
+(deftest a-long-trace-line-is-cut-at-120-columns
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &TRACE = 100\n"
+                   "        TRACE('V','VALUE')\n"
+                   "        V = DUPL('r',240)\n"
+                   "END\n"))
+      (is (= (str "****3*******  V = '" (apply str (repeat 101 \r)) "\n"
+                  (apply str (repeat 120 \r)) "\n"
+                  (apply str (repeat 19 \r)) "'\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
