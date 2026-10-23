@@ -342,13 +342,10 @@
           (when *pending-cond*
             (vswap! *pending-cond*
                     (fn [lst]
-                      (let [[kept _]
-                            (reduce (fn [[acc done?] [vs _ :as e]]
-                                      (if (and (not done?) (clojure.core/= vs var-sym))
-                                        [acc true]
-                                        [(conj acc e) done?]))
-                                    [[] false] lst)]
-                        kept))))
+                      ;; the latest entry for this target is the one this undo frame stands for (the frames come off Ω last in, first out)
+                      (if-let [i (last (keep-indexed (fn [i [vs _]] (when (clojure.core/= vs var-sym) i)) lst))]
+                        (into (subvec lst 0 i) (subvec lst (inc i)))
+                        lst))))
           (recur :recede (🡡 Ω) (🡧 Ω)))
 
         ;; ── FENCE! ───────────────────────────────────────────────────────────

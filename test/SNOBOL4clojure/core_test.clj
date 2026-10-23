@@ -4680,3 +4680,24 @@
                    "3 y same\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; Conditional assignments are made when the match succeeds, in the order the pattern made them, each one; backtracking past a capture takes back that capture,
+;; the most recent one it made. Under sbl -bf a capture inside ARBNO that is taken back and made again as the inner pattern grows leaves each repetition's value
+;; for the call that follows it: LOG sees a, then bb. The engine's undo took back the first capture the node had made, not the latest, so the first repetition's
+;; value was lost (Gimpel gpm: GPM_BAL . ARG . *PROC('ARG') inside ARBNO).
+(deftest backtracking-takes-back-the-latest-capture
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DEFINE('LOG()')                                   :(LOG_END)\n"
+                   "LOG     OUTPUT = 'log X=' X\n"
+                   "        LOG = .DUMMY                                      :(NRETURN)\n"
+                   "LOG_END\n"
+                   "        ',a,bb;' POS(0) ARBNO(',' ARBNO(NOTANY(',;')) . X . *LOG()) ';'\n"
+                   "        OUTPUT = 'X=' X\n"
+                   "END\n"))
+      (is (= (str "log X=a\n"
+                   "log X=bb\n"
+                   "X=bb\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
