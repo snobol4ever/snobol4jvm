@@ -819,9 +819,12 @@
               (let [x (first parms)]
                 (if (and (list? x) (>= (count x) 2))
                   (when-some [ks (eval-operands (rest x))]
-                    (let [v (when (symbol? (first x)) (reference (first x)))]
-                      (NAME. (cond-> (apply list (first x) ks)
-                               (or (table? v) (array? v)) (with-meta {:container v})))))
+                    (if (equal (first x) 'APPLY)
+                      ;; APPLY(F, args) is the call F(args): its name is the name of that call (.APPLY('LEFT', N) is the field LEFT(N), sbl -bf)
+                      (NAME. (apply list (symbol (SNOBOL4clojure.env/name-string (first ks))) (rest ks)))
+                      (let [v (when (symbol? (first x)) (reference (first x)))]
+                        (NAME. (cond-> (apply list (first x) ks)
+                                 (or (table? v) (array? v)) (with-meta {:container v}))))))
                   (NAME. x)))
               ;; Binary P . V — CAPTURE-COND (conditional assignment on match success).
               (let [[P N] parms] (INVOKE '. (EVAL! P) (capture-target N)))))
@@ -846,6 +849,15 @@
             (when-some [c (EVAL! container-expr)]
               (when-some [ks (eval-operands key-exprs)]
                 (when-some [v (EVAL! (second parms))] (INVOKE '= (apply list c ks) v)))))
+          ;; APPLY(F, args) = v is F(args) = v (sbl -bf: APPLY('RIGHT', N) = 'r2' assigns the field)
+          (and (equal op '=) (list? (first parms)) (equal (first (first parms)) 'APPLY) (clojure.core/<= 2 (count (first parms))))
+          (when-some [[f & as] (eval-operands (rest (first parms)))]
+            (let [fsym (symbol (SNOBOL4clojure.env/name-string f))
+                  df   (get @<FUNS> (name fsym))]
+              (if (and df (not (:data (meta df))))
+                (let [r (apply INVOKE fsym as)]
+                  (when (instance? SNOBOL4clojure.env.NameResult r) (when-some [v (EVAL! (second parms))] (INVOKE '= (:target r) v))))
+                (when-some [v (EVAL! (second parms))] (INVOKE '= (apply list fsym as) v)))))
           ;; F(args) = v, F a function that returns a name: the value goes to the name it returns
           (and (equal op '=) (call-form? (first parms)))
           (when-some [r (name-of-call (first parms))]

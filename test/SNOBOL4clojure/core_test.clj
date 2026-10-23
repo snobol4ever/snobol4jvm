@@ -4587,3 +4587,28 @@
                    "3 \n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; APPLY(F, args) is the call F(args) (manual ch. 19, APPLY), so its name, .APPLY('LEFT', N), is the name of LEFT(N), the field, and APPLY('RIGHT', N) = 'r2'
+;; assigns the field, as sbl -bf has both. The engine kept a name of a call to APPLY and could not assign through it, ERROR 235 (Gimpel visit: FLD(SON, I) =
+;; FATHER, where FLD returns .APPLY(FIELD(DATATYPE(ST), I), ST)).
+(deftest the-name-of-an-apply-is-the-name-of-the-call-it-makes
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DATA('NODE(LEFT,RIGHT)')\n"
+                   "        N = NODE('a', 'b')\n"
+                   "        X = .APPLY('LEFT', N)\n"
+                   "        OUTPUT = '1 ' DATATYPE(X) ' ' $X\n"
+                   "        $X = 'new'\n"
+                   "        OUTPUT = '2 ' LEFT(N)\n"
+                   "        APPLY('RIGHT', N) = 'r2'\n"
+                   "        OUTPUT = '3 ' RIGHT(N)\n"
+                   "        Y = .LEFT(N)\n"
+                   "        OUTPUT = '4 ' IDENT(X, Y) 'same'\n"
+                   "END\n"))
+      (is (= (str "1 NAME a\n"
+                   "2 new\n"
+                   "3 r2\n"
+                   "4 same\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
