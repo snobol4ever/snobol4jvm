@@ -223,7 +223,11 @@
                        nos    (if (keyword? key) (assoc NOS   key NO) NOS)
                        labels (if (keyword? key) (assoc LABELS NO key) LABELS)
                        codes  (assoc CODES key code)]
-                   (recur (rest stmts) (inc NO) codes nos labels blanks (conj before blanks) fold (conj poss here) pos'')))))))))))
+                   ;; "After reading the END statement, compilation ends" (manual ch. 14, The END Statement): nothing after it is compiled, so the data a program keeps there
+                   ;; is no statement, and no error (sbl -bf; snoflake eliza-duquet-original keeps its script after END)
+                   (if (#{:END :end} label)
+                     [codes nos labels {:before (conj before blanks) :total blanks :pos (conj poss here)}]
+                     (recur (rest stmts) (inc NO) codes nos labels blanks (conj before blanks) fold (conj poss here) pos''))))))))))))
 
 ;; "If we place a statement label in the subject field of the END statement, execution will begin there" (manual ch. 14, The END Statement): END START starts the
 ;; program at START. The label END is recognised in either case.

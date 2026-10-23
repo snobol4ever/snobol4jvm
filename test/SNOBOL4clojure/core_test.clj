@@ -5388,3 +5388,15 @@
                    "END\n"))
       (is (= "trapped 14 lim 4\ntrapped again 14 lim 3\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; "After reading the END statement, compilation ends" (manual ch. 14, The END Statement): what follows END is no statement, and no error, so a program may keep its
+;; data there (snoflake eliza-duquet-original keeps its script after END). The engine compiled it and refused the program over lines that do not compile.
+(deftest compilation-ends-at-end
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        OUTPUT = 'ran'\n"
+                   "END\n"
+                   "ALWAYS      L /2/   D //\n"
+                   "'CAN YOU THINK OF A SPECIFIC EXAMPLE ?':'WHEN ?':\n"))
+      (is (= "ran\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
