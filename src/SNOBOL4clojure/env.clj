@@ -700,29 +700,36 @@
 (defn- words-of-text [s] (quot (clojure.core/+ (count s) 7) 8))
 
 (defn storage-words []
-  (let [seen (java.util.IdentityHashMap.)
-        size (fn size [v]
-               (cond
-                 (nil? v)                         0
-                 (string? v)                      (if (clojure.core/= "" v) 0 (clojure.core/+ 2 (words-of-text v)))
-                 (number? v)                      2
-                 (or (keyword? v) (symbol? v))    0
-                 (.containsKey seen v)            0
-                 :else
-                 (do (.put seen v true)
-                     (cond
-                       (instance? NAME v)         2
-                       (instance? SnobolArray v)
-                       (let [dims (:dims v)
-                             n    (reduce clojure.core/* 1 (map (fn [[lo hi]] (max 0 (inc (clojure.core/- hi lo)))) dims))]
-                         (clojure.core/+ (if (and (clojure.core/= 1 (count dims)) (clojure.core/= 1 (ffirst dims))) 3 (clojure.core/+ 8 (clojure.core/* 2 (count dims))))
-                                         n (size (:dflt v)) (reduce clojure.core/+ 0 (map size (vals @(:data v))))))
-                       (table? v)
-                       (clojure.core/+ 4 (long (:size (meta v) 11))
-                                       (reduce clojure.core/+ 0 (for [[k x] @v :when (not (or (nil? x) (clojure.core/= "" x)))]
-                                                                  (clojure.core/+ 4 (size k) (size x)))))
-                       (instance? DataObj v)
-                       (let [fs (.fields ^DataObj v)] (clojure.core/+ 3 (alength fs) (reduce clojure.core/+ 0 (map size fs))))
-                       (or (seq? v) (vector? v))  (clojure.core/+ 3 (reduce clojure.core/+ 0 (map size v)))
-                       :else                      2))))]
-    (reduce clojure.core/+ 0 (for [[sym v] @<VARS>] (clojure.core/+ 8 (words-of-text (name sym)) (size v))))))
+  ;; a worklist, not recursion: a list of a hundred thousand links is a chain that deep (spitbol_x64_tests gcbuster)
+  (let [seen  (java.util.IdentityHashMap.)
+        work  (java.util.ArrayDeque.)
+        words (fn [v]   ; v's own words; what it holds goes on the worklist
+                (cond
+                  (nil? v)                         0
+                  (string? v)                      (if (clojure.core/= "" v) 0 (clojure.core/+ 2 (words-of-text v)))
+                  (number? v)                      2
+                  (or (keyword? v) (symbol? v))    0
+                  (.containsKey seen v)            0
+                  :else
+                  (do (.put seen v true)
+                      (cond
+                        (instance? NAME v)         2
+                        (instance? SnobolArray v)
+                        (let [dims (:dims v)
+                              n    (reduce clojure.core/* 1 (map (fn [[lo hi]] (max 0 (inc (clojure.core/- hi lo)))) dims))]
+                          (when (some? (:dflt v)) (.add work (:dflt v)))
+                          (doseq [x (vals @(:data v))] (when (some? x) (.add work x)))
+                          (clojure.core/+ (if (and (clojure.core/= 1 (count dims)) (clojure.core/= 1 (ffirst dims))) 3 (clojure.core/+ 8 (clojure.core/* 2 (count dims))))
+                                          n))
+                        (table? v)
+                        (let [live (for [[k x] @v :when (not (or (nil? x) (clojure.core/= "" x)))] [k x])]
+                          (doseq [[k x] live] (when (some? k) (.add work k)) (.add work x))
+                          (clojure.core/+ 4 (long (:size (meta v) 11)) (clojure.core/* 4 (count live))))
+                        (instance? DataObj v)
+                        (let [fs (.fields ^DataObj v)] (doseq [x fs] (when (some? x) (.add work x))) (clojure.core/+ 3 (alength fs)))
+                        (or (seq? v) (vector? v))  (do (doseq [x v] (when (some? x) (.add work x))) 3)
+                        :else                      2))))]
+    (loop [total (reduce clojure.core/+ 0 (for [[sym v] @<VARS>] (do (when (some? v) (.add work v)) (clojure.core/+ 8 (words-of-text (name sym))))))]
+      (if-let [v (.poll work)]
+        (recur (clojure.core/+ total (long (words v))))
+        total))))

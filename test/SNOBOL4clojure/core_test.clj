@@ -5489,3 +5489,16 @@
                    "END\n"))
       (is (= "123\n54\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; COLLECT counts a list of a hundred thousand links without running out of stack (spitbol_x64_tests gcbuster; the count went down the chain one call deeper per
+;; link and overflowed).
+(deftest collect-counts-a-long-list
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DATA('THING(A,B)')\n"
+                   "MAKE    LIST = THING(N,LIST)\n"
+                   "        N = N + 1 LT(N,100000)         :S(MAKE)\n"
+                   "        OUTPUT = GT(COLLECT(), 0) 'collected'\n"
+                   "END\n"))
+      (is (= "collected\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
