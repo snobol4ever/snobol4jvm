@@ -5240,3 +5240,23 @@
                    "END\n"))
       (is (= "name text matches\nvalue no\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; "The table must have at least one non-null element. If the table is empty, CONVERT, RSORT and SORT will fail" (manual ch. 17, Table to array); an entry whose
+;; value is null is no element (sbl -bf: a table of 1, null and 3 converts to ARRAY('2,2')). The engine kept null entries and crashed on an empty table (SnoRungs
+;; table_array_convert_branch_1).
+(deftest a-table-converts-to-its-non-null-entries
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        T = TABLE()\n"
+                   "        T['a'] = 1\n"
+                   "        T['b'] =\n"
+                   "        T['c'] = 3\n"
+                   "        OUTPUT = PROTOTYPE(CONVERT(T,'ARRAY')) ' ' PROTOTYPE(SORT(T))\n"
+                   "        E = TABLE()\n"
+                   "        CONVERT(E, 'ARRAY')                     :S(END)\n"
+                   "        OUTPUT = 'empty fails'\n"
+                   "        SORT(E)                                 :S(END)\n"
+                   "        OUTPUT = 'sort empty fails'\n"
+                   "END\n"))
+      (is (= "2,2 2,2\nempty fails\nsort empty fails\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

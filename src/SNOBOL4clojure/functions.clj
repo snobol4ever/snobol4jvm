@@ -90,6 +90,20 @@
         (subs s (dec i))
         (when (clojure.core/<= (clojure.core/+ (dec i) n) len)
           (subs s (dec i) (clojure.core/+ (dec i) n)))))))
+
+;; A table as an array: "The table is converted to a two-dimensional array ... The table must have at least one non-null element. If the table is empty, CONVERT,
+;; RSORT and SORT will fail" (manual ch. 17, Table to array). As sbl -bf has it, an entry whose value is null is no element: N rows of key and value, in the order
+;; the keys were first assigned, for the N entries with a value; nil (failure) when there are none.
+(defn table->array [t]
+  (let [entries (remove (fn [[_ v]] (or (nil? v) (clojure.core/= "" v))) (env/table-entries t))
+        n       (count entries)]
+    (when (pos? n)
+      (let [arr (ARRAY (str n ",2"))]
+        (doseq [[i [k v]] (map-indexed vector entries)]
+          (array-set arr [(inc i) 1] k)
+          (array-set arr [(inc i) 2] v))
+        arr))))
+
 (defn CONVERT [x t]
   "CONVERT(x, type) — coerce x to the named SNOBOL4 type.
    Returns nil (failure) if the conversion is not defined."
@@ -174,14 +188,7 @@
 
       ;; TABLE conversions
       (and (clojure.core/= from "TABLE") (clojure.core/= to "ARRAY"))
-      ;; Convert TABLE to Nx2 ARRAY sorted by key string representation
-      (let [entries (env/table-entries x)
-            n       (count entries)
-            arr     (ARRAY (str n ",2"))]
-        (doseq [[i [k v]] (map-indexed vector entries)]
-          (array-set arr [(inc i) 1] k)
-          (array-set arr [(inc i) 2] v))
-        arr)
+      (table->array x)
 
       ;; PATTERN stays PATTERN
       (and (clojure.core/= from "PATTERN") (clojure.core/= to "PATTERN")) x
@@ -829,13 +836,7 @@
 ;; SORT and RSORT take a table or an array. A table sorts as the two-column array of its entries (keys in column 1, values in column 2, in the order the keys were
 ;; first assigned); an array sorts its rows on column col (1 by default), a one-dimensional array being its own column. The sort is stable, ascending for SORT and
 ;; descending for RSORT, so entries that tie keep the order they had. The result is a new array.
-(defn- table->array [t]
-  (let [entries (env/table-entries t)
-        arr     (ARRAY (str (count entries) ",2"))]
-    (doseq [[i [k v]] (map-indexed vector entries)]
-      (array-set arr [(inc i) 1] k)
-      (array-set arr [(inc i) 2] v))
-    arr))
+
 
 (defn- sort-array
   "A new array with the rows of arr stably sorted on column col."
@@ -859,7 +860,7 @@
 
 (defn- sort-any [A col descending?]
   (cond
-    (table? A) (sort-array (table->array A) col descending?)
+    (table? A) (when-some [arr (table->array A)] (sort-array arr col descending?))
     (array? A) (sort-array A col descending?)
     :else nil))
 
