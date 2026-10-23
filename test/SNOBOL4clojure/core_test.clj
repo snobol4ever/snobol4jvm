@@ -5516,3 +5516,12 @@
             stmt))
       (is (= 231 (-main (do (spit f "        OUTPUT = 'not run'\n        X = 1 / 0\nEND\n") (.getPath f)))))
       (finally (.delete f)))))
+
+;; Error 0, which assigning &ERRTYPE = 0 signals, ends a program as "036 goto abort with no preceding error" (sbl -bf); the engine reported ERROR 000.
+(deftest error-0-ends-the-program-as-error-36
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRTYPE = 0\n"
+                   "END\n"))
+      (is (re-find #"ERROR 036 -- goto abort with no preceding error" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

@@ -238,6 +238,8 @@
                            (try (rt/RUN entry)
                                 (catch clojure.lang.ExceptionInfo e
                                   (let [{n :snobol/error sig :snobol/signal steps :steps} (ex-data e)
+                                        ;; error 0, which &ERRTYPE = 0 signals, ends the program as "036 goto abort with no preceding error" (sbl -bf)
+                                        n    (if (and n (zero? (long n))) 36 n)
                                         code (or n (when (clojure.core/= :step-limit sig) 244))]
                                     (when-not code (throw e))
                                     (let [text (or (env/error-message code) (ex-message e))]
