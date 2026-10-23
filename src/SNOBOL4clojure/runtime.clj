@@ -18,7 +18,7 @@
                                            snobol-return! snobol-freturn!
                                            snobol-nreturn! snobol-end!
                                            snobol-steplimit!]]
-            [SNOBOL4clojure.trace :refer [fire-label! statement-trace-active?]]
+            [SNOBOL4clojure.trace :refer [fire-label! fire-keyword! statement-trace-active?]]
             [SNOBOL4clojure.operators :refer [EVAL! INVOKE]]))
 
 ;; Special goto targets that trigger control-flow signals rather than label jumps. "If case-folding is in effect, they may appear with any combination of upper- or
@@ -48,6 +48,7 @@
       (let [h @<SETEXIT>]
         (swap! &ERRLIMIT dec)
         (reset! &ERRTYPE n)
+        (fire-keyword! "ERRTYPE" n)
         (reset! &ERRTEXT (ex-message e))
         (if h
           (do (reset! <SETEXIT> nil) (->Trapped h e))
@@ -157,6 +158,8 @@
             ;; a negative &STLIMIT is unlimited execution, and &STCOUNT stops counting; 0 is no limit too, as sbl -bf counts (its countdown starts at the limit,
             ;; sbl.min stgcc, so at 0 the check is never reached), and &STCOUNT goes on
             (let [n (if (neg? (long @&STLIMIT)) @&STCOUNT (swap! &STCOUNT inc))]
+              ;; "tracing keyword &STCOUNT produces a trace after every SPITBOL statement" (manual ch. 16): as the count moves; a negative &STLIMIT moves none
+              (when (and (pos? (long @&TRACE)) (not (neg? (long @&STLIMIT)))) (fire-keyword! "STCOUNT" n))
               (when (and (pos? (long @&STLIMIT)) (> n @&STLIMIT))
                 (snobol-steplimit! n))
               ;; ── LABEL trace ────────────────────────────────────────────────

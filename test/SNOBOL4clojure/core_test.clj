@@ -4726,3 +4726,39 @@
                    "at Q#\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; "Several protected keywords can be traced using the TRACE function: &ERRTYPE, &FNCLEVEL, and &STCOUNT. Tracing occurs each time SPITBOL alters their value. For
+;; example, tracing keyword &STCOUNT produces a trace after every SPITBOL statement is executed" (manual ch. 16). As sbl -bf writes it, the line is the statement's
+;; star field, an i for each function level, and &NAME = value: &STCOUNT as each statement begins, &FNCLEVEL at a call (at the new level) and at the return (the
+;; RETURN statement's number), &ERRTYPE when an error sets it (assigning &ERRTYPE signals one). The engine never fired a keyword trace (snoflake
+;; trace-keyword-fnclevel; Gimpel fprofile: TRACE(.STCOUNT, 'KEYWORD',, 'FPROFILE')).
+(deftest a-keyword-trace-fires-each-time-the-keyword-changes
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &TRACE = 100\n"
+                   "        TRACE('STCOUNT', 'KEYWORD')\n"
+                   "        X = 1\n"
+                   "        Y = 2\n"
+                   "        STOPTR('STCOUNT', 'KEYWORD')\n"
+                   "        DEFINE('F()')                     :(FE)\n"
+                   "F       F = 1                             :(RETURN)\n"
+                   "FE      TRACE('FNCLEVEL', 'KEYWORD')\n"
+                   "        Z = F()\n"
+                   "        STOPTR('FNCLEVEL', 'KEYWORD')\n"
+                   "        &ERRLIMIT = 5\n"
+                   "        TRACE('ERRTYPE', 'KEYWORD')\n"
+                   "        A = 'A' ; W = 1 + A\n"
+                   "        &ERRTYPE = 0\n"
+                   "        OUTPUT = 'done'\n"
+                   "END\n"))
+      (is (= (str "****3*******  &STCOUNT = 3\n"
+                   "****4*******  &STCOUNT = 4\n"
+                   "****5*******  &STCOUNT = 5\n"
+                   "****9******* i &FNCLEVEL = 1\n"
+                   "****7*******  &FNCLEVEL = 0\n"
+                   "****14******  &ERRTYPE = 2\n"
+                   "****15******  &ERRTYPE = 0\n"
+                   "done\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

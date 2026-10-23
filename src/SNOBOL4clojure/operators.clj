@@ -22,7 +22,7 @@
             [SNOBOL4clojure.emitter   :refer [emitter]]
             [SNOBOL4clojure.dump      :refer [dump-text]]
             [SNOBOL4clojure.grammar   :refer [parse-expression]]
-            [SNOBOL4clojure.trace     :refer [fire-value! fire-call! fire-return! trace! stoptr!]])
+            [SNOBOL4clojure.trace     :refer [fire-value! fire-call! fire-return! fire-keyword! trace! stoptr!]])
   (:refer-clojure :exclude [= + - * / num]))
 
 ;; ── Numeric conversion macros ─────────────────────────────────────────────────
@@ -413,7 +413,7 @@
                           ;; CALL trace
                           (fire-call! fname (map #(reference (symbol %)) params))
                           ;; Run from entry label; catch RETURN/FRETURN/NRETURN. The function level is one deeper while the body runs.
-                          (swap! &FNCLEVEL inc)
+                          (fire-keyword! "FNCLEVEL" (swap! &FNCLEVEL inc))
                           (let [run-fn  (ns-resolve 'SNOBOL4clojure.runtime 'RUN)
                                 outcome (try
                                           (when run-fn ((var-get run-fn) entry))
@@ -422,7 +422,7 @@
                                           (catch clojure.lang.ExceptionInfo e
                                             (let [sig (:snobol/signal (ex-data e))]
                                               (if (#{:return :freturn :nreturn} sig) sig (throw e))))
-                                          (finally (swap! &FNCLEVEL dec)))]
+                                          (finally (fire-keyword! "FNCLEVEL" (swap! &FNCLEVEL dec))))]
                             ;; Collect result before restoring
                             (let [result ($$ f-sym)]
                               ;; RETURN trace
@@ -951,6 +951,7 @@
          (let [{n :snobol/error c :snobol/compile} (ex-data e)]
            (when-not c (throw e))
            (reset! SNOBOL4clojure.env/&ERRTYPE n)
+           (fire-keyword! "ERRTYPE" n)
            (reset! SNOBOL4clojure.env/&ERRTEXT (ex-message e))
            (when (pos? (long @SNOBOL4clojure.env/&ERRLIMIT)) (swap! SNOBOL4clojure.env/&ERRLIMIT dec))
            nil))))

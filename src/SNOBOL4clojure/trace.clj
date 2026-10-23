@@ -150,13 +150,15 @@
     (:label entry)))
 
 (defn fire-keyword!
-  "Fire KEYWORD trace for `kw-sym` (&VAR) being set to `new-val`."
-  [kw-sym new-val]
+  "Fire the KEYWORD trace of the keyword named kw (ERRTYPE, FNCLEVEL or STCOUNT, the ones SPITBOL traces) now holding new-val: the trace function is called, or the
+   line written as sbl -bf writes it, the statement's star field, an i for each function level, then &NAME = value; either costs 1 of &TRACE."
+  [kw new-val]
   (when (pos? @&TRACE)
-    (when-let [entry (@registry (reg-key kw-sym :keyword))]
+    (when-let [entry (@registry (reg-key kw :keyword))]
       (if-let [f (trace-fn entry)]
-        (call-trace-fn! f kw-sym entry)
-        (trace-println "*** &" kw-sym " = " (pr-str new-val))))))
+        (call-trace-fn! f kw entry)
+        (do (swap! &TRACE dec)
+            (trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " &" kw " = " (trace-val new-val)))))))
 
 (defn fire-label!
   "Fire LABEL trace when execution reaches `label-key`.
