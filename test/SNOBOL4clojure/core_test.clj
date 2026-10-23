@@ -4496,3 +4496,33 @@
                    "7 one\n")
              (binding [SNOBOL4clojure.env/*file-dir* (.getPath dir)] (with-out-str (-main (.getPath f))))))
       (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))
+
+
+;; The subject of a match with replacement may be an indirect reference, $N 'b' = 'B': it is the variable or element N names (a NAME, or a string spelling a
+;; variable), read for the match and assigned the result, as sbl -bf has it. The engine died reading a NAME as a variable's name (Gimpel peel, snoput:
+;; $NAME. PEEL.K2.).
+(deftest the-subject-of-a-replacement-may-be-an-indirect-reference
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        X = 'abc' ; N = .X\n"
+                   "        $N 'b' = 'B'\n"
+                   "        OUTPUT = '1 ' X\n"
+                   "        $N 'q' = 'Q'                       :S(S2)\n"
+                   "        OUTPUT = '2 fails ' X              :(N2)\n"
+                   "S2      OUTPUT = '2 ok'\n"
+                   "N2      A = ARRAY(2) ; A<1> = 'xyz' ; M = .A<1>\n"
+                   "        $M 'y' = 'Y'\n"
+                   "        OUTPUT = '3 ' A<1>\n"
+                   "        S = 'X'\n"
+                   "        $S 'a' = 'A'\n"
+                   "        OUTPUT = '4 ' X\n"
+                   "        $N POS(0) LEN(1) . F\n"
+                   "        OUTPUT = '5 ' F\n"
+                   "END\n"))
+      (is (= (str "1 aBc\n"
+                   "2 fails aBc\n"
+                   "3 xYz\n"
+                   "4 ABc\n"
+                   "5 A\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

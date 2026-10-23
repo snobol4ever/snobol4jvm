@@ -352,7 +352,7 @@
                   v))))
     ;; the subject is a variable, or an element or field whose subscripts the evaluator has already taken
     ?=      (let [[n p R] args
-                  subject (sstr (if (list? n) (apply INVOKE (first n) (rest n)) ($$ n)))
+                  subject (sstr (if (list? n) (apply INVOKE (or (:container (meta n)) (first n)) (rest n)) ($$ n)))
                   pat     p]                      ; already evaluated by EVAL! dispatch
               (when-let [[start end] (SEARCH subject pat)]
                 ;; The replacement is evaluated after the match, so it sees the
@@ -873,9 +873,13 @@
           ;; an element or field subject takes its subscripts before the pattern is evaluated and matched (sbl -bf: A<I> BUMP() = 'W' fills A<2> when BUMP
           ;; moves I from 2)
           (equal op '?=)    (let [[N P R] parms
-                                  N' (if (and (list? N) (not (equal (first N) '&)))
+                                  N' (cond
+                                       ;; $N: the variable or element N names
+                                       (and (list? N) (equal (first N) '$) (clojure.core/= 2 (count N)))
+                                       (when-some [v (EVAL! (second N))] (indirect-target v))
+                                       (and (list? N) (not (equal (first N) '&)))
                                        (when-some [ks (eval-operands (rest N))] (with-meta (apply list (first N) ks) (meta N)))
-                                       N)]
+                                       :else N)]
                               (when N' (when-some [p (EVAL! P)] (INVOKE '?= N' p R))))
           ;; the protected keywords &ABORT, &ARB, &BAL, &FAIL, &FENCE, &REM and &SUCCEED hold "the primitive pattern" of their name (manual ch. 16)
           (and (equal op '&) (pattern-keywords (str (first parms))))
