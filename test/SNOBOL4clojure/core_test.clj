@@ -5260,3 +5260,23 @@
                    "END\n"))
       (is (= "2,2 2,2\nempty fails\nsort empty fails\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A VALUE trace shows an array, a table or a DATA object as a dump does, by its kind and number (sbl -bf: N = ARRAY(2:4) #2, TABLE(7) #5, NODE #6). The engine
+;; wrote the Java object's own text (SnoRungs table_array_keyword_1).
+(deftest a-value-trace-shows-an-object-by-its-kind-and-number
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &TRACE = 100\n"
+                   "        DATA('NODE(L,R)')\n"
+                   "        TRACE('N', 'VALUE')\n"
+                   "        N = ARRAY(3)\n"
+                   "        N = ARRAY('2:4')\n"
+                   "        N = ARRAY('2,3')\n"
+                   "        N = TABLE()\n"
+                   "        N = TABLE(7,3)\n"
+                   "        N = NODE(1,2)\n"
+                   "END\n"))
+      (is (= (str "****4*******  N = ARRAY(3) #1\n****5*******  N = ARRAY(2:4) #2\n****6*******  N = ARRAY(2,3) #3\n"
+                  "****7*******  N = TABLE(11) #4\n****8*******  N = TABLE(7) #5\n****9*******  N = NODE #6\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

@@ -15,7 +15,9 @@
 
 (defn- dims-text [dims] (string/join "," (map (fn [[lo hi]] (if (clojure.core/= lo 1) (str hi) (str lo ":" hi))) dims)))
 
-(defn- value-text [v]
+(defn value-text
+  "A value as a dump shows it, and a trace: an array, a table or a DATA object by its kind and number (ARRAY(2:4) #2, TABLE(11) #4, NODE #6)."
+  [v]
   (cond
     (string? v)  (str "'" v "'")
     (integer? v) (str v)

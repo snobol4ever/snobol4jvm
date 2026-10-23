@@ -22,8 +22,9 @@
 
   Other trace types keep the form they had until they are measured against the oracle.
   "
-  (:require [SNOBOL4clojure.env :refer [&TRACE &FTRACE &STNO &FNCLEVEL $$ real-str <TRACES> <FUNS>]])
-  (:import  [SNOBOL4clojure.env NAME]))
+  (:require [SNOBOL4clojure.env :refer [&TRACE &FTRACE &STNO &FNCLEVEL $$ real-str <TRACES> <FUNS>]]
+            [SNOBOL4clojure.dump :refer [value-text]])
+  (:import  [SNOBOL4clojure.env NAME DataObj]))
 
 ;; ── Registry ───────────────────────────────────────────�
 ;; Maps [name kind] -> {:label lbl :fn fn-name}. A name is kept as written; a kind is :value :access :label :call :return :keyword.
@@ -108,9 +109,11 @@
     (str s (apply str (repeat (max 0 (- 12 (count s))) \*)))))
 
 (defn- trace-val
-  "A value as a dump shows it: a string in quotes exactly as it is, a NAME with a point, a real with its point, PATTERN for a pattern."
+  "A value as a dump shows it: a string in quotes exactly as it is, a NAME with a point, a real with its point, PATTERN for a pattern, an array, a table or a
+   DATA object by its kind and number (sbl -bf: N = ARRAY(2:4) #2)."
   [v]
   (cond
+    (or (SNOBOL4clojure.env/array? v) (SNOBOL4clojure.env/table? v) (instance? DataObj v)) (value-text v)
     (nil? v)                  "''"
     (string? v)               (str "'" v "'")
     (instance? NAME v)        (str "." (.n ^NAME v))
