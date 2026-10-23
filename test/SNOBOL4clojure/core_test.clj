@@ -4658,3 +4658,25 @@
                    "VA=ab VB=c\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; The name of an indirect reference, .$X, is the name of the variable (or element) X names: .$('V' 'A') is .VA, and IDENT(.$M, .VB) succeeds when M is 'VB',
+;; as sbl -bf has it. The engine made a name of the form ($ 'VA'), which it then read as a subscript of $ and could not assign (Gimpel gpm: PROC returns
+;; .DUMMY, and SLOT-like functions return .$(...)).
+(deftest the-name-of-an-indirect-reference-is-the-name-it-refers-to
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        N = .$('V' 'A')\n"
+                   "        OUTPUT = '1 ' DATATYPE(N)\n"
+                   "        $N = 'x'\n"
+                   "        OUTPUT = '2 ' VA\n"
+                   "        M = 'VB'\n"
+                   "        P = .$M\n"
+                   "        $P = 'y'\n"
+                   "        OUTPUT = '3 ' VB ' ' IDENT(P, .VB) 'same'\n"
+                   "END\n"))
+      (is (= (str "1 NAME\n"
+                   "2 x\n"
+                   "3 y same\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

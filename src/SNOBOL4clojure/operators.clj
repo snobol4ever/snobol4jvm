@@ -817,7 +817,11 @@
               ;; name still reads .A<k>; a field F(x) keeps its function's name.
               ;; A subscript or argument that fails fails the name (sbl -bf: .A<DIFFER(1, 1)> fails).
               (let [x (first parms)]
-                (if (and (list? x) (>= (count x) 2))
+                (cond
+                  ;; .$X is the name of the variable or element X names (sbl -bf: IDENT(.$M, .VB) when M is 'VB')
+                  (and (list? x) (equal (first x) '$) (clojure.core/= 2 (count x)))
+                  (when-some [v (EVAL! (second x))] (NAME. (indirect-target v)))
+                  (and (list? x) (>= (count x) 2))
                   (when-some [ks (eval-operands (rest x))]
                     (if (equal (first x) 'APPLY)
                       ;; APPLY(F, args) is the call F(args): its name is the name of that call (.APPLY('LEFT', N) is the field LEFT(N), sbl -bf)
@@ -825,7 +829,7 @@
                       (let [v (when (symbol? (first x)) (reference (first x)))]
                         (NAME. (cond-> (apply list (first x) ks)
                                  (or (table? v) (array? v)) (with-meta {:container v}))))))
-                  (NAME. x)))
+                  :else (NAME. x)))
               ;; Binary P . V — CAPTURE-COND (conditional assignment on match success).
               (let [[P N] parms] (INVOKE '. (EVAL! P) (capture-target N)))))
           ;; Unary @V — cursor assignment. The matcher assigns the cursor to V by
