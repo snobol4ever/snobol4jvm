@@ -735,6 +735,20 @@
 
 (defn- element-target [N] (apply list (first N) (map EVAL! (rest N))))
 
+;; The operators whose result is a value and never a name: an expression made with one of them cannot be the target of an assignment.
+(def ^:private value-operators '#{= ?= ? | at + - sharp / * % ** ^ ! . tilde & SEQ})
+
+;; The name a deferred target *X stands for when the assignment is made: a variable; the variable $V names; an element or a field, its subscripts taken then; a
+;; keyword; the name a function returns (defined by then, perhaps after the pattern was built). Any other expression is evaluated, and its value is no name, so the
+;; assignment fails (sbl -bf: 'xyz' LEN(1) . *(K = K + 1) assigns K and fails, . *(R 'y') and . *.M fail). nil is that failure.
+(defn- deferred-name [X]
+  (cond
+    (symbol? X)                                                    X
+    (call-form? X)                                                 (when-some [r (name-of-call X)] (:target r))
+    (and (list? X) (equal (first X) '$) (clojure.core/= 2 (count X))) (when-some [v (EVAL! (second X))] (indirect-target v))
+    (and (list? X) (not (contains? value-operators (first X))))    (element-target X)
+    :else                                                          (do (EVAL! X) nil)))
+
 (defn- capture-target [N]
   (cond
     ;; A plain variable is assigned as a statement assigns it: OUTPUT writes the line, an output channel its record, a traced variable fires its trace.
@@ -743,15 +757,24 @@
     (and (list? N) (equal (first N) '$) (clojure.core/= 2 (count N)))
     (when-some [v (EVAL! (second N))]
       (let [t (indirect-target v)] (fn [x] (assign-to t x))))
-    ;; *X is resolved when the assignment is made: *F(args), F a function that returns a name (defined by then, perhaps after the pattern was built), is called and
-    ;; the value goes to the name it returns; *T<I> takes its subscripts then
+    ;; *X is resolved when the assignment is made (deferred-name), so a loop that moves I fills a different element of *T<I> each time
     (and (list? N) (equal (first N) '*) (clojure.core/= 2 (count N)))
     (let [X (second N)]
-      (fn [x] (if (call-form? X)
-                (when-some [r (name-of-call X)] (assign-to (:target r) x))
-                (assign-to (if (list? X) (element-target X) X) x))))
+      (fn [x] (when-some [t (deferred-name X)] (assign-to t x))))
+    ;; F(args), a function the program defined, is called as the pattern is built and gives the name it returns: "021 function called by name returned a value"
+    ;; when it returns a value (sbl -bf: LEN(1) . S(), S returning .G by NRETURN, assigns G)
+    (call-form? N)
+    (when-some [args (eval-operands (rest N))]
+      (let [r (apply INVOKE (first N) args)]
+        (if (instance? SNOBOL4clojure.env.NameResult r)
+          (let [t (:target r)] (fn [x] (assign-to t x)))
+          (when (some? r) (throw (ex-info "function called by name returned a value" {:snobol/error 21}))))))
+    ;; an element takes its subscripts now, and one out of bounds fails the statement, as a reference to it does (sbl -bf: 'y' . A[7] of ARRAY(3))
     (list? N)
-    (let [t (element-target N)] (fn [x] (assign-to t x)))
+    (let [t (element-target N)
+          c (when (symbol? (first t)) ($$ (first t)))]
+      (when-not (and (array? c) (not (SNOBOL4clojure.env/array-in-bounds? c (vec (rest t)))))
+        (fn [x] (assign-to t x))))
     true
     N))
 
@@ -819,16 +842,16 @@
                                  (or (table? v) (array? v)) (with-meta {:container v}))))))
                   :else (NAME. x)))
               ;; Binary P . V — CAPTURE-COND (conditional assignment on match success).
-              (let [[P N] parms] (INVOKE '. (EVAL! P) (capture-target N)))))
+              (let [[P N] parms] (when-some [t (capture-target N)] (INVOKE '. (EVAL! P) t)))))
           ;; Unary @V — cursor assignment. The matcher assigns the cursor to V by
           ;; name, so the operand is passed as written and not read as a value.
           (and (equal op 'at) (clojure.core/= 1 (count parms)))
-          (list 'CURSOR-IMM! (capture-target (first parms)))
+          (when-some [t (capture-target (first parms))] (list 'CURSOR-IMM! t))
           (equal op '$)     (if (clojure.core/= 1 (count parms))
                               ;; Unary $X — the variable X's value names (a string or a NAME)
                               (when-some [v (EVAL! (first parms))]
                                 (EVAL! (indirect-target v)))
-                              (let [[P N] parms] (INVOKE '$ (EVAL! P) (capture-target N))))
+                              (let [[P N] parms] (when-some [t (capture-target N)] (INVOKE '$ (EVAL! P) t))))
           ;; $X = V — assign the variable X's value names
           (and (equal op '=) (list? (first parms)) (clojure.core/= 2 (count (first parms)))
                (equal (first (first parms)) '$))

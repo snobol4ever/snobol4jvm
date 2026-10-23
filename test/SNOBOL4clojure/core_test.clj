@@ -5045,3 +5045,33 @@
                      "END\n"))
         (is (= "a+b\n7+2\n" (with-out-str (-main (.getPath f)))) op)
         (finally (.delete f))))))
+
+;; The target of . $ and @ is a name. *X stands for the name X gives when the assignment is made: a variable, the one $V names, an element, or the name a
+;; function returns; any other expression is evaluated and is no name, so the assignment fails. F(), a function the program defined, written as the target, is
+;; called as the pattern is built and gives the name it returns; an element out of bounds fails the statement that builds the pattern. The engine read *$N and
+;; *(K = K + 1) as subscripts (ERROR 235) and S() as a variable (SnoRungs indirect_branch_1, len_indirect_1, user_function_len_capture_1, ...). sbl -bf's output.
+(deftest a-capture-target-is-a-name
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DEFINE('S()')                   :(SE)\n"
+                   "S       OUTPUT = 'S called'\n"
+                   "        S = .G                          :(NRETURN)\n"
+                   "SE      P = LEN(1) . S()\n"
+                   "        OUTPUT = 'built'\n"
+                   "        'AB' ? P\n"
+                   "        OUTPUT = 'g=' G\n"
+                   "        N = 'H'; 'xyz' LEN(1) . *$N\n"
+                   "        OUTPUT = 'H=' H\n"
+                   "        K = 0; 'xyz' LEN(1) . *(K = K + 1)    :S(Y4)F(N4)\n"
+                   "Y4      OUTPUT = 'Y4 K=' K              :(T5)\n"
+                   "N4      OUTPUT = 'N4 K=' K\n"
+                   "T5      R = 'x'; 'xyz' LEN(1) . *(R 'y')      :S(Y5)F(N5)\n"
+                   "Y5      OUTPUT = 'Y5'                   :(T6)\n"
+                   "N5      OUTPUT = 'N5'\n"
+                   "T6      A = ARRAY(3)\n"
+                   "        Q = 'y' . A[7]                  :S(Y6)F(N6)\n"
+                   "Y6      OUTPUT = 'built'                :(END)\n"
+                   "N6      OUTPUT = 'refused'\n"
+                   "END\n"))
+      (is (= "S called\nbuilt\ng=A\nH=x\nN4 K=1\nN5\nrefused\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
