@@ -5075,3 +5075,30 @@
                    "END\n"))
       (is (= "S called\nbuilt\ng=A\nH=x\nN4 K=1\nN5\nrefused\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; UNLOAD(name) "undefines the user-defined function name ... In SPITBOL, only user-defined functions can be UNLOADed" (manual ch. 19, UNLOAD). The engine had
+;; no UNLOAD (ERROR 022; SnoRungs user_function_21, user_function_branch_9 and 10, ladder__rung30_load_unload). sbl -bf's answers: SIZE is 248, the null string
+;; 201, a function OPSYN made from the unloaded one stays, a variable of its name keeps its value, and a call after it is 022.
+(deftest unload-undefines-a-program-function
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 10\n"
+                   "        UNLOAD('SIZE')                  :S(A)F(B)\n"
+                   "A       OUTPUT = 'unload SIZE ok'       :(C)\n"
+                   "B       OUTPUT = 'unload SIZE failed ' &ERRTYPE\n"
+                   "C       UNLOAD()                        :S(D)F(E)\n"
+                   "D       OUTPUT = 'unload null ok'       :(F)\n"
+                   "E       OUTPUT = 'unload null failed ' &ERRTYPE\n"
+                   "F       DEFINE('G(X)')                  :(GE)\n"
+                   "G       G = X X                         :(RETURN)\n"
+                   "GE      OPSYN('H', 'G')\n"
+                   "        G = 'a value'\n"
+                   "        OUTPUT = 'ret=[' UNLOAD('G') ']'\n"
+                   "        OUTPUT = 'H still ' H('a') ', G=' G\n"
+                   "        UNLOAD('NEVERDEF')              :F(END)\n"
+                   "        G(1)                            :S(END)\n"
+                   "        OUTPUT = 'call fails ' &ERRTYPE\n"
+                   "END\n"))
+      (is (= (str "unload SIZE failed 248\nunload null failed 201\nret=[]\nH still aa, G=a value\ncall fails 22\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

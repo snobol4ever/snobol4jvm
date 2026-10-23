@@ -490,6 +490,16 @@
     ;; Dynamic library loading is out of scope; return nil (failure) gracefully.
     LOAD    nil
     load    nil
+    ;; UNLOAD(name) "undefines the user-defined function name ... In SPITBOL, only user-defined functions can be UNLOADed" (manual ch. 19, UNLOAD). As sbl -bf
+    ;; has it: one of SPITBOL's own is "248 attempted redefinition of system function", the null string "201 UNLOAD argument is not natural variable name", and
+    ;; any other name succeeds with the null string, its function (if it has one) gone, so a call is "022 undefined function called"; a variable of the name
+    ;; keeps its value, and a function OPSYN made from it stays.
+    UNLOAD  (let [nm (name-string (first args))]
+              (cond
+                (clojure.core/= "" nm)                          (throw (ex-info "UNLOAD argument is not natural variable name" {:snobol/error 201}))
+                (contains? SNOBOL4clojure.env/system-functions nm) (throw (ex-info "attempted redefinition of system function" {:snobol/error 248}))
+                :else (do (swap! <FUNS> dissoc nm) (swap! <FDEFS> dissoc nm) ε)))
+    unload  (apply INVOKE 'UNLOAD args)
     APPLY   (apply APPLY (first args) (rest args))
     apply   (apply APPLY (first args) (rest args))
     REPLACE (let [[s1 s2 s3] args] (REPLACE s1 s2 s3))

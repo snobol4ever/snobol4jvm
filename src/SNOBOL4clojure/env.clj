@@ -130,6 +130,14 @@
 ;; find the function even while the result slot holds ε or an intermediate value.
 (def <FUNS>  (atom {}))
 
+;; SPITBOL's own functions (manual ch. 19, Function summary): sbl -bf answers "248 attempted redefinition of system function" when a program would UNLOAD one.
+(def system-functions
+  #{"ANY" "APPLY" "ARBNO" "ARG" "ARRAY" "ATAN" "BACKSPACE" "BREAK" "BREAKX" "CHAR" "CHOP" "CLEAR" "CODE" "COLLECT" "CONVERT" "COPY" "COS" "DATA" "DATATYPE"
+    "DATE" "DEFINE" "DETACH" "DIFFER" "DUMP" "DUPL" "EJECT" "ENDFILE" "EQ" "EVAL" "EXIT" "EXP" "FENCE" "FIELD" "GE" "GT" "HOST" "IDENT" "INPUT" "INTEGER"
+    "ITEM" "LE" "LEN" "LEQ" "LGE" "LGT" "LLE" "LLT" "LN" "LNE" "LOAD" "LOCAL" "LPAD" "LT" "NE" "NOTANY" "OPSYN" "OUTPUT" "POS" "PROTOTYPE" "REMDR"
+    "REPLACE" "REVERSE" "REWIND" "RPAD" "RPOS" "RSORT" "RTAB" "SET" "SETEXIT" "SIN" "SIZE" "SORT" "SPAN" "SQRT" "STOPTR" "SUBSTR" "TAB" "TABLE" "TAN"
+    "TIME" "TRACE" "TRIM" "UNLOAD"})
+
 ;; Registry of function parameter and local-variable metadata.
 ;; Populated by DEFINE; read by ARG() and LOCAL().
 ;; Shape: {"FNAME" {:params ["P1" "P2"] :locals ["L1"]}}
