@@ -31,8 +31,10 @@
 
 ;; A capture's target is a variable's symbol, or a function of the value that makes the assignment: an element T<I>, a variable a string names ($V) or a
 ;; deferred expression (*T<I>), which the evaluator has turned into that function (operators.clj, capture-target).
+;; True when the assignment is made. A function's nil is a target that failed (*F() whose F fails, an element out of bounds): sbl -bf then fails the match at
+;; a $ or an @, which backtracks, and fails the statement at a . when the match is over.
 (defn- assign! [target v]
-  (if (fn? target) (target v) (snobol-set! target v)))
+  (if (fn? target) (some? (target v)) (do (snobol-set! target v) true)))
 
 ;; ── Tracing (off by default) ──────────────────────────────────────────────────
 (def ^:dynamic *trace* false)
@@ -254,8 +256,9 @@
           :succeed
           (let [[_ _ var-sym start-pos] (ζΠ ζ)
                 matched-text  (subs full-subject start-pos (ζδ ζ))]
-            (assign! var-sym matched-text)       ; assign immediately, unconditionally
-            (recur :succeed (ζ↑ ζ) Ω))           ; leave child retry frames on Ω
+            (if (assign! var-sym matched-text)   ; assign immediately, unconditionally
+              (recur :succeed (ζ↑ ζ) Ω)          ; leave child retry frames on Ω
+              (recur :recede (🡡 Ω) (🡧 Ω))))     ; a target that fails backtracks into P
           (:fail :recede)
           (recur :recede (🡡 Ω) (🡧 Ω)))          ; pop our own frame, pass recede
 
@@ -501,8 +504,9 @@
         CURSOR-IMM!
         (case action
           (:proceed :succeed)
-          (do (assign! (second (ζΠ ζ)) (ζδ ζ))
-              (recur :succeed (ζ↑ ζ (ζΣ ζ) (ζδ ζ)) Ω))
+          (if (assign! (second (ζΠ ζ)) (ζδ ζ))
+            (recur :succeed (ζ↑ ζ (ζΣ ζ) (ζδ ζ)) Ω)
+            (recur :recede (🡡 Ω) (🡧 Ω)))
           (:fail :recede)
           (recur :recede (🡡 Ω) (🡧 Ω)))
 
@@ -563,10 +567,10 @@
 (defn- commit-pending!
   "Commit all pending conditional (.) assignments to their variables.
    Called by SEARCH/MATCH/FULLMATCH when the engine returns success.
-   They are made in the order the pattern matched them, so the last capture into a variable is the one that stays (sbl -bf)."
+   They are made in the order the pattern matched them, so the last capture into a variable is the one that stays (sbl -bf).
+   False when a target fails (*F() whose F fails, an element out of bounds): the statement fails, as sbl -bf fails it."
   []
-  (doseq [[var-sym text] @*pending-cond*]
-    (assign! var-sym text)))
+  (every? (fn [[var-sym text]] (assign! var-sym text)) @*pending-cond*))
 
 (defn SEARCH
   "Slide pattern P across string S, trying each start position 0..n, or
@@ -585,7 +589,7 @@
           (let [result (engine (drop i chars) i P i S)]
             (cond
               (clojure.core/= :abort result) nil      ; ABORT: no later start position
-              result (do (commit-pending!) result)
+              result (when (commit-pending!) result)
               :else  (recur (inc i)))))))))
 
 (defn MATCH
@@ -596,8 +600,7 @@
   (binding [*pending-cond* (volatile! [])]
     (let [result (engine (seq S) 0 (list 'SEQ (POS 0) P) 0 S)
           result (when-not (clojure.core/= :abort result) result)]
-      (when result (commit-pending!))
-      result)))
+      (when (and result (commit-pending!)) result))))
 
 (defn FULLMATCH
   "Match pattern P against the entirety of string S (anchored both ends).
@@ -607,8 +610,7 @@
   (binding [*pending-cond* (volatile! [])]
     (let [result (engine (seq S) 0 (list 'SEQ (POS 0) P (RPOS 0)) 0 S)
           result (when-not (clojure.core/= :abort result) result)]
-      (when result (commit-pending!))
-      result)))
+      (when (and result (commit-pending!)) result))))
 
 (defn REPLACE
   "Match pattern P against S; if matched, replace the matched span with R.

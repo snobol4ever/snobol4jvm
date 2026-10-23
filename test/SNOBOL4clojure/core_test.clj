@@ -4851,3 +4851,31 @@
                    "end\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A capture's target that fails fails the match: *F() whose F fails, or an element out of bounds. sbl -bf backtracks at a $ or an @ (so another alternative may
+;; still match) and fails the statement at a . when the match is over (snoflake gimpel-test-pattern-predicate: Gimpel's TEST(*LGT(A,B)), "AB NO").
+(deftest a-capture-target-that-fails-fails-the-match
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        DEFINE('F()')                   :(F_END)\n"
+                   "F       OUTPUT = 'F called'             :(FRETURN)\n"
+                   "F_END   'ABC' 'B' $ *F()                :S(Y1)F(N1)\n"
+                   "Y1      OUTPUT = 'imm Y'                :(T2)\n"
+                   "N1      OUTPUT = 'imm N'\n"
+                   "T2      'ABC' 'B' . *F()                :S(Y2)F(N2)\n"
+                   "Y2      OUTPUT = 'cond Y'               :(T3)\n"
+                   "N2      OUTPUT = 'cond N'\n"
+                   "T3      'ABC' 'B' @*F()                 :S(Y3)F(N3)\n"
+                   "Y3      OUTPUT = 'cur Y'                :(T4)\n"
+                   "N3      OUTPUT = 'cur N'\n"
+                   "T4      'ABC' ('B' $ *F() | 'C') . X    :S(Y4)F(N4)\n"
+                   "Y4      OUTPUT = 'alt Y ' X             :(T5)\n"
+                   "N4      OUTPUT = 'alt N'\n"
+                   "T5      A = ARRAY(3)\n"
+                   "        'ABC' 'B' . A<5>                :S(Y5)F(N5)\n"
+                   "Y5      OUTPUT = 'bounds Y'             :(END)\n"
+                   "N5      OUTPUT = 'bounds N'\n"
+                   "END\n"))
+      (is (= (str "F called\nimm N\nF called\ncond N\nF called\ncur N\nF called\nalt Y C\nbounds N\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
