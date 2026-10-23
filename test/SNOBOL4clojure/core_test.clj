@@ -4804,3 +4804,26 @@
                        *in* (java.io.BufferedReader. (java.io.StringReader. "abc\ndef\n"))]
                (with-out-str (-main (.getPath f))))))
       (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))
+
+
+;; "The COLLECT function forces a garbage collection which retrieves memory no longer in use ... The integer argument represents a minimum number of words to be made
+;; available ... If this amount of storage cannot be obtained, the COLLECT function fails. When successful, it returns the number of free words" (manual ch. 19,
+;; COLLECT), as sbl -bf answers: an INTEGER above 0, and COLLECT(2000000000000) fails. The engine collected nothing and read no argument. (Gimpel timegc, which
+;; measures the storage a collection frees, stays red: the few words it frees do not show through the JVM's own use of its heap.)
+(deftest collect-forces-a-collection-and-fails-short-of-its-argument
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        X = COLLECT()\n"
+                   "        OUTPUT = DATATYPE(X) ' ' GT(X, 0) 'pos'\n"
+                   "        Y = COLLECT(100)                 :S(S1)\n"
+                   "        OUTPUT = 'collect(100) fails'   :(N1)\n"
+                   "S1      OUTPUT = 'collect(100) ok'\n"
+                   "N1      Z = COLLECT(2000000000000)           :S(S2)\n"
+                   "        OUTPUT = 'collect(big) fails'   :(END)\n"
+                   "S2      OUTPUT = 'collect(big) ok'\n"
+                   "END\n"))
+      (is (= (str "INTEGER pos\n"
+                   "collect(100) ok\n"
+                   "collect(big) fails\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

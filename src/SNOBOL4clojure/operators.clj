@@ -490,8 +490,14 @@
     ;; TRACE / STOPTR register and remove traces in trace.clj.
     TRACE   (let [[nm ty lbl f] args] (trace! nm (or ty "VALUE") lbl f) ε)
     STOPTR  (let [[nm ty] args] (stoptr! nm (or ty "VALUE")) ε)
-    ;; COLLECT returns an integer, the store left, as SPITBOL does (DATATYPE INTEGER).
-    COLLECT (quot (.freeMemory (Runtime/getRuntime)) 8)
+    ;; "The COLLECT function forces a garbage collection ... If this amount of storage cannot be obtained, the COLLECT function fails. When successful, it returns the
+    ;; number of free words" (manual ch. 19, COLLECT): the JVM heap's limit less the bytes the collection left in use, in words of 8 bytes, DATATYPE INTEGER (the
+    ;; JVM resizes its heap after a collection, so its free memory alone does not grow as storage is retrieved)
+    COLLECT (do (System/gc)
+                (let [rt   (Runtime/getRuntime)
+                      free (quot (clojure.core/- (.maxMemory rt) (clojure.core/- (.totalMemory rt) (.freeMemory rt))) 8)
+                      want (SNOBOL4clojure.env/num (first args))]
+                  (when-not (and (integer? want) (clojure.core/> want free)) free)))
     CLEAR     (SNOBOL4clojure.env/clear-vars! (first args))
     BACKSPACE (apply SNOBOL4clojure.functions/BACKSPACE args)
     ;; Not yet implemented: these keep the null result they had before an
