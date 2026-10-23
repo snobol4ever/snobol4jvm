@@ -759,13 +759,13 @@
     (and (list? N) (equal (first N) '$) (clojure.core/= 2 (count N)))
     (when-some [v (EVAL! (second N))]
       (let [t (indirect-target v)] (fn [x] (assign-to t x))))
-    ;; *F(args), F a function that returns a name: called when the assignment is made, the value goes to the name it returns
-    (and (list? N) (equal (first N) '*) (clojure.core/= 2 (count N)) (call-form? (second N)))
-    (let [X (second N)]
-      (fn [x] (when-some [r (name-of-call X)] (assign-to (:target r) x))))
+    ;; *X is resolved when the assignment is made: *F(args), F a function that returns a name (defined by then, perhaps after the pattern was built), is called and
+    ;; the value goes to the name it returns; *T<I> takes its subscripts then
     (and (list? N) (equal (first N) '*) (clojure.core/= 2 (count N)))
     (let [X (second N)]
-      (fn [x] (assign-to (if (list? X) (element-target X) X) x)))
+      (fn [x] (if (call-form? X)
+                (when-some [r (name-of-call X)] (assign-to (:target r) x))
+                (assign-to (if (list? X) (element-target X) X) x))))
     (list? N)
     (let [t (element-target N)] (fn [x] (assign-to t x)))
     true

@@ -4635,3 +4635,26 @@
                    "2 counted\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; A deferred capture target, P . *F(X), is evaluated when the assignment is made, so F may be a function defined after the pattern was built: called then by name,
+;; the value goes to the name it returns, as sbl -bf runs it. The engine decided when the pattern was built, before F was defined, took F(X) for a subscript and
+;; raised 235 (Gimpel gpm: GET.PREFIX.BOD captures into *PROC('NAME') and PROC is defined after it).
+(deftest a-deferred-capture-target-is-resolved-when-the-assignment-is-made
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        P = POS(0) LEN(2) . *SLOT('A') LEN(1) . *SLOT('B')\n"
+                   "        DEFINE('SLOT(K)')                         :(SLOT_END)\n"
+                   "SLOT    OUTPUT = 'slot ' K\n"
+                   "        SLOT = .VA\n"
+                   "        IDENT(K, 'A')                             :S(NRETURN)\n"
+                   "        SLOT = .VB                                :(NRETURN)\n"
+                   "SLOT_END\n"
+                   "        'abcd' P\n"
+                   "        OUTPUT = 'VA=' VA ' VB=' VB\n"
+                   "END\n"))
+      (is (= (str "slot A\n"
+                   "slot B\n"
+                   "VA=ab VB=c\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
