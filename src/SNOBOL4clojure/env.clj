@@ -494,12 +494,15 @@
       (if-let [v (find @<VARS> sym)]
         (val v)
         ;; a built-in function's name is no variable: an unset TRIM is the null string. The variables that hold a value of their own are the primitive patterns
-        ;; ("These variables contain the primitive patterns of the same name", manual ch. 18: ABORT, ARB, BAL, FAIL, FENCE, REM, SUCCEED)
-        (let [resolved (ns-resolve (find-ns 'SNOBOL4clojure.core) sym)
-              v        (when (instance? clojure.lang.Var resolved) (var-get resolved))]
-          (if (or (nil? v) (and (fn? v) (not= sym 'FENCE)))
-            ε
-            (do (when (#{'ABORT 'ARB 'BAL 'FAIL 'REM 'SUCCEED} sym) (swap! <PRIMS-READ> conj sym)) v)))))))
+        ;; ("These variables contain the primitive patterns of the same name", manual ch. 18: ABORT, ARB, BAL, FAIL, FENCE, REM, SUCCEED). No other unset name
+        ;; reads the engine's own definitions: $('&ANCHOR') is the variable of that name, null until assigned, and not the keyword (sbl -bf)
+        (if (#{'ABORT 'ARB 'BAL 'FAIL 'FENCE 'REM 'SUCCEED} sym)
+          (let [resolved (ns-resolve (find-ns 'SNOBOL4clojure.core) sym)
+                v        (when (instance? clojure.lang.Var resolved) (var-get resolved))]
+            (if (nil? v)
+              ε
+              (do (when-not (clojure.core/= sym 'FENCE) (swap! <PRIMS-READ> conj sym)) v)))
+          ε)))))
 
 ;; ── Variable snapshot ────────────────────────────────────────────────────────
 (defn snapshot!

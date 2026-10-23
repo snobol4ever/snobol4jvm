@@ -5280,3 +5280,17 @@
                   "****7*******  N = TABLE(11) #4\n****8*******  N = TABLE(7) #5\n****9*******  N = NODE #6\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; An unset variable is null, whatever its name; the variables that hold values of their own are the primitive patterns (manual ch. 18). $('&ANCHOR') is the
+;; variable of that name, not the keyword (sbl -bf); the engine read an unset name through its own definitions and answered the keyword's atom, PATTERN (SnoRungs
+;; indirect_keyword_1).
+(deftest an-unset-variable-is-null-whatever-its-name
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ANCHOR = 1\n"
+                   "        OUTPUT = '[' $('&ANCHOR') ']'\n"
+                   "        $('&ANCHOR') = 'HELLO'\n"
+                   "        OUTPUT = &ANCHOR ' [' $('&ANCHOR') '] ' DATATYPE(ARB)\n"
+                   "END\n"))
+      (is (= "[]\n1 [HELLO] PATTERN\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
