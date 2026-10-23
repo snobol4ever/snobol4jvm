@@ -195,7 +195,7 @@
 (def ^:private op-spelling {'at "@", 'sharp "#", 'tilde "~"})
 
 ;; ── INVOKE ────────────────────────────────────────────────────────────────────
-(declare EVAL! compile-expression compile-failed! deferred? expression-of)
+(declare EVAL! compile-expression compile-failed! deferred? expression-of unused-unary-ops unused-binary-ops)
 
 ;; A concatenation evaluates to (SEQ v ...). It is a string when every part is
 ;; a string, a number or a NAME (text: its variable's name), and otherwise a
@@ -470,11 +470,30 @@
     ;; arm dispatches to it automatically (it already checks <FUNS> by that key).
     ;; For operator synonyms (n=1/2), also index under the raw symbol string.
     ;; Always succeeds (even if old is unknown — wraps to no-op fn).
+    ;; As sbl -bf checks it (manual ch. 19, OPSYN; Appendix D 152 to 156): the third argument is an integer ("152 OPSYN third argument is not integer", "153 ...
+    ;; is negative or too large" past 2**24), a real cut to one; 0 or null makes a function synonym, which may not take the name of one of SPITBOL's own functions
+    ;; ("248 attempted redefinition of system function"); 1 names one of the unused unary operators ! % / # = |, and 2 or more one of the unused binary operators
+    ;; & @ # % ~, else "156 OPSYN first arg is not correct operator name"; a null first argument is 155, a null second 154.
     OPSYN   (let [[new-arg old-arg n-arg] args
                   new-name (name-string new-arg)
                   old-name (name-string old-arg)
                   old-sym  (symbol (name-string old-arg))
-                  n        (when (and n-arg (not= n-arg ε)) (long n-arg))
+                  fail!    (fn [n text] (throw (ex-info text {:snobol/error n})))
+                  n        (when (and n-arg (not= n-arg ε))
+                             (let [v (SNOBOL4clojure.env/num n-arg)]
+                               (cond (or (not (number? v)) (and (double? v) (Double/isNaN v))) (fail! 152 "OPSYN third argument is not integer")
+                                     (or (neg? v) (clojure.core/> v 16777216))                     (fail! 153 "OPSYN third argument is negative or too large")
+                                     :else (long v))))
+                  _        (cond
+                             (clojure.core/= "" new-name) (fail! 155 "OPSYN first arg is not natural variable name")
+                             (clojure.core/= "" old-name) (fail! 154 "OPSYN second arg is not natural variable name")
+                             (or (nil? n) (zero? n))
+                             (when (contains? SNOBOL4clojure.env/system-functions new-name) (fail! 248 "attempted redefinition of system function"))
+                             (clojure.core/= 1 n)
+                             (when-not (contains? (set (vals unused-unary-ops)) new-name) (fail! 156 "OPSYN first arg is not correct operator name"))
+                             :else
+                             (when-not (contains? (set (vals unused-binary-ops)) new-name) (fail! 156 "OPSYN first arg is not correct operator name")))
+                  n        (when n (min n 2))
                   old-fn   (or (get @<FUNS> old-name)
                                (if (and n (pos? n))
                                  (if (clojure.core/= n 1)

@@ -5102,3 +5102,19 @@
       (is (= (str "unload SIZE failed 248\nunload null failed 201\nret=[]\nH still aa, G=a value\ncall fails 22\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; OPSYN's arguments as sbl -bf checks them (manual ch. 19, OPSYN; Appendix D 152 to 156, 248): the third an integer, past 2**24 too large; 0 or null a function
+;; synonym that may not take a system function's name; 1 an unused unary operator, 2 or more an unused binary one. The engine took any name for any count, so
+;; OPSYN('SIZE','TRIM',0) then OPSYN('TRIM','SIZE',0) looped, and OPSYN('~','SIZE','zz') crashed (SnoRungs user_function_opsyn_datatype_1,
+;; opsyn_size_keyword_branch_1).
+(deftest opsyn-checks-its-arguments
+  (let [f (java.io.File/createTempFile "gen" ".sno")
+        run (fn [a] (spit f (str "        &ERRLIMIT = 1\n        OPSYN(" a ")   :S(Y)\n        OUTPUT = &ERRTYPE   :(END)\nY       OUTPUT = 'ok'\nEND\n"))
+              (with-out-str (-main (.getPath f))))]
+    (try
+      (doseq [[a want] [["'SIZE', 'TRIM', 0" "248"] ["'STRLEN', 'SIZE', 1" "156"] ["'+', 'SIZE', 2" "156"] ["'&', 'SIZE', 1" "156"]
+                        ["'&', 'DIFFER', 2" "ok"] ["'!', 'SIZE', 1" "ok"] ["'@', 'SIZE', 3" "ok"] ["'~', 'SIZE', 'zz'" "152"] ["'~', 'SIZE', -1" "153"]
+                        ["'~', 'SIZE', 16777216" "ok"] ["'~', 'SIZE', 16777217" "153"] ["'#', 'SIZE', 2.7" "ok"] ["'FOO', 'SIZE', 3" "156"]
+                        ["'FOO', 'NOSUCH'" "ok"] ["'', 'SIZE'" "155"] ["'FOO', ''" "154"]]]
+        (is (= (str want "\n") (run a)) a))
+      (finally (.delete f)))))

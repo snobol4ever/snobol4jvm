@@ -56,17 +56,19 @@ END
 
 ;; ── Binary operator synonym (n=2) ─────────────────────────────────────────────
 (deftest t-opsyn-binary-plus-as-concat
-  "OPSYN('+','SADD',2) redefines + to call user function SADD (string concat)."
+  "OPSYN('+','SADD',2): + is an operator SPITBOL uses, which OPSYN may not redefine: 156 opsyn first arg is not correct operator name (sbl -bf; only the
+   unused binary operators & @ # % ~ are OPSYN's to define, manual ch. 15)."
   (let [r (run-with-timeout
              "        DEFINE('SADD(A,B)')
         OPSYN('+','SADD',2)
-        OUTPUT = 'hello' + ' world'
+        H = 'hello'
+        OUTPUT = H + ' world'
         :(END)
 SADD    SADD = A B :(RETURN)
 END
 " 2000)]
-    (is (= :ok (:exit r)))
-    (is (= "hello world\n" (:stdout r)))))
+    (is (= :error (:exit r)))
+    (is (= "OPSYN first arg is not correct operator name" (:thrown r)))))
 
 (deftest t-opsyn-binary-builtin-still-works-after-alias
   "Defining a new alias does not affect the original symbol."
@@ -79,11 +81,22 @@ END
     (is (= "7\n" (:stdout r)))))
 
 (deftest t-opsyn-binary-custom-multiply
-  "OPSYN('*','MYMUL',2) — redefine * to add instead (nonsense but tests dispatch)."
+  "OPSYN('*','MYMUL',2): * is an operator SPITBOL uses, which OPSYN may not redefine: 156 (sbl -bf); the unused # is OPSYN's to define."
   (let [r (run-with-timeout
              "        DEFINE('MYMUL(A,B)')
         OPSYN('*','MYMUL',2)
-        OUTPUT = 3 * 4
+        T = 3
+        OUTPUT = T * 4
+        :(END)
+MYMUL   MYMUL = A + B :(RETURN)
+END
+" 2000)]
+    (is (= :error (:exit r)))
+    (is (= "OPSYN first arg is not correct operator name" (:thrown r))))
+  (let [r (run-with-timeout
+             "        DEFINE('MYMUL(A,B)')
+        OPSYN('#','MYMUL',2)
+        OUTPUT = 3 # 4
         :(END)
 MYMUL   MYMUL = A + B :(RETURN)
 END
@@ -107,11 +120,11 @@ END
 
 ;; ── OPSYN with empty old-name (no-op / undefine) ──────────────────────────────
 (deftest t-opsyn-empty-old-noop
-  "OPSYN('X','',0) with empty old-name registers a no-op fn; does not crash."
+  "OPSYN('X','',0) with a null second argument is 154 opsyn second arg is not natural variable name (sbl -bf)."
   (let [r (run-with-timeout
              "        OPSYN('NOOP','',0)\n        OUTPUT = 'ok'\nEND\n" 2000)]
-    (is (= :ok (:exit r)))
-    (is (= "ok\n" (:stdout r)))))
+    (is (= :error (:exit r)))
+    (is (= "OPSYN second arg is not natural variable name" (:thrown r)))))
 
 ;; ── OPSYN chaining ────────────────────────────────────────────────────────────
 (deftest t-opsyn-chain
