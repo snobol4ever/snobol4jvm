@@ -955,12 +955,11 @@
           ((pattern-keywords (str (first parms))))
           ;; unary &K is the keyword K; binary & is an operator OPSYN may define (above, and the dispatch below)
           (and (equal op '&) (clojure.core/= 1 (count parms)))
+                            ;; the keywords are defs in env.clj, the manual's 37 (ch. 16); any other name is "251 keyword operand is not name of defined keyword"
                             (let [[N]     parms
                                   kw-sym  (symbol (str "&" N))
-                                  ;; &-keywords are defs in env.clj; fall back to user ns
-                                  v       (or (when-let [vr (ns-resolve (find-ns 'SNOBOL4clojure.env) kw-sym)]
-                                                (var-get vr))
-                                              ($$ kw-sym))]
+                                  vr      (ns-resolve (find-ns 'SNOBOL4clojure.env) kw-sym)
+                                  v       (if vr (var-get vr) (throw (ex-info "keyword operand is not name of defined keyword" {:snobol/error 251})))]
                               (if (instance? clojure.lang.IDeref v) @v v))
           ;; the engine's own forms, unless the program defined a function of the name (SPITBOL has no SEQ, so a program may: Gimpel's seq.inc)
           (and (equal op 'SEQ) (not (program-fn op)))   (apply str (map #(sstr (EVAL! %)) parms))

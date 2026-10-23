@@ -5294,3 +5294,15 @@
                    "END\n"))
       (is (= "[]\n1 [HELLO] PATTERN\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; The keywords are the manual's (ch. 16); any other name after & is "251 keyword operand is not name of defined keyword" when it is read (sbl -bf: &PARM, &FATAL).
+;; The engine read an unknown keyword as the null string (SnoRungs eval_keyword_branch_1).
+(deftest an-unknown-keyword-is-error-251
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 3\n"
+                   "        X = &NEVERSET\n"
+                   "        OUTPUT = &ERRTYPE ' ' SIZE(&ALPHABET)\n"
+                   "END\n"))
+      (is (= "251 256\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
