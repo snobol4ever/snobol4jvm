@@ -4879,3 +4879,30 @@
       (is (= (str "F called\nimm N\nF called\ncond N\nF called\ncur N\nF called\nalt Y C\nbounds N\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; "The call fails if syntactical errors are found. In this case, it is possible to inspect &ERRTEXT to find the error message" (manual ch. 19, CODE): a block with
+;; a statement that does not compile loads none of its statements; EVAL fails the same way. The numbers and texts are sbl -bf's (Gimpel timer: TIMER(' X = (', 1)).
+(deftest code-and-eval-fail-with-the-syntax-error
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        C = CODE(' X = (')                      :S(Y1)\n"
+                   "        OUTPUT = 'fails ' &ERRTYPE ' [' &ERRTEXT ']'\n"
+                   "        C = CODE(' X = 1 ; Y = (( ; Z = 3')     :S(Y1)\n"
+                   "        OUTPUT = 'fails ' &ERRTYPE ' [' &ERRTEXT ']'\n"
+                   "        OUTPUT = 'X=' X ' Z=' Z\n"
+                   "        C = CODE(' X = 1 :S(L)S(M)')           :S(Y1)\n"
+                   "        OUTPUT = 'fails ' &ERRTYPE ' [' &ERRTEXT ']'\n"
+                   "        C = EVAL('1 +')                         :S(Y1)\n"
+                   "        OUTPUT = 'eval fails ' &ERRTYPE ' [' &ERRTEXT ']'\n"
+                   "        C = EVAL(\"'abc\")                       :S(Y1)\n"
+                   "        OUTPUT = 'eval fails ' &ERRTYPE ' [' &ERRTEXT ']'   :(END)\n"
+                   "Y1      OUTPUT = 'succeeded'\n"
+                   "END\n"))
+      (is (= (str "fails 226 [syntax error: missing right paren]\n"
+                  "fails 226 [syntax error: missing right paren]\n"
+                  "X= Z=\n"
+                  "fails 218 [syntax error: duplicated goto field]\n"
+                  "eval fails 221 [syntax error: missing operand]\n"
+                  "eval fails 232 [syntax error: unmatched string quote]\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

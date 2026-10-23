@@ -22,6 +22,7 @@
             [SNOBOL4clojure.emitter   :refer [emitter]]
             [SNOBOL4clojure.dump      :refer [dump-text]]
             [SNOBOL4clojure.grammar   :refer [parse-expression]]
+            [SNOBOL4clojure.syntax    :refer [syntax-error]]
             [SNOBOL4clojure.trace     :refer [fire-value! fire-call! fire-return! fire-keyword! trace! stoptr!]])
   (:refer-clojure :exclude [= + - * / num]))
 
@@ -187,7 +188,7 @@
 (def ^:private op-spelling {'at "@", 'sharp "#", 'tilde "~"})
 
 ;; ── INVOKE ────────────────────────────────────────────────────────────────────
-(declare EVAL! compile-expression deferred? expression-of)
+(declare EVAL! compile-expression compile-failed! deferred? expression-of)
 
 ;; A concatenation evaluates to (SEQ v ...). It is a string when every part is
 ;; a string, a number or a NAME (text: its variable's name), and otherwise a
@@ -665,7 +666,10 @@
                 ;; Returns the entry-point label string (success) or nil (failure).
                 ;; Does NOT execute — caller uses a computed goto to invoke it.
                 (try
-                  (when-some [entry (compile-f src)] (SNOBOL4clojure.env/->CodeBlock entry))
+                  (let [entry (compile-f src)]
+                    (if (map? entry)
+                      (compile-failed! (:error entry) (SNOBOL4clojure.env/error-message (:error entry)))
+                      (when (some? entry) (SNOBOL4clojure.env/->CodeBlock entry))))
                   (catch Exception e
                     (throw (ex-info (.getMessage e) {:snobol/signal :error})))))
     code      (apply INVOKE 'CODE args)
@@ -944,30 +948,36 @@
       ;; anything else is a value already (a DATA object, an array, a table, a NAME, code) that an IR form carries, as the name of a field .COUNT(A) does
       true E)))
 
-;; The IR of an expression in a string, or nil when the string is not a legal expression (folded to upper case while &CASE is not 0).
+;; A compile error in the text EVAL or CODE is given makes it fail, with &ERRTYPE and &ERRTEXT set and one of &ERRLIMIT spent when it is above 0; it is never fatal
+;; (sbl -bf: EVAL('1.797693135E+308') under &ERRLIMIT = 0 fails with &ERRTYPE 231; CODE(' X = (') fails with 226, "syntax error: missing right paren").
+(defn- compile-failed! [n text]
+  (reset! SNOBOL4clojure.env/&ERRTYPE n)
+  (fire-keyword! "ERRTYPE" n)
+  (reset! SNOBOL4clojure.env/&ERRTEXT text)
+  (when (pos? (long @SNOBOL4clojure.env/&ERRLIMIT)) (swap! SNOBOL4clojure.env/&ERRLIMIT dec))
+  nil)
+
+;; The IR of an expression in a string (folded to upper case while &CASE is not 0), or nil when the string is not a legal expression, which fails with the error
+;; SPITBOL's scan names for it as the replacement of an assignment (syntax.clj), 220 when the scan finds none.
 (defn- compile-expression [^String s]
   (let [p (parse-expression (if (zero? (long @&CASE)) s (fold-case s)))]
-    (when-not (instance? instaparse.gll.Failure p) (first (emitter p)))))
+    (if (instance? instaparse.gll.Failure p)
+      (let [n (or (:error (syntax-error (str " X = " s))) 220)] (compile-failed! n (SNOBOL4clojure.env/error-message n)))
+      (first (emitter p)))))
 
-;; A compile error EVAL's text holds makes EVAL fail, with &ERRTYPE and &ERRTEXT set and one of &ERRLIMIT spent when it is above 0; it is never fatal (sbl -bf:
-;; EVAL('1.797693135E+308') under &ERRLIMIT = 0 fails with &ERRTYPE 231).
 (defn- compile-or-fail [^String s]
   (try (compile-expression s)
        (catch clojure.lang.ExceptionInfo e
          (let [{n :snobol/error c :snobol/compile} (ex-data e)]
            (when-not c (throw e))
-           (reset! SNOBOL4clojure.env/&ERRTYPE n)
-           (fire-keyword! "ERRTYPE" n)
-           (reset! SNOBOL4clojure.env/&ERRTEXT (ex-message e))
-           (when (pos? (long @SNOBOL4clojure.env/&ERRLIMIT)) (swap! SNOBOL4clojure.env/&ERRLIMIT dec))
-           nil))))
+           (compile-failed! n (ex-message e))))))
 
 ;; An unevaluated expression, the value *X makes: DATATYPE EXPRESSION, evaluated by EVAL.
 (defn- deferred? [x] (and (seq? x) (clojure.core/= 'DEFER! (first x)) (fn? (second x))))
 (defn- expression-of [ir] (list 'DEFER! (fn [] (EVAL! ir))))
 
 ;; EVAL(s) compiles the expression s and evaluates it, failing when s is not a legal expression; EVAL(n) of a number is n; "If the argument is an unevaluated expression,
-;; it is evaluated, and the result returned" (manual ch. 19, EVAL). sbl -bf also sets &ERRTEXT and &ERRTYPE (221 and kin) for the syntax error; this engine does not yet.
+;; it is evaluated, and the result returned" (manual ch. 19, EVAL). A syntax error fails it with &ERRTYPE and &ERRTEXT set, as sbl -bf sets them (221 and kin).
 (defn EVAL [X]
   (cond
     (deferred? X) ((second X))

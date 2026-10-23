@@ -30,6 +30,7 @@
             [clojure.edn             :as edn]
             [SNOBOL4clojure.env      :refer [STNO <STNO> <LABL> <CODE> <DISPNO> <POS> <DIAGNOSTICS> <SOURCE> BLANKS &CASE fold-case block-end]]
             [SNOBOL4clojure.grammar  :refer [parse-statement]]
+            [SNOBOL4clojure.syntax   :refer [syntax-error]]
             [SNOBOL4clojure.emitter  :refer [emitter]]))
 
 ;; -- Source tokenizer ---------------------------------------------------------
@@ -208,7 +209,12 @@
                    here   [(:file pos) (+ (:bl pos) (- pline (:bp pos)))]
                    pos''  (if (:revert pos) (assoc pos :file (:revert pos) :revert nil) pos)]
                (if (and (map? code) (:reason code))
-                 (recur (rest stmts) (inc NO) (assoc CODES NO (error-node code)) NOS LABELS blanks (conj before blanks) fold (conj poss here) pos'')
+                 ;; a statement that does not compile is the error SPITBOL's scan names, at its line and column (syntax.clj); 220 when the scan finds none. A line
+                 ;; that starts with a continuation mark is split-source's to judge (214, or a continuation sbl takes after a blank line)
+                 (let [{n :error col :column} (or (when-not (= :compile (:reason code)) (syntax-error stmt)) {:error (if (= :compile (:reason code)) 231 220)})]
+                   (when-not (#{\+ \.} (first stmt))
+                     (swap! <DIAGNOSTICS> conj [pline n (when col (min (long col) (max 1 (count stmt))))]))
+                   (recur (rest stmts) (inc NO) (assoc CODES NO (error-node code)) NOS LABELS blanks (conj before blanks) fold (conj poss here) pos''))
                  (let [label  (:label code)
                        body   (:body  code)
                        goto   (:goto  code)
@@ -227,14 +233,18 @@
       (let [k (keyword (name b))] (when (@<STNO> k) k)))))
 
 ;; -- CODE — compile and load into the global statement store ------------------
+(declare load-code)
 (defn CODE
   "Compile S and load into the global statement store.
    Optional include-path is a seq of directory strings (default [\".\"])."
   ([S] (CODE S ["."]))
   ([S include-path] (CODE S include-path nil))
-  ([S include-path file]
-   (let [[codes nos labels disp] (CODE! S include-path file)
-         start              (inc @STNO)
+  ([S include-path file] (load-code (CODE! S include-path file))))
+
+(defn- load-code
+  "Load a CODE! result into the global statement store; returns the entry, as CODE does."
+  [[codes nos labels disp]]
+   (let [start              (inc @STNO)
          base               @BLANKS]
      (loop [NO 1]
        (if (> NO (count codes))
@@ -254,17 +264,22 @@
                (swap! <LABL> #(assoc % @STNO label))
                (swap! <STNO> #(assoc % label @STNO)))
              (swap! <CODE> #(assoc % @STNO (codes NO))))
-           (recur (inc NO))))))))
+           (recur (inc NO)))))))
 
 ;; "If we had not done this, SPITBOL would terminate when execution 'fell out of the bottom' of the new code block" (manual ch. 9, The CODE function): the block
 ;; CODE() compiles at run time ends in a statement of its own, numbered after its last, which ends the program when control reaches it (env/block-end). A block
 ;; with no statements, CODE('') or a comment alone, is that statement, and starts there.
+;; "The call fails if syntactical errors are found. In this case, it is possible to inspect &ERRTEXT to find the error message" (manual ch. 19, CODE): a block with
+;; a statement that does not compile loads nothing, and answers its first error as {:error n}.
 (defn CODE-block [S]
-  (let [entry (CODE S)]
-    (swap! STNO inc)
-    (swap! <DISPNO> assoc @STNO (+ @STNO @BLANKS))
-    (swap! <CODE> assoc @STNO block-end)
-    (or entry @STNO)))
+  (let [ir (CODE! S)]
+    (if-let [[_ n] (first @<DIAGNOSTICS>)]
+      {:error n}
+      (let [entry (load-code ir)]
+        (swap! STNO inc)
+        (swap! <DISPNO> assoc @STNO (+ @STNO @BLANKS))
+        (swap! <CODE> assoc @STNO block-end)
+        (or entry @STNO)))))
 
 ;; -- Stage 23A: EDN serialisation --------------------------------------------
 

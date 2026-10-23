@@ -120,13 +120,20 @@
                                                        (new-page! st))))
                                                  (shown l))
                 :else                        (shown l))
-              (doseq [[_ code] (get errs i)]
+              ;; a syntax error names its column too, and a line under the statement marks it with a ! (sbl -bf: "t.sno(2,6) : ERROR 232 -- ...", the marker
+              ;; keeping the tabs of the line before the column, a blank for any other character)
+              (doseq [[_ code col] (get errs i)]
                 (let [stmt (numbered (some-> (first (rsubseq starts <= i)) val) depth l)
-                      msg  (format "%s(%d) : ERROR %03d -- %s" file fline code (env/error-message code))]
+                      mark (if col
+                             (str (numbered nil depth (apply str (map #(if (= \tab %) \tab \space) (take (dec (long col)) l)))) "!")
+                             "")
+                      msg  (if col
+                             (format "%s(%d,%d) : ERROR %03d -- %s" file fline col code (env/error-message code))
+                             (format "%s(%d) : ERROR %03d -- %s" file fline code (env/error-message code)))]
                   (when-not (:on @st) (list-line! st stmt))
-                  (doseq [x ["" msg ""]] (write! x))
+                  (doseq [x [mark msg ""]] (write! x))
                   (swap! st update :on-page + 3)
-                  (binding [*out* *err*] (doseq [x [stmt "" msg ""]] (write! x)))))
+                  (binding [*out* *err*] (doseq [x [stmt mark msg ""]] (write! x)))))
               ;; the listing ends with the END line
               (when-not (and n (re-find (if fold #"(?i)^END(\s|$)" #"^(END|end)(\s|$)") l))
                 (recur (inc i) (rest ls) depth places file fline cards)))))))
