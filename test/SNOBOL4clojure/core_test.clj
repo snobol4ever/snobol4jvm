@@ -4762,3 +4762,45 @@
                    "done\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; The file argument as sbl x64 reads it (osint lenfnm and sioarg): a trailing [options] is set aside, the file's name runs to the first blank, and all that follows
+;; it is options, separated by blanks, tabs, commas, brackets and single dashes, each a letter (A B C F I L Q R S U W X Y, B F L Q R with a number, S with D and N R
+;; W or RW); any other character, or a name with -f, is "116 inappropriate file specification for input" (160 for OUTPUT). So ' -f0' is standard input,
+;; 'in.txt -r2' reads two characters, ' -r2 in.txt' and 'No Such File' are 116, and '-f0' is a file of that name, which fails. The engine took a blank in the
+;; name for the error itself and read options only in brackets (Gimpel poker: INPUT(.INPUT, 5, ' -f0')).
+(deftest a-file-argument-is-a-name-and-its-options
+  (let [dir (.toFile (java.nio.file.Files/createTempDirectory "fop" (make-array java.nio.file.attribute.FileAttribute 0)))
+        f   (java.io.File. dir "fo.sno")]
+    (try
+      (spit (java.io.File. dir "in.txt") "one\ntwo\n")
+      (spit f (str "        &ERRLIMIT = 20\n"
+                        "        INPUT(.A, 6, ' -f0')                   :F(F1)\n"
+                        "        OUTPUT = '1 [' A ']'\n"
+                        "F1      INPUT(.B, 7, 'in.txt -r2')             :F(F2)\n"
+                        "        OUTPUT = '2 [' B ']'\n"
+                        "F2      INPUT(.C, 8, 'in.txt -f0')             :S(F3)\n"
+                        "        OUTPUT = '3 fails ' &ERRTYPE\n"
+                        "F3      &ERRTYPE = 0\n"
+                        "        INPUT(.D, 9, ' -r2 in.txt')            :S(F4)\n"
+                        "        OUTPUT = '4 fails ' &ERRTYPE\n"
+                        "F4      &ERRTYPE = 0\n"
+                        "        INPUT(.E, 10, '-f0')                   :S(F5)\n"
+                        "        OUTPUT = '5 fails ' &ERRTYPE\n"
+                        "F5      &ERRTYPE = 0\n"
+                        "        INPUT(.G, 11, 'No Such File')          :S(F6)\n"
+                        "        OUTPUT = '6 fails ' &ERRTYPE\n"
+                        "F6      INPUT(.H, 12, '[-r1] ')                :F(F7)\n"
+                        "        OUTPUT = '7 [' H ']'\n"
+                        "F7\n"
+                        "END\n"))
+      (is (= (str "1 [abc]\n"
+                   "2 [on]\n"
+                   "3 fails 116\n"
+                   "4 fails 116\n"
+                   "5 fails 0\n"
+                   "6 fails 116\n")
+             (binding [SNOBOL4clojure.env/*file-dir* (.getPath dir)
+                       *in* (java.io.BufferedReader. (java.io.StringReader. "abc\ndef\n"))]
+               (with-out-str (-main (.getPath f))))))
+      (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))

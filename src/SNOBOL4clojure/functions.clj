@@ -432,22 +432,49 @@
       (java.io.File. (str env/*file-dir*) file-str)
       f)))
 
-;; A SPITBOL file argument is a name and, in square brackets after it, options separated by blanks or commas (measured against sbl -bf): -f<n> names an open file
-;; descriptor (0 standard input, 1 standard output, 2 standard error), -r<n> is raw mode (a read takes up to n characters, end-of-line characters among them, and fails only
-;; when it gets none), -l<n> line mode with records of at most n characters (the rest of a longer line is dropped), -a appends to the file. Other options are accepted and
-;; change nothing here. Returns {:name "" :opts {\f 0 ...}}; an options-only argument has the null string for its name.
+;; A SPITBOL file argument is a name and options, as sbl x64 reads it (osint lenfnm and sioarg): a trailing [options] is set aside, the name runs to the first blank,
+;; and everything after it is options, separated by blanks, tabs, commas, brackets and single dashes. -f<n> names an open file descriptor (0 standard input, 1
+;; standard output, 2 standard error), -r<n> (and -q<n>) is raw mode (a read takes up to n characters, end-of-line characters among them, and fails only when it gets
+;; none), -c is raw mode by one character, -l<n> line mode with records of at most n characters (the rest of a longer line is dropped), -a appends to the file; B, I,
+;; S, U, W, X and Y are accepted and change nothing here. Returns {:name "" :opts {\f 0 ...} :bad b}; an options-only argument has the null string for its name.
 (defn file-spec [s]
-  (let [[_ nm opts] (re-matches #"(?s)([^\[]*)(?:\[([^\]]*)\]?.*)?" (str s))
-        nm   (clojure.string/trimr (or nm ""))
-        opts (for [o (clojure.string/split (or opts "") #"[\s,]+")
-                   :let [[_ k n] (re-matches #"-([A-Za-z])(\d*)" o)]
-                   :when k]
-               [(Character/toLowerCase (.charAt ^String k 0)) (when (seq n) (Long/parseLong n))])]
-    ;; the name is the text before the bracket less its trailing blanks; a blank left in it, at its start or within, makes the argument :bad (ERROR 116, 160)
-    {:name nm :opts (into {} opts) :bad (boolean (re-find #"\s" nm))}))
+  (let [s   (str s)
+        n   (count s)
+        ;; lenfnm: a trailing [options] is set aside, and the name runs to the first blank of what is left
+        len (or (when (and (pos? n) (clojure.core/= \] (.charAt s (dec n))))
+                  (loop [i (clojure.core/- n 2)]
+                    (cond (neg? i) nil
+                          (clojure.core/= \] (.charAt s i)) nil
+                          (clojure.core/= \[ (.charAt s i)) i
+                          :else (recur (dec i)))))
+                n)
+        b   (.indexOf (subs s 0 len) " ")
+        nm  (if (neg? b) (subs s 0 len) (subs s 0 b))
+        ;; sioarg: every character after the name is option text
+        [opts bad]
+        (loop [i (count nm) dash false opts {}]
+          (if (>= i n)
+            [opts false]
+            (let [ch  (Character/toUpperCase (.charAt s i))
+                  num (fn [] (let [j (loop [j (inc i)] (if (and (< j n) (Character/isDigit (.charAt s j))) (recur (inc j)) j))]
+                               [(if (> j (inc i)) (Long/parseLong (subs s (inc i) j)) 0) j]))]
+              (case ch
+                (\space \tab \, \[ \]) (recur (inc i) false opts)
+                \- (if dash [opts true] (recur (inc i) true opts))
+                (\A \C \I \U \W \X \Y) (recur (inc i) false (assoc opts (Character/toLowerCase ch) true))
+                \F (let [[v j] (num)] (recur j false (assoc opts \f v)))
+                (\B \L \Q \R) (let [[v j] (num)]
+                                  (if (pos? v) (recur j false (assoc opts (if (clojure.core/= ch \Q) \r (Character/toLowerCase ch)) v)) [opts true]))
+                \S (let [d  (when (< (inc i) n) (Character/toUpperCase (.charAt s (inc i))))
+                         e  (when (< (clojure.core/+ i 2) n) (Character/toUpperCase (.charAt s (clojure.core/+ i 2))))
+                         rw (and (clojure.core/= e \R) (< (clojure.core/+ i 3) n) (clojure.core/= \W (Character/toUpperCase (.charAt s (clojure.core/+ i 3)))))]
+                     (if (and (clojure.core/= d \D) (#{\N \R \W} e) (< (clojure.core/+ i (if rw 4 3)) (inc n)))
+                       (recur (clojure.core/+ i (if rw 4 3)) false opts)
+                       [opts true]))
+                [opts true]))))]
+    ;; an option the scan does not know, or a name with -f ("CANNOT specify BOTH filename and -f option!", sysfc.c), makes the argument :bad (ERROR 116, 160)
+    {:name nm :opts opts :bad (boolean (or bad (and (seq nm) (contains? opts \f))))}))
 
-;; A channel is an integer or a string; a NAME is the string of its name, and a string of digits the integer channel ('7' is 7), as INPUT, OUTPUT, ENDFILE,
-;; REWIND and BACKSPACE take it under sbl -bf. Omitted or null, it is 0.
 (defn channel-key [u]
   (if (integer? u)
     u
