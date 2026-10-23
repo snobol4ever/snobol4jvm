@@ -5476,3 +5476,16 @@
                    "END\n"))
       (is (= "NAME\n1 1\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A keyword is a target of $ and . as of an assignment, its value taken through integer conversion (sbl -bf: '12345' LEN(3) $ &STLIMIT sets &STLIMIT to 123).
+;; The engine read &STLIMIT's name as a subscript and assigned nothing (snoflake pattern-assignment-targets).
+(deftest a-keyword-is-a-capture-target
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        '12345' LEN(3) $ &STLIMIT\n"
+                   "        OUTPUT = &STLIMIT\n"
+                   "        '54321' LEN(2) . &STLIMIT\n"
+                   "        OUTPUT = &STLIMIT\n"
+                   "END\n"))
+      (is (= "123\n54\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

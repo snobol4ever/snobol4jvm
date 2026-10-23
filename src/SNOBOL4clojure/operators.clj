@@ -797,6 +797,9 @@
     (and (list? N) (equal (first N) '$) (clojure.core/= 2 (count N)))
     (when-some [v (EVAL! (second N))]
       (let [t (indirect-target v)] (fn [x] (assign-to t x))))
+    ;; a keyword takes the value as an assignment to it does, through integer conversion (sbl -bf: '12345' LEN(3) $ &STLIMIT sets &STLIMIT to 123)
+    (and (list? N) (equal (first N) '&) (clojure.core/= 2 (count N)))
+    (fn [x] (assign-to N x))
     ;; *X is resolved when the assignment is made (deferred-name), so a loop that moves I fills a different element of *T<I> each time
     (and (list? N) (equal (first N) '*) (clojure.core/= 2 (count N)))
     (let [X (second N)]
