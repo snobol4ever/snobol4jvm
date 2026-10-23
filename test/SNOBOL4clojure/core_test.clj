@@ -5327,3 +5327,19 @@
                    "END\n"))
       (is (= "div fails 14 [division caused integer overflow] lim 0\nexpr fails 14\nkeyword fails 251\nlim 4\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A function that returns by NRETURN returns a name: the NAME its variable holds, or the variable a string or a number spells; the null string or any other value
+;; is "243 function result in NRETURN is not name" (sbl -bf). The engine made the call fail instead.
+(deftest nreturn-of-a-value-that-is-no-name-is-error-243
+  (let [f (java.io.File/createTempFile "gen" ".sno")
+        run (fn [v] (spit f (str "        &ERRLIMIT = 1\n"
+                                 "        DEFINE('H()')                   :(H_END)\n"
+                                 "H       H = " v "                       :(NRETURN)\n"
+                                 "H_END   H() = 'q'\n"
+                                 "        OUTPUT = &ERRTYPE ' [' $'5' '][' abc ']'\n"
+                                 "END\n"))
+              (with-out-str (-main (.getPath f))))]
+    (try
+      (doseq [[v want] [["5" "0 [q][]"] ["LEN(1)" "243 [][]"] ["ARRAY(2)" "243 [][]"] ["''" "243 [][]"] ["'abc'" "0 [][q]"]]]
+        (is (= (str want "\n") (run v)) v))
+      (finally (.delete f)))))

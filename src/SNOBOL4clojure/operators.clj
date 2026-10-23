@@ -454,10 +454,12 @@
                               (case outcome
                                 :return  result
                                 :freturn nil    ; nil → statement failure → :F branch
-                                ;; NRETURN returns a name: the NAME the function variable holds, or the variable a string spells
+                                ;; NRETURN returns a name: the NAME the function variable holds, or the variable a string or a number spells; the null string or
+                                ;; any other value is "243 function result in NRETURN is not name" (sbl -bf: H = LEN(1) :(NRETURN), and H = '' too)
                                 :nreturn (cond (instance? NAME result) (SNOBOL4clojure.env/->NameResult (.n ^NAME result))
                                                (and (string? result) (seq result)) (SNOBOL4clojure.env/->NameResult (symbol result))
-                                               :else nil)
+                                               (number? result) (SNOBOL4clojure.env/->NameResult (symbol (sstr result)))
+                                               :else (throw (ex-info "function result in NRETURN is not name" {:snobol/error 243})))
                                 result)))))]   ; fall-through = return
                 ;; The function lives in <FUNS>, not in the variable of its name: a function and a variable are two things (sbl -bf).
                 (swap! <FUNS>  assoc fname the-fn)
