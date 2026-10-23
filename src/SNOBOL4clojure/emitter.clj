@@ -51,6 +51,8 @@
      :alt       (fn
                   ([x]       x)
                   ([x & ys]  (apply list '| x ys)))
+     :xalt      (fn [x & ys] (apply list '| x ys))
+     :xand      (fn [x y]    (list '& x y))
      :cat       (fn
                   ([x]       x)
                   ([x & ys]  (apply vector x ys)))

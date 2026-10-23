@@ -3,17 +3,20 @@
   ;; This namespace has no runtime dependencies — only instaparse.
   (:require [instaparse.core :as insta :refer [defparser]]))
 
+;; The subject of a statement is what binds tighter than concatenation ("If the expression comprising the subject contains the concatenation operator, the subject
+;; should be enclosed in parenthesis", manual ch. 14), so N + 1 '4' matches '4' against N + 1; a body whose top is an alternation or a binary & (xalt, xand) is an
+;; expression the statement evaluates, as sbl -bf takes A | B 'D'. ? binds loosest of all, so A B ? 'B' matches 'B' against A B, and S ? P1 ? P2 is (S ? P1) ? P2.
 (def grammar
 " stmt      ::=  label? body? goto? <__> <eos?>
   label     ::=  #'[0-9A-Za-z][^ \\t\\r\\n]*'
   body      ::=  <_> (invoking | matching | replacing | assigning)
   goto      ::=  <_ ':' __> (jmp  |  sjmp (<__> fjmp)?  |  fjmp (<__> sjmp)?)
-  invoking  ::=  subject
-  matching  ::=  subject <_> pattern qmatch*
+  invoking  ::=  subject | xand | xalt
+  matching  ::=  subject <_> pattern | cat <_ '?' _> and qmatch*
   qmatch    ::=  <_ '?' _> and
   replacing ::=  subject <_> pattern <_ '='> replace
   assigning ::=  subject <_ '='> replace
- <subject>  ::=  uop
+ <subject>  ::=  at
  <pattern>  ::=  (<'?' _>)? and
  <replace>  ::=  (<_> expr)?
   jmp       ::=  target
@@ -30,6 +33,8 @@
   mch       ::=  and | mch  <_  '?'  _>  and (<_ '=' _> and)?
   and       ::=  alt | and  <_  '&'  _>  alt
   alt       ::=  cat | cat (<_  '|'  _>  cat)+
+  xalt      ::=  cat (<_  '|'  _>  cat)+
+  xand      ::=  and <_  '&'  _>  alt
   cat       ::=  at  | at  (<_>          at)+
   at        ::=  sum | sum  <_  '@'  _>  at
   sum       ::=  hsh | sum  <_> '+' <_>  hsh

@@ -5400,3 +5400,27 @@
                    "'CAN YOU THINK OF A SPECIFIC EXAMPLE ?':'WHEN ?':\n"))
       (is (= "ran\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; The subject is what binds tighter than concatenation ("If the expression comprising the subject contains the concatenation operator, the subject should be enclosed
+;; in parenthesis", manual ch. 14); ? binds loosest of all; a body whose top is an alternation is an expression to evaluate. The engine took one element as the
+;; subject, so N + 1 '4' and 1 # 1 did not compile (SnoRungs opsyn_replace_branch_1). sbl -bf's output.
+(deftest a-subject-is-what-binds-tighter-than-concatenation
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        A = 'AB'; B = 'CD'; N = 3\n"
+                   "        A B ? 'B'                       :S(Y1)F(N1)\n"
+                   "Y1      OUTPUT = 'A B ? matched'        :(T2)\n"
+                   "N1      OUTPUT = 'A B ? no'\n"
+                   "T2      N + 1 '4'                       :S(Y2)F(N2)\n"
+                   "Y2      OUTPUT = 'N + 1 4 matched'      :(T3)\n"
+                   "N2      OUTPUT = 'N + 1 4 no'\n"
+                   "T3      A | B 'D'                       :S(Y3)F(N3)\n"
+                   "Y3      OUTPUT = 'alt ok'               :(T4)\n"
+                   "N3      OUTPUT = 'alt no'\n"
+                   "T4      S = 'ABCDE'\n"
+                   "        S ? 'B' LEN(1) . X ? 'C'        :S(Y4)F(N4)\n"
+                   "Y4      OUTPUT = 'chain ' X             :(END)\n"
+                   "N4      OUTPUT = 'chain no'\n"
+                   "END\n"))
+      (is (= "A B ? matched\nN + 1 4 matched\nalt ok\nchain C\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
