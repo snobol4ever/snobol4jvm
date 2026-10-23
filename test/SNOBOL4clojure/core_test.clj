@@ -5441,3 +5441,25 @@
                    "END\n"))
       (is (= "freed\nINTEGER\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; .F(args), F a function the program defined, calls F when the name is taken and is the name F returns by NRETURN; failing, it fails, and a value returned is "021
+;; function called by name returned a value" (sbl -bf). The engine kept the call for later and called F at each use of the name, and an assignment through it was
+;; ERROR 235 (snoflake gimpel-stack-field-functions: N = .FLD(P, 2); $N = 'changed').
+(deftest the-name-of-a-call-is-the-name-it-returns
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 3\n"
+                   "        DEFINE('F()')                   :(F_END)\n"
+                   "F       OUTPUT = 'F called'\n"
+                   "        F = .X                          :(NRETURN)\n"
+                   "F_END   N = .F()\n"
+                   "        OUTPUT = 'after name ' DATATYPE(N)\n"
+                   "        $N = 'v'\n"
+                   "        OUTPUT = 'X=' X\n"
+                   "        DEFINE('V()')                   :(V_END)\n"
+                   "V       V = 'val'                       :(RETURN)\n"
+                   "V_END   M = .V()\n"
+                   "        OUTPUT = &ERRTYPE\n"
+                   "END\n"))
+      (is (= "F called\nafter name NAME\nX=v\n21\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

@@ -869,6 +869,14 @@
               ;; A subscript or argument that fails fails the name (sbl -bf: .A<DIFFER(1, 1)> fails).
               (let [x (first parms)]
                 (cond
+                  ;; .F(args), F a function the program defined, calls F now and is the name F returns by NRETURN; failing, it fails, and a value is "021
+                  ;; function called by name returned a value" (sbl -bf: N = .FLD(P, 2) calls FLD once, and $N = 'changed' sets the field it names)
+                  (call-form? x)
+                  (when-some [args (eval-operands (rest x))]
+                    (let [r (apply INVOKE (first x) args)]
+                      (cond (instance? SNOBOL4clojure.env.NameResult r) (NAME. (:target r))
+                            (nil? r)                                    nil
+                            :else (throw (ex-info "function called by name returned a value" {:snobol/error 21})))))
                   ;; .$X is the name of the variable or element X names (sbl -bf: IDENT(.$M, .VB) when M is 'VB')
                   (and (list? x) (equal (first x) '$) (clojure.core/= 2 (count x)))
                   (when-some [v (EVAL! (second x))] (NAME. (indirect-target v)))
