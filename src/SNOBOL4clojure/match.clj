@@ -65,6 +65,7 @@
     (nil?    (ζΠ ζ)) nil
     (string? (ζΠ ζ)) 'LIT$
     (number? (ζΠ ζ)) 'LIT$   ; an integer or a real in a pattern is its text
+    (instance? SNOBOL4clojure.env.NAME (ζΠ ζ)) 'LIT$   ; so is a name, the variable's name (sbl -bf: 'xxABCxx' ? .ABC matches)
     (symbol? (ζΠ ζ)) (ζΠ ζ)
     (vector? (ζΠ ζ)) 'SEQ    ; vector = inline SEQ (e.g. CAPTURE-COND expansion)
     (list?   (ζΠ ζ)) (first (ζΠ ζ))

@@ -5223,3 +5223,20 @@
                    "END\n"))
       (is (= "768 0 STRING 2\npath\n254\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A name in a pattern is matched as its text, the variable's name, as it is concatenated (sbl -bf: 'xxABCxx' ? .ABC matches, 'named-ok' ? .ABC does not, and
+;; 'q' .ABC is qABC). The matcher had no case for a NAME and stopped the program (SnoRungs simple_output_50).
+(deftest a-name-in-a-pattern-is-its-text
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        ABC = 'named-ok'\n"
+                   "        P = .ABC\n"
+                   "        'xxABCxx' ? P           :S(Y1)F(N1)\n"
+                   "Y1      OUTPUT = 'name text matches'    :(T2)\n"
+                   "N1      OUTPUT = 'name text no'\n"
+                   "T2      'named-ok' ? P          :S(Y2)F(N2)\n"
+                   "Y2      OUTPUT = 'value matches'        :(END)\n"
+                   "N2      OUTPUT = 'value no'\n"
+                   "END\n"))
+      (is (= "name text matches\nvalue no\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
