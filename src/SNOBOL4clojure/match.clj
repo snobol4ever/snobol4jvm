@@ -73,7 +73,9 @@
     true     (out ["ζλ? " (type (ζΠ ζ)) (ζΠ ζ)])))
 
 ;; ── Stack helpers ─────────────────────────────────────────────────────────────
-(defn- top  [Ψ]   (last Ψ))
+;; The stacks are vectors, pushed and popped at their end: the top is peek, a constant step (last walks the whole vector, so a match that built a deep stack -- the
+;; calculator demos' 32 KB subject -- spent its time reading it)
+(defn- top  [Ψ]   (peek Ψ))
 (defn- push [Ψ ζ] (if Ψ (conj Ψ ζ)))
 (defn- pull [Ψ]   (if Ψ (if-not (empty? Ψ) (pop Ψ))))
 (defn- 🡡 [Ω]     (top Ω))
@@ -137,6 +139,11 @@
         (str " " action)
         (preview action (ζΠ ζ) (ζφ ζ))))))
 
+;; The scanner of each primitive node, built once (the engine built this map afresh at every primitive it matched)
+(def ^:private prim-fns
+  {'ANY$  ANY$  'NOTANY$ NOTANY$ 'SPAN$ SPAN$ 'NSPAN$ NSPAN$ 'BREAK$ BREAK$ 'BREAKX$ BREAKX$ 'POS# POS# 'RPOS# RPOS#
+   'LEN#  LEN#  'TAB#    TAB#    'RTAB# RTAB# 'BOL#   BOL#   'EOL#   EOL#})
+
 ;; ── Core engine ───────────────────────────────────────────────────────────────
 ;; Returns [start end] on success, nil on failure.
 ;; Σ       — seq of chars (remaining subject at start position)
@@ -189,14 +196,7 @@
         (case action
           :proceed
           (let [[Σ Δ _ _ Π] ζ
-                prim-fn {'ANY$    ANY$    'NOTANY$ NOTANY$
-                         'SPAN$   SPAN$   'NSPAN$  NSPAN$
-                         'BREAK$  BREAK$  'BREAKX$ BREAKX$
-                         'POS#    POS#    'RPOS#   RPOS#
-                         'LEN#    LEN#    'TAB#    TAB#
-                         'RTAB#   RTAB#   'BOL#    BOL#
-                         'EOL#    EOL#}
-                [σ δ]        ((prim-fn λ) Σ Δ (second Π))]
+                [σ δ]        ((prim-fns λ) Σ Δ (second Π))]
             (if (>= δ 0)
               (recur :succeed (ζ↑ ζ σ δ) Ω)
               (recur :fail    (ζ↑ ζ Σ Δ) Ω))))
