@@ -5502,3 +5502,17 @@
                    "END\n"))
       (is (= "collected\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; SPITBOL evaluates as a statement is compiled what is made of constants alone -- literals, the keywords whose values never change, arithmetic, concatenation and
+;; the built-in functions it folds -- and an error raised there is the statement's compile error: CODE fails with its number, and a program holding it is refused
+;; (sbl -bf). The engine raised these when the statement ran, so CODE(' V = &UCASE * 2') succeeded (SnoRungs code_eval_eval_fence_replace_1).
+(deftest constants-are-evaluated-as-the-statement-is-compiled
+  (let [f (java.io.File/createTempFile "gen" ".sno")
+        run (fn [s] (spit f s) (with-out-str (-main (.getPath f))))]
+    (try
+      (doseq [[stmt want] [[" X = 1 / 0" "14"] [" V = &UCASE * 2" "26"] [" X = LEN(-1)" "121"] [" X = 'a' 'b' + 1" "1"] [" X = REMDR(1, 0)" "167"]
+                           [" X = F(1 / 0)" "14"] [" X = &ANCHOR * 'a'" "ok"] [" X = EQ('a', 1)" "ok"] [" X = DUPL('a', -1)" "ok"] [" X = *(1 / 0)" "14"]]]
+        (is (= (str want "\n") (run (str "        &ERRLIMIT = 1\n        C = CODE(\"" stmt "\")   :S(Y)\n        OUTPUT = &ERRTYPE   :(END)\nY       OUTPUT = 'ok'\nEND\n")))
+            stmt))
+      (is (= 231 (-main (do (spit f "        OUTPUT = 'not run'\n        X = 1 / 0\nEND\n") (.getPath f)))))
+      (finally (.delete f)))))

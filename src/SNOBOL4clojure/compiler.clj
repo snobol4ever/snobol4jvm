@@ -176,6 +176,46 @@
           (assoc outer :file (if stale (:file pos) (:file outer)) :revert (when stale (:file outer)) :bp (inc pline) :bl (inc (:card-line outer)) :stack (pop (:stack pos)))))
       :else pos)))
 
+;; -- Constant folding -----------------------------------------------------------
+;; SPITBOL evaluates as a statement is compiled what is made of constants alone, and an error raised there is the statement's compile error (sbl -bf, measured:
+;; CODE(' X = 1 / 0') is refused with 14 and a program holding it with rc 231; ' V = &UCASE * 2' with 26; ' X = LEN(-1)' with 121). The constants are literals and
+;; the keywords whose values never change; what folds is arithmetic, concatenation, and the built-in functions sbl was seen to fold, given constants (EQ, LT, DUPL,
+;; SUBSTR, ARRAY and CONVERT were seen not to; within a deferred *X the constants fold, and *X itself is no constant: *(1 / 0) is 14).
+(def ^:private constant-keywords '#{ABORT ALPHABET ARB BAL FAIL FENCE LCASE REM SUCCEED UCASE})
+(def ^:private folded-operators '#{+ - * / **})
+(def ^:private folded-functions
+  '#{SIZE LEN ANY NOTANY SPAN BREAK BREAKX POS RPOS TAB RTAB ARBNO FENCE REMDR CHAR TRIM REPLACE LPAD RPAD REVERSE DIFFER IDENT INTEGER DATATYPE LGT})
+
+(defn- fold
+  "[constant? value] of the IR n, its constant parts evaluated as SPITBOL's compiler evaluates them; an error raised there is thrown."
+  [n]
+  (let [eval! (requiring-resolve 'SNOBOL4clojure.operators/EVAL!)]
+    (cond
+      (or (string? n) (number? n)) [true n]
+      (vector? n)
+      (let [comma? (= :comma (first n))
+            parts  (mapv fold (if comma? (rest n) n))]
+        (if (and (not comma?) (every? first parts)) [true (eval! n)] [false nil]))
+      (list? n)
+      (let [[op & args] n]
+        (cond
+          (and (= '& op) (= 1 (count args)))  (if (constant-keywords (first args)) [true (eval! n)] [false nil])
+          (and (= '* op) (= 1 (count args)))  (do (fold (first args)) [false nil])   ; folded within, never a value itself
+          :else
+          (let [parts (mapv fold args)]
+            (if (and (every? first parts)
+                     (or (and (folded-operators op) (<= 1 (count args) 2))
+                         (and (folded-functions op) (not (:subscript (meta n))))))
+              (let [v (eval! n)] (if (nil? v) [false nil] [true v]))
+              [false nil]))))
+      :else [false nil])))
+
+(defn- fold-error
+  "The number of the error folding the statement body raises, or nil."
+  [body]
+  (try (fold body) nil
+       (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e)))))
+
 ;; -- CODE! — parse source into {CODES NOS LABELS} ----------------------------
 (defn CODE!
   "Compile SNOBOL4 source S into a [codes nos labels disp] vector. disp holds, for each statement in order, how many blank lines (statements SPITBOL
@@ -218,6 +258,7 @@
                  (let [label  (:label code)
                        body   (:body  code)
                        goto   (:goto  code)
+                       _      (when-let [n (fold-error body)] (swap! <DIAGNOSTICS> conj [pline n nil]))
                        key    (if label label NO)
                        code   (reduce #(conj %1 %2) [] [body goto])
                        nos    (if (keyword? key) (assoc NOS   key NO) NOS)
