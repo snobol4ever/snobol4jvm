@@ -5306,3 +5306,24 @@
                    "END\n"))
       (is (= "251 256\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; "EVAL fails if evaluation of the argument fails, or if the argument contains a syntax error. The SPITBOL keyword &ERRTEXT will contain a string describing the
+;; error" (manual ch. 9). An error raised while EVAL evaluates fails it with &ERRTYPE and &ERRTEXT set and is never fatal; it spends one of &ERRLIMIT when that is
+;; above 0. The engine let the error end the program (SnoRungs eval_keyword_branch_1). sbl -bf's output.
+(deftest an-error-in-evals-evaluation-fails-eval
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        X = 1; Z = 0\n"
+                   "        R = EVAL('X / Z')                       :S(Y)\n"
+                   "        OUTPUT = 'div fails ' &ERRTYPE ' [' &ERRTEXT '] lim ' &ERRLIMIT\n"
+                   "Y       E = *(X / Z)\n"
+                   "        R = EVAL(E)                             :S(Y2)\n"
+                   "        OUTPUT = 'expr fails ' &ERRTYPE\n"
+                   "Y2      R = EVAL('&NEVERSET')                   :S(Y3)\n"
+                   "        OUTPUT = 'keyword fails ' &ERRTYPE\n"
+                   "Y3      &ERRLIMIT = 5\n"
+                   "        R = EVAL('X / Z')\n"
+                   "        OUTPUT = 'lim ' &ERRLIMIT\n"
+                   "END\n"))
+      (is (= "div fails 14 [division caused integer overflow] lim 0\nexpr fails 14\nkeyword fails 251\nlim 4\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
