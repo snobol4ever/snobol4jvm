@@ -4952,3 +4952,25 @@
         (is (re-find #"(?m)^1        OUTPUT = &STNO$" lst))
         (is (re-find #"ERROR 014 -- division caused integer overflow" lst)))
       (finally (.delete f) (.delete sink)))))
+
+;; "Given a pattern argument P, FENCE(P) is a same pattern except alternatives in P are bypassed when backing up" (manual ch. 19, FENCE): when P matches, none of
+;; P's alternatives is tried again, and a conditional assignment P made is kept if the match succeeds and taken back if the scanner backs up past the fence. The
+;; engine took one frame off the backtrack stack, which left P's other alternatives there and dropped an assignment's undo frame (SnoRungs
+;; fence_arb_span_replace_branch_2, fence_backtrack_drops_captures_1). Expected output is sbl -bf's.
+(deftest fence-of-p-bypasses-p-and-keeps-its-assignments-undoable
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        'ab' ? FENCE('a' . X) 'b'\n"
+                   "        OUTPUT = 'X=[' X ']'\n"
+                   "        'ab' ? FENCE(('a' | 'ab') . Y) 'b'          :S(S2)\n"
+                   "        OUTPUT = 'Y fail [' Y ']'                   :(T3)\n"
+                   "S2      OUTPUT = 'Y=[' Y ']'\n"
+                   "T3      'abc' ? (FENCE('a' . Z) 'x' | 'ab') . W     :S(S3)\n"
+                   "        OUTPUT = 'W fail Z=[' Z ']'                 :(T4)\n"
+                   "S3      OUTPUT = 'W=[' W '] Z=[' Z ']'\n"
+                   "T4      'aab' ? FENCE(ARB . V) 'b'                  :S(S4)\n"
+                   "        OUTPUT = 'V fail'                           :(END)\n"
+                   "S4      OUTPUT = 'V=[' V ']'\n"
+                   "END\n"))
+      (is (= "X=[a]\nY=[a]\nW=[ab] Z=[]\nV=[]\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

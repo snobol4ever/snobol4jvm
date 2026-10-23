@@ -360,26 +360,28 @@
         ;;               backtracking *past* this node to outer ALT still allowed.
         ;;   FENCE()   — fence_simple: matches empty string; any backtrack past
         ;;               this point aborts the entire match (returns nil).
+        ;; FENCE(P): "Given a pattern argument P, FENCE(P) is a same pattern except alternatives in P are bypassed when backing up" (manual ch. 19, FENCE).
+        ;; The depth of Ω where the fence's own frame goes is baked into the node; when P matches, Ω is cut back to it, so neither P's alternatives nor the
+        ;; fence are tried again, but the undo frames of the conditional assignments P made stay, and backing up past the fence still takes them back
+        ;; (sbl -bf: 'abc' ? (FENCE('a' . Z) 'x' | 'ab') leaves Z unassigned; 'aab' ? FENCE(ARB . V) 'b' assigns V the null string).
         FENCE!
         (case action
           :proceed
           (let [[Σ Δ _ _ _ _ Ψ] ζ
                 child            (second (ζΠ ζ))]
             (if child
-              ;; FENCE(P): descend into child; push cut barrier onto Ω
-              (recur :proceed [Σ Δ Σ Δ child 1 (🡥 Ψ ζ)] (🡥 Ω ζ))
-              ;; Bare FENCE(): succeed once; push :ABORT sentinel onto Ω
+              ;; FENCE(P): descend into child; push the fence's frame, the depth it stands at baked in
+              (let [ζ (assoc ζ 4 (list 'FENCE! child (count Ω)))]
+                (recur :proceed [Σ Δ Σ Δ child 1 (🡥 Ψ ζ)] (🡥 Ω ζ)))
+              ;; Bare FENCE: succeed once; push :ABORT sentinel onto Ω
               (recur :succeed (ζ↑ ζ) (🡥 Ω :ABORT))))
           :succeed
-          ;; Child (or bare FENCE) succeeded — pop cut barrier, propagate up
-          (recur :succeed (ζ↑ ζ) (🡧 Ω))
+          ;; P matched: cut Ω back to the fence, keeping the undo frames of P's conditional assignments
+          (let [d (long (nth (ζΠ ζ) 2))]
+            (recur :succeed (ζ↑ ζ) (into (subvec Ω 0 d) (filter #(and (list? %) (clojure.core/= 'COND-UNDO! (first %))) (subvec Ω (inc d))))))
           (:recede :fail)
-          ;; Backtracked into FENCE.
-          ;; FENCE(P): refuse retry, let outer context try next alternative.
-          ;; Bare FENCE(): :ABORT sentinel on Ω — terminate entire match.
-          (if (clojure.core/= (🡡 Ω) :ABORT)
-            nil
-            (recur :recede (🡡 Ω) (🡧 Ω))))
+          ;; P has no alternative left: back up past the fence (to a bare FENCE's sentinel, which ends the match)
+          (recur :recede (🡡 Ω) (🡧 Ω)))
 
         ;; ── ARB! ─────────────────────────────────────────────────────────────
         ;; ARB — matches any string, shortest first (0 chars, then 1, 2, …).
