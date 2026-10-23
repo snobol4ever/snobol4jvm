@@ -137,7 +137,7 @@
            (and err (clojure.core/= nm "ABORT"))
            (let [e ^clojure.lang.ExceptionInfo (:ex err)] (throw (ex-info (ex-message e) (assoc (ex-data e) :snobol/abort true))))
            tgt
-           (do (goto! tgt) [(label-addr tgt) err])
+           (do (goto! tgt) (let [a (label-addr tgt)] (when (pos? (long @&TRACE)) (fire-label! (or (second a) tgt))) [a err]))
            :else
            [(saddr (inc (current 0))) err])))]
     ;; a program's run starts &STCOUNT at 0; the run of a function body, one level down, goes on counting
@@ -164,7 +164,6 @@
                 (snobol-steplimit! n))
               ;; ── LABEL trace ────────────────────────────────────────────────
               (when (pos? @&TRACE)
-                (fire-label! key)
                 (when (statement-trace-active?)
                   (binding [*out* *err*]
                     (println (format ">>> stmt %5d  %s" (dec n) (str key)))))))

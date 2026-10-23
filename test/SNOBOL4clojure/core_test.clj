@@ -4827,3 +4827,27 @@
                    "collect(big) fails\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+
+;; "'L' or 'LABEL': Produce a trace when a Goto transfer to statement name occurs. Flowing sequentially into the labeled statement or calling a function that begins
+;; with the label does not produce a trace" (manual ch. 10, Debugging). As sbl -bf writes it, the line is the star field of the statement whose Goto it is, then
+;; :(L). The engine traced every arrival at the label, falling in too, as *** L (snoflake trace-label-flow).
+(deftest a-label-trace-fires-on-a-goto-to-the-label
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &TRACE = 100\n"
+                   "        TRACE('L', 'LABEL')\n"
+                   "        N = 0\n"
+                   "        :(J)\n"
+                   "L       OUTPUT = 'at L ' N\n"
+                   "J       N = N + 1\n"
+                   "        LT(N, 3)                               :S(L)\n"
+                   "        OUTPUT = 'end'\n"
+                   "END\n"))
+      (is (= (str "****7*******  :(L)\n"
+                   "at L 1\n"
+                   "****7*******  :(L)\n"
+                   "at L 2\n"
+                   "end\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

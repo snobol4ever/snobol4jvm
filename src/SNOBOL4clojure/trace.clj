@@ -161,16 +161,17 @@
             (trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " &" kw " = " (trace-val new-val)))))))
 
 (defn fire-label!
-  "Fire LABEL trace when execution reaches `label-key`.
-   Called from runtime.clj at the top of each statement dispatch.
-   Returns nil (label traces just print; no goto redirect needed here)."
+  "Fire the LABEL trace of `label-key`, a Goto transferring to it: \"Produce a trace when a Goto transfer to statement name occurs. Flowing sequentially into the
+   labeled statement ... does not produce a trace\" (manual ch. 10). Called from runtime.clj's Goto while &STNO is still the statement whose Goto it is; the line
+   is its star field, an i for each function level, then :(L), as sbl -bf writes it, or the trace function is called; either costs 1 of &TRACE."
   [label-key]
   (when (pos? @&TRACE)
     (let [lname (if (keyword? label-key) (name label-key) (str label-key))]
       (when-let [entry (@registry (reg-key lname :label))]
         (if-let [f (trace-fn entry)]
           (call-trace-fn! f lname entry)
-          (trace-println "*** " lname))))))
+          (do (swap! &TRACE dec)
+              (trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " :(" lname ")")))))))
 
 (defn- function-line!
   "A call or return line of the function `fname`. It is written when the function is registered for `kind` and &TRACE is above 0 (and costs 1 of &TRACE),

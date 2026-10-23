@@ -103,8 +103,9 @@
         "MYLOOP  I = I + 1"
         "        LT(I,3)   :S(MYLOOP)"
         "END"))
-    (is (>= (count (filter #(.contains % "MYLOOP") @log)) 3)
-        "LABEL trace should fire 3 times for 3 loop iterations")))
+    ;; a LABEL trace fires on a Goto to the label, not on falling into it (manual ch. 10): the two :S(MYLOOP) transfers, as sbl -bf prints them
+    (is (= 2 (count (filter #(.contains % "MYLOOP") @log)))
+        "LABEL trace should fire once for each of the 2 gotos")))
 
 ;; ── TRACE — CALL/RETURN traces ────────────────────────────────────────────────
 
