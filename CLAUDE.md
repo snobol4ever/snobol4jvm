@@ -155,7 +155,7 @@ These come from the README's "Design Laws", plus traps found in the code.
   - **What it cost:** until `1fe23d8`, 35 of the 56 test namespaces were written that way, and `lein test` read 0 failures over a suite that really had about 366.
   - **How to spot it:** a `WARNING: = already refers to …` line in `lein test` output. `test_operators` refers `operators :all` behind `:refer-clojure :exclude`, so it gave no warning.
   - **Predicates:** a lambda or predicate passed to a helper such as `bisect-divergence` follows the same rule; `test_helpers.clj`'s docstring has the example.
-- **`lein test` is red, and its reds are real.** Measured on 2026-10-24 at `573e249`: 2,249 tests, 74 failures. The live count is in the LIVE CURSOR of `/home/claude_jvm/.github/GOAL-HQ-JVM.md` and in the last commit message.
+- **`lein test` is red, and its reds are real.** Measured on 2026-10-28 at `50caacd`: 2,249 tests, 4,854 assertions, 74 failures, 0 errors, in 57 s. The live count is in the LIVE CURSOR of `/home/claude_jvm/.github/GOAL-HQ-JVM.md` and in the last commit message.
   - Fix the engine, or set an expectation to what SPITBOL prints; never weaken a test to pass.
   - `csnobol4-match4` flips between red and green across full runs, a shared-state flake (see the next bullet).
 - **Runtime state is global and is not reset between tests by default.** `run-with-timeout` and `prog` do not call `GLOBALS`.
