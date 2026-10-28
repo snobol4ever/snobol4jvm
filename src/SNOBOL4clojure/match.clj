@@ -378,8 +378,8 @@
               ;; FENCE(P): descend into child; push the fence's frame, the depth it stands at baked in
               (let [ζ (assoc ζ 4 (list 'FENCE! child (count Ω)))]
                 (recur :proceed [Σ Δ Σ Δ child 1 (🡥 Ψ ζ)] (🡥 Ω ζ)))
-              ;; Bare FENCE: succeed once; push :ABORT sentinel onto Ω
-              (recur :succeed (ζ↑ ζ) (🡥 Ω :ABORT))))
+              ;; Bare FENCE: match the null string at the cursor once; push :ABORT sentinel onto Ω ("Pattern FENCE matches the null string", manual ch. 19)
+              (recur :succeed (ζ↑ ζ Σ Δ) (🡥 Ω :ABORT))))
           :succeed
           ;; P matched: cut Ω back to the fence, keeping the undo frames of P's conditional assignments
           (let [d (long (nth (ζΠ ζ) 2))]

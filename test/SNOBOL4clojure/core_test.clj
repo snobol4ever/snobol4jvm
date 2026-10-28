@@ -5574,3 +5574,22 @@
                   "\n\na\na\nab\nab\nab\nab\n\n\nb\nb\n\n\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A bare FENCE "matches the null string and has no effect when the pattern matcher is moving left to right" (manual ch. 19, FENCE), so as a whole pattern
+;; it matches the null string at the cursor. The engine took its span's end from the root frame, which holds no position, and 'x' FENCE threw a
+;; ClassCastException. Expected output is sbl -bf's.
+(deftest a-bare-fence-alone-matches-the-null-string
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        'x' FENCE                       :S(Y1)F(N1)\n"
+                   "Y1      OUTPUT = '1 S'                  :(E1)\n"
+                   "N1      OUTPUT = '1 F'\n"
+                   "E1      OUTPUT = '2 [' ('x' ? FENCE) ']'\n"
+                   "        X = 'abc'\n"
+                   "        X FENCE = 'Z'\n"
+                   "        OUTPUT = '3 ' X\n"
+                   "        'x' FENCE . V\n"
+                   "        OUTPUT = '4 [' V ']' SIZE(V)\n"
+                   "END\n"))
+      (is (= "1 S\n2 []\n3 Zabc\n4 []0\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
