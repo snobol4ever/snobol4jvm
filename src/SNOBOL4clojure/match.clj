@@ -414,8 +414,10 @@
         ;; every success climbed back through all the repetitions before it, and a long ARBNO was quadratic.)
         ;; :proceed  — zero repetitions: succeed at the entry cursor, push the retry frame
         ;; :recede   — the retry frame: descend into P from its cursor, the cursor the repetition starts at kept in φ
-        ;; :succeed  — P matched: a repetition that matched the null string made no progress and fails, as SPITBOL's does (so ARBNO(ARB) and the like
-        ;;             end); otherwise succeed with the new cursor, the retry frame above P's own alternatives, as the nested form ordered them
+        ;; :succeed  — P matched: succeed with the new cursor, the retry frame above P's own alternatives, as the nested form ordered them; a repetition
+        ;;             that matched the null string succeeds too but leaves no retry frame, so ARBNO(ARB) and the like end: "a check is made that argument
+        ;;             matched more than the null string ... if not, the successor to alternative is taken so as to terminate the loop" (sbl.min, p_abc;
+        ;;             sbl -bf: 'xyz' ? ARBNO(LEN(1) | '') $ OUTPUT FAIL prints xyz twice, the second time for the null repetition after it)
         ARBNO!
         (case action
           :proceed
@@ -427,7 +429,7 @@
           :succeed
           (let [[_ _ σ δ Π start Ψ] ζ]
             (if (clojure.core/= δ start)
-              (recur :recede (🡡 Ω) (🡧 Ω))
+              (recur :succeed (ζ↑ ζ) Ω)
               (recur :succeed (ζ↑ ζ) (🡥 Ω [σ δ σ δ Π 1 Ψ]))))
           :fail
           (recur :recede (🡡 Ω) (🡧 Ω)))

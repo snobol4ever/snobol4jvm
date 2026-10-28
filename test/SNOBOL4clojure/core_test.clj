@@ -5559,3 +5559,18 @@
             "        OUTPUT = 'matched ' SIZE(S) ' ' X"
             "END")]
     (is (= "matched 40000 a\n" (:stdout r)))))
+
+;; A repetition of ARBNO's argument that matches the null string succeeds, and ARBNO then offers no further repetition: "a check is made that argument
+;; matched more than the null string ... if not, the successor to alternative is taken so as to terminate the loop" (sbl.min, p_abc). The engine failed
+;; such a repetition, so 'xyz' ? ARBNO(LEN(1) | '') $ OUTPUT FAIL printed ten lines where sbl -bf prints twenty. Expected output is sbl -bf's.
+(deftest a-null-repetition-ends-arbno
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        'xyz' ? ARBNO(LEN(1) | '') $ OUTPUT FAIL\n"
+                   "        OUTPUT = '-'\n"
+                   "        'ab' ? ARBNO(ARB) $ OUTPUT FAIL\n"
+                   "END\n"))
+      (is (= (str "\nx\nxy\nxyz\nxyz\nxy\nx\n\n\ny\nyz\nyz\ny\n\n\nz\nz\n\n\n\n-\n"
+                  "\n\na\na\nab\nab\nab\nab\n\n\nb\nb\n\n\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
