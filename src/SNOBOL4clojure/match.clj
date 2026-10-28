@@ -156,6 +156,10 @@
           (:proceed :succeed) [start-Δ (ζδ ζ)]
           (:recede :fail)     (when (clojure.core/= :ABORT ζ) :abort))
 
+        ;; ALT pushes its frame on Ω as it tries each alternative, so backing up into it tries the next. An alternative that fails at once (a primitive,
+        ;; whose :fail pushes nothing) leaves that frame on top of Ω: it comes off as the next alternative is tried, or backing up would try the rest twice
+        ;; ("P1 | P2 matches whatever P1 matches, or whatever P2 matches. SPITBOL tries the various alternatives from left to right", manual ch. 6:
+        ;; each once; sbl -bf: 'x' ? ('y' | 'x') $ OUTPUT FAIL prints x once)
         ALT
         (case action
           :proceed (if (not (ζω ζ))
@@ -163,7 +167,7 @@
                      (recur :recede  (🡡 Ω)  (🡧 Ω)))
           :recede  (recur :proceed (ζ← ζ) Ω)
           :succeed (recur :succeed (ζ↑ ζ) Ω)
-          :fail    (recur :proceed (ζ← ζ) Ω))
+          :fail    (recur :proceed (ζ← ζ) (🡧 Ω)))
 
         SEQ
         (case action

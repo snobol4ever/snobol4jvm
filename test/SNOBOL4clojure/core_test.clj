@@ -5525,3 +5525,15 @@
                    "END\n"))
       (is (re-find #"ERROR 036 -- goto abort with no preceding error" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; Each alternative of P1 | P2 is tried once ("SPITBOL tries the various alternatives from left to right", manual ch. 6). An alternative that failed at once left
+;; its frame on the backtrack stack, so backing up tried the alternatives after it a second time: 'x' ? ('y' | 'x') $ OUTPUT FAIL printed x twice (sbl -bf: once),
+;; and the unfenced calculator grammar re-parsed each parenthesis that way past the board's 60 s (SnoDemo calculator-1-match).
+(deftest each-alternative-is-tried-once
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        'x' ? ('y' | 'x') $ OUTPUT FAIL\n"
+                   "        'ab' ? (SPAN('0') | ANY('ab') | 'a') $ OUTPUT FAIL\n"
+                   "END\n"))
+      (is (= "x\na\na\nb\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
