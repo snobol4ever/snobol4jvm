@@ -5537,3 +5537,14 @@
                    "END\n"))
       (is (= "x\na\na\nb\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; ARBNO matches the null string first, and each time it is retried it supplies another instance of its argument (manual ch. 9, The ARBNO Function). It was
+;; ALT[ε, SEQ[P, ARBNO(P)]], one level deeper each repetition, so every success climbed back through all the repetitions before it and a long ARBNO was
+;; quadratic: POS(0) ARBNO('a') RPOS(0) over 20,000 characters ran past 30 s (SnoRungs arbno_pos_rpos_branch_100; SnoDemo's calculators, 2,000 lines).
+(deftest a-long-arbno-is-linear
+  (let [r (prog-timeout 10000
+            "        S = DUPL('a', 20000)"
+            "        S ? POS(0) ARBNO('a') RPOS(0)     :F(END)"
+            "        OUTPUT = 'matched ' SIZE(S)"
+            "END")]
+    (is (= "matched 20000\n" (:stdout r)))))

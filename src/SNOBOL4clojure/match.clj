@@ -407,31 +407,29 @@
               (recur :recede (🡡 Ω) (🡧 Ω)))))
 
         ;; ── ARBNO! ───────────────────────────────────────────────────────────
-        ;; ARBNO(P) — zero or more repetitions of P, shortest first.
-        ;; Expands lazily to ALT[ε, SEQ[P, ARBNO(P)]] on each :proceed.
-        ;; The recursive ARBNO(P) in the SEQ ensures the engine re-expands
-        ;; on every attempted repetition, giving correct backtracking.
+        ;; ARBNO(P) — zero or more repetitions of P, shortest first: "Initially, it simply matches the null string. If a subsequent pattern component fails
+        ;; to match, SPITBOL backs up, and asks ARBNO to try again. Each time ARBNO is retried, it supplies another instance of its argument pattern"
+        ;; (manual ch. 9, The ARBNO Function). ARBNO succeeds at its own level and leaves one retry frame on Ω, its own frame at the cursor where the next
+        ;; repetition starts; backing up into it matches P once more from there. (It was ALT[ε, SEQ[P, ARBNO(P)]], one level deeper each repetition, so
+        ;; every success climbed back through all the repetitions before it, and a long ARBNO was quadratic.)
+        ;; :proceed  — zero repetitions: succeed at the entry cursor, push the retry frame
+        ;; :recede   — the retry frame: descend into P from its cursor, the cursor the repetition starts at kept in φ
+        ;; :succeed  — P matched: a repetition that matched the null string made no progress and fails, as SPITBOL's does (so ARBNO(ARB) and the like
+        ;;             end); otherwise succeed with the new cursor, the retry frame above P's own alternatives, as the nested form ordered them
         ARBNO!
         (case action
           :proceed
-          (let [[Σ Δ _ _ _ _ Ψ] ζ
-                P               (second (ζΠ ζ))
-                ;; a repetition that matched the null string made no progress and fails, as SPITBOL's does, so ARBNO(ARB) and the like end
-                expanded        (list 'ALT "" (list 'SEQ P (list 'ARBNO-STEP Δ) (ζΠ ζ)))]
-            (recur :proceed [Σ Δ Σ Δ expanded 1 (🡥 Ψ ζ)] Ω))
+          (let [[Σ Δ] ζ]
+            (recur :succeed (ζ↑ ζ Σ Δ) (🡥 Ω ζ)))
+          :recede
+          (let [[Σ Δ _ _ _ _ Ψ] ζ]
+            (recur :proceed [Σ Δ Σ Δ (second (ζΠ ζ)) 1 (🡥 Ψ (assoc ζ 5 Δ))] Ω))
           :succeed
-          (recur :succeed (ζ↑ ζ) Ω)
-          (:recede :fail)
-          (recur :recede (🡡 Ω) (🡧 Ω)))
-
-        ;; ── ARBNO-STEP ───────────────────────────────────────────────────────
-        ;; The guard ARBNO puts after each repetition: the cursor must have moved from where the repetition began (the node's second element).
-        ARBNO-STEP
-        (case action
-          :proceed (if (clojure.core/= (ζΔ ζ) (second (ζΠ ζ)))
-                     (recur :recede (🡡 Ω) (🡧 Ω))
-                     (recur :succeed (ζ↑ ζ (ζΣ ζ) (ζΔ ζ)) Ω))
-          (:fail :recede)
+          (let [[_ _ σ δ Π start Ψ] ζ]
+            (if (clojure.core/= δ start)
+              (recur :recede (🡡 Ω) (🡧 Ω))
+              (recur :succeed (ζ↑ ζ) (🡥 Ω [σ δ σ δ Π 1 Ψ]))))
+          :fail
           (recur :recede (🡡 Ω) (🡧 Ω)))
 
         ;; ── ABORT! ───────────────────────────────────────────────────────────
