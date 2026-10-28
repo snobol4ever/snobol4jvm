@@ -5953,3 +5953,31 @@
                    "END\n"))
       (is (= "over 244 30 4\nover 244 40 3\nend\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A pattern, an expression, code and the name of a keyword are objects: IDENT, DIFFER and a table's key compare them by identity, and COPY makes a new one that
+;; works as the original does; a string, a number and the name of a variable or an element compare by value. The variable FENCE and &FENCE hold one pattern. The
+;; engine compared patterns and names by value, and COPY gave back its argument. Expected output is sbl -bf's.
+(deftest a-pattern-is-compared-by-identity
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        P = LEN(1)\n"
+                   "        Q = P\n"
+                   "        E = *X\n"
+                   "        C = CODE(' Z = 7  :(BACK)')\n"
+                   "        OUTPUT = '1 ' (IDENT(P, Q) 'same', 'differ') ' ' (IDENT(P, COPY(P)) 'same', 'differ') ' ' (IDENT(LEN(1), LEN(1)) 'same', 'differ')\n"
+                   "        OUTPUT = '2 ' (IDENT(E, COPY(E)) 'same', 'differ') ' ' (IDENT(C, COPY(C)) 'same', 'differ') ' ' (IDENT(ARB, ARB) 'same', 'differ')\n"
+                   "        OUTPUT = '3 ' (IDENT(.&TRACE, .&TRACE) 'same', 'differ') ' ' (IDENT(.X, .X) 'same', 'differ') ' ' (DIFFER(P, P) 'differ', 'same')\n"
+                   "        A = ARRAY(2)\n"
+                   "        OUTPUT = '4 ' (IDENT(.A[1], .A[1]) 'same', 'differ') ' ' (IDENT('ab', 'a' 'b') 'same', 'differ') ' ' (IDENT(1, 1.0) 'same', 'differ')\n"
+                   "        T = TABLE()\n"
+                   "        T[P] = 'p'\n"
+                   "        T[.&TRACE] = 'k'\n"
+                   "        OUTPUT = '5 [' T[P] '] [' T[LEN(1)] '] [' T[Q] '] [' T[.&TRACE] '] [' T[COPY(P)] ']'\n"
+                   "        'abc' ? COPY(P) . V\n"
+                   "        OUTPUT = '6 ' V ' ' EVAL(COPY(E))\n"
+                   "        D = COPY(C)                                 :<D>\n"
+                   "BACK    OUTPUT = '7 ' Z\n"
+                   "        OUTPUT = '8 ' (IDENT(&FENCE, FENCE) 'same', 'differ') ' ' (IDENT(FENCE, FENCE) 'same', 'differ')\n"
+                   "END\n"))
+      (is (= "1 same differ differ\n2 differ differ same\n3 differ same same\n4 same same differ\n5 [p] [] [p] [] []\n6 a \n7 7\n8 same same\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

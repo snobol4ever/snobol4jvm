@@ -241,6 +241,11 @@
     (instance? SNOBOL4clojure.env.DataObj x)
     (SNOBOL4clojure.env/->DataObj (.type-name ^SNOBOL4clojure.env.DataObj x) (.field-names ^SNOBOL4clojure.env.DataObj x)
                                   (aclone ^objects (.fields ^SNOBOL4clojure.env.DataObj x)) (SNOBOL4clojure.env/next-serial!))
+    ;; a pattern, an expression or code: a new one that works as it does, not IDENT to it (sbl -bf: IDENT(P, COPY(P)) fails, 'abc' ? COPY(LEN(1)) . V assigns a,
+    ;; :<COPY(C)> runs C's statements); a string, a number or a name is its own copy
+    (instance? SNOBOL4clojure.env.CodeBlock x) (SNOBOL4clojure.env/->CodeBlock (.entry ^SNOBOL4clojure.env.CodeBlock x))
+    (and (seq? x) (#{"PATTERN" "EXPRESSION"} (DATATYPE x))) (with-meta (apply list x) (meta x))
+    (and (vector? x) (clojure.core/= "PATTERN" (DATATYPE x))) (with-meta (into [] x) (meta x))
     :else x))
 
 ;; ── Type conversion & char functions ─────────────────────────────────────────

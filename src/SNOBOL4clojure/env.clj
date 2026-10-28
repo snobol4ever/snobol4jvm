@@ -597,18 +597,28 @@
 
 (defn table?    [x] (and (instance? clojure.lang.IDeref x)
                          (map? @x)))
-(defn table-get [t k]        (get @t k (:dflt (meta t) ε)))
+(declare object-identity?)
+;; A key that is the object itself: a pattern, an expression or the name of a keyword keys a table by its identity (object-identity?)
+(deftype ObjKey [v]
+  Object
+  (equals   [_ o] (and (instance? ObjKey o) (identical? v (.v ^ObjKey o))))
+  (hashCode [_]   (System/identityHashCode v)))
+(defn- table-key [k] (if (object-identity? k) (ObjKey. k) k))
+
+(defn table-get [t k]        (get @t (table-key k) (:dflt (meta t) ε)))
 (defn table-set [t k v]
-  (when-let [o (:order (meta t))]
-    (swap! o (fn [m] (if (contains? m k) m (assoc m k (count m))))))
-  (swap! t assoc k v)
+  (let [k (table-key k)]
+    (when-let [o (:order (meta t))]
+      (swap! o (fn [m] (if (contains? m k) m (assoc m k (count m))))))
+    (swap! t assoc k v))
   v)
 
 (defn table-entries
   "The [key value] entries of a table in the order the keys were first assigned."
   [t]
   (let [order (if-let [o (:order (meta t))] @o {})]
-    (sort-by (fn [[k _]] (get order k Long/MAX_VALUE)) (seq @t))))
+    (map (fn [[k v]] [(if (instance? ObjKey k) (.v ^ObjKey k) k) v])
+         (sort-by (fn [[k _]] (get order k Long/MAX_VALUE)) (seq @t)))))
 
 (defn array?    [x] (instance? SnobolArray x))
 
@@ -703,6 +713,14 @@
     "PATTERN"
     "EXPRESSION"))
 (defmethod DATATYPE "class clojure.lang.PersistentList$EmptyList" [_] "EXPRESSION")
+
+;; The values SPITBOL compares by identity, as IDENT, DIFFER and a table's key do: a pattern, an expression, and the name of a keyword, a new one each time it is
+;; made (code is a CodeBlock, whose identity is its own); a string, a number and the name of a variable or an element compare by value (sbl -bf:
+;; IDENT(LEN(1), LEN(1)) and IDENT(.&TRACE, .&TRACE) fail, IDENT(P, Q) of Q = P and IDENT(.X, .X) succeed; T[LEN(1)] after T[P] = 'p' is the null string).
+(defn object-identity? [x]
+  (or (and (or (seq? x) (vector? x)) (contains? #{"PATTERN" "EXPRESSION"} (DATATYPE x)))
+      (and (instance? NAME x) (seq? (.n ^NAME x)) (clojure.core/= '& (first (.n ^NAME x))))))
+(defn snobol-ident? [x y] (if (or (object-identity? x) (object-identity? y)) (identical? x y) (clojure.core/= x y)))
 (defmethod DATATYPE "class clojure.lang.PersistentTreeMap"        [_] "CODE")
 (defmethod DATATYPE "class clojure.lang.Keyword"                  [_] "CODE")
 (defmethod DATATYPE "class clojure.lang.PersistentHashSet"        [_] "SET")

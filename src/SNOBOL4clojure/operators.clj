@@ -69,8 +69,8 @@
 (defn LLT ([] (LLT ε ε)) ([x] (LLT x ε)) ([x y & _] (lexical x y 130 neg?)))
 (defn LGE ([] (LGE ε ε)) ([x] (LGE x ε)) ([x y & _] (lexical x y 124 #(>= % 0))))
 (defn LGT ([] (LGT ε ε)) ([x] (LGT x ε)) ([x y & _] (lexical x y 126 pos?)))
-(eval (primitive 'IDENT  ε   ε identity #(list 'equal %1 %2)))
-(eval (primitive 'DIFFER ε nil identity #(list 'not= %1 %2)))
+(eval (primitive 'IDENT  ε   ε identity #(list 'SNOBOL4clojure.env/snobol-ident? %1 %2)))
+(eval (primitive 'DIFFER ε nil identity #(list 'not (list 'SNOBOL4clojure.env/snobol-ident? %1 %2))))
 
 ;; ── SNOBOL4 operators ─────────────────────────────────────────────────────────
 (defn =     ([_x]       η)                         ; unary  — programmable
@@ -768,8 +768,11 @@
     (or (and (string? v) (not= "" v)) (number? v)) (symbol (sstr v))
     :else (throw (ex-info "indirection operand is not name" {:snobol/error 239}))))
 
+;; The pattern the variable FENCE and the keyword &FENCE hold: one object, so IDENT(&FENCE, FENCE) succeeds as it does for the other six (sbl -bf)
+(def ^:private bare-fence (FENCE))
+
 (def ^:private pattern-keywords
-  {"ABORT" (fn [] ABORT) "ARB" (fn [] SNOBOL4clojure.patterns/ARB) "BAL" (fn [] BAL) "FAIL" (fn [] FAIL) "FENCE" (fn [] (FENCE))
+  {"ABORT" (fn [] ABORT) "ARB" (fn [] SNOBOL4clojure.patterns/ARB) "BAL" (fn [] BAL) "FAIL" (fn [] FAIL) "FENCE" (fn [] bare-fence)
    "REM" (fn [] SNOBOL4clojure.patterns/REM) "SUCCEED" (fn [] SNOBOL4clojure.patterns/SUCCEED)})
 
 (defn- eval-operands
@@ -936,7 +939,7 @@
       (string? E)  E
       (integer? E) E
       ;; a reference to a variable fires its ACCESS trace (trace.clj); a bare FENCE is the pattern, not the function that builds one
-      (symbol? E)  (let [v ($$ E)] (when (pos? (long @SNOBOL4clojure.env/&TRACE)) (fire-access! E v)) (if (identical? v FENCE) (FENCE) v))
+      (symbol? E)  (let [v ($$ E)] (when (pos? (long @SNOBOL4clojure.env/&TRACE)) (fire-access! E v)) (if (identical? v FENCE) bare-fence v))
       ;; the name of an expression is read as the expression's value (sbl.min acess: "here for expression variable, evaluate variable")
       (instance? SNOBOL4clojure.env.ExprVar E) (EVAL! (.ir ^SNOBOL4clojure.env.ExprVar E))
       ;; (e1, e2, ...): the value of the first expression that succeeds, the later ones not evaluated; failure if none does. Each alternative but the last is a
