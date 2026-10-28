@@ -203,7 +203,7 @@
 (def ^:private op-spelling {'at "@", 'sharp "#", 'tilde "~"})
 
 ;; ── INVOKE ────────────────────────────────────────────────────────────────────
-(declare EVAL! compile-expression compile-failed! deferred? expression-of unused-unary-ops unused-binary-ops)
+(declare EVAL! compile-expression compile-failed! deferred? expression-of unused-unary-ops unused-binary-ops name-of)
 
 ;; A concatenation evaluates to (SEQ v ...). It is a string when every part is
 ;; a string, a number or a NAME (text: its variable's name), and otherwise a
@@ -320,6 +320,9 @@
               ;; nil replacement = sub-expression failure → statement fails
               (when-not (nil? r)
               (cond
+                ;; the name of an expression is assigned through the expression evaluated by name (sbl.min asign: "assignment to expression variable")
+                (instance? SNOBOL4clojure.env.ExprVar N)
+                (when-some [t (name-of (.ir ^SNOBOL4clojure.env.ExprVar N))] (INVOKE '= t r))
                 ;; keyword assignment: (= (& K) val)
                 (and (list? N) (clojure.core/= (first N) '&))
                 (assign-keyword! (second N) r)
@@ -735,6 +738,7 @@
 (defn- indirect-target [v]
   (cond
     (and (instance? NAME v) (list? (.n ^NAME v))) (.n ^NAME v)
+    (and (instance? NAME v) (instance? SNOBOL4clojure.env.ExprVar (.n ^NAME v))) (.n ^NAME v)
     (instance? NAME v)                             (symbol (name-string v))
     ;; "The indirect reference operator ($) converts a string to a variable name" (manual ch. 15); a number converts by its string (ch. 17, Integer to name);
     ;; "The null string cannot be converted to a name" (ch. 17), and an object is no name: "239 Indirection operand is not name" (Appendix D)
@@ -788,16 +792,51 @@
 ;; The operators whose result is a value and never a name: an expression made with one of them cannot be the target of an assignment.
 (def ^:private value-operators '#{= ?= ? | at + - sharp / * % ** ^ ! . tilde & SEQ})
 
-;; The name a deferred target *X stands for when the assignment is made: a variable; the variable $V names; an element or a field, its subscripts taken then; a
-;; keyword; the name a function returns (defined by then, perhaps after the pattern was built). Any other expression is evaluated, and its value is no name, so the
-;; assignment fails (sbl -bf: 'xyz' LEN(1) . *(K = K + 1) assigns K and fails, . *(R 'y') and . *.M fail). nil is that failure.
-(defn- deferred-name [X]
+(declare compile-or-fail evaluated-or-fail)
+
+(defn- returned-value! [] (throw (ex-info "expression evaluated by name returned value" {:snobol/error 249})))
+
+;; A function called by name, F(args) where a name is wanted (.F(args), APPLY by name), gives the name its call names: a field of a DATA type is that field, ITEM
+;; the element, APPLY its function called by name, EVAL its expression evaluated by name (sbl.min s_evl: "evaluate expression by name"); any other function
+;; is called, and fails if it fails, or gives the name it returned by NRETURN, or gives a value, "021 function called by name returned a value" (sbl -bf:
+;; .SIZE('abc'), .CONVERT(X, 'STRING'), .NODE(1, 2) of a DATA type NODE and .APPLY('G') of a G that returns are 21; .ITEM(A, 1) and .APPLY('LEFT', P) are names).
+;; The target named (a symbol, an element or a field), or nil when the call fails.
+(defn- call-by-name [fsym args]
+  (let [fname (name fsym) f (get @<FUNS> fname)]
+    (cond
+      (and f (:field (meta f)))                          (apply list fsym args)
+      (and (nil? f) (clojure.core/= fname "ITEM") (seq args))
+      (let [c (first args)] (with-meta (apply list c (rest args)) {:subscript true :container c}))
+      (and (nil? f) (clojure.core/= fname "APPLY") (seq args)) (call-by-name (symbol (SNOBOL4clojure.env/name-string (first args))) (rest args))
+      (and (nil? f) (clojure.core/= fname "EVAL"))
+      (let [x (first args)]
+        (cond
+          ;; a variable deferred, *X, is X; any other expression was compiled to give a value (sbl -bf: .EVAL(*X) is .X, .EVAL(*$'X') is 249)
+          (deferred? x)  (if (symbol? (:defer-var (meta x))) (:defer-var (meta x)) (when-not (nil? (evaluated-or-fail (second x))) (returned-value!)))
+          (string? x)    (let [ir (compile-or-fail x)] (when-not (nil? ir) (evaluated-or-fail #(name-of ir))))
+          :else          (returned-value!)))
+      :else
+      (let [r (apply INVOKE fsym args)]
+        (cond (nil? r)                                      nil
+              (instance? SNOBOL4clojure.env.NameResult r) (:target r)
+              :else (throw (ex-info "function called by name returned a value" {:snobol/error 21})))))))
+
+;; The name an expression gives evaluated by name, as sbl.min compiles one in a name position (the target of a capture *E, the name of an expression .*E, EVAL
+;; by name): a variable; the variable $V names; a keyword; an element, its subscripts taken now; the name a function called by name gives (call-by-name). Any
+;; other expression gives a value, "249 expression evaluated by name returned value" (sbl -bf: 'abc' ? LEN(1) . *(X Y) is 249, . *LEN(1) is 21, and
+;; 'xyz' LEN(1) . *(K = K + 1) assigns K before it is 249). nil when the evaluation fails.
+(defn- name-of [X]
   (cond
-    (symbol? X)                                                    X
-    (call-form? X)                                                 (when-some [r (name-of-call X)] (:target r))
-    (and (list? X) (equal (first X) '$) (clojure.core/= 2 (count X))) (when-some [v (EVAL! (second X))] (indirect-target v))
-    (and (list? X) (not (contains? value-operators (first X))))    (element-target X)
-    :else                                                          (do (EVAL! X) nil)))
+    (symbol? X)                                                          X
+    (and (list? X) (equal (first X) '$) (clojure.core/= 2 (count X)))  (when-some [v (EVAL! (second X))] (indirect-target v))
+    (and (list? X) (equal (first X) '&) (clojure.core/= 2 (count X)))  X
+    (and (list? X) (or (:subscript (meta X)) (not (symbol? (first X))))) (element-target X)
+    (and (list? X) (not (contains? value-operators (first X))))
+    (let [v (reference (first X))]
+      (if (or (table? v) (array? v))
+        (element-target X)
+        (when-some [args (eval-operands (rest X))] (call-by-name (first X) args))))
+    :else (when-not (nil? (EVAL! X)) (returned-value!))))
 
 (defn- capture-target [N]
   (cond
@@ -810,18 +849,17 @@
     ;; a keyword takes the value as an assignment to it does, through integer conversion (sbl -bf: '12345' LEN(3) $ &STLIMIT sets &STLIMIT to 123)
     (and (list? N) (equal (first N) '&) (clojure.core/= 2 (count N)))
     (fn [x] (assign-to N x))
-    ;; *X is resolved when the assignment is made (deferred-name), so a loop that moves I fills a different element of *T<I> each time
+    ;; *X is evaluated by name when the assignment is made (name-of), so a loop that moves I fills a different element of *T<I> each time
     (and (list? N) (equal (first N) '*) (clojure.core/= 2 (count N)))
     (let [X (second N)]
-      (fn [x] (when-some [t (deferred-name X)] (assign-to t x))))
-    ;; F(args), a function the program defined, is called as the pattern is built and gives the name it returns: "021 function called by name returned a value"
-    ;; when it returns a value (sbl -bf: LEN(1) . S(), S returning .G by NRETURN, assigns G)
-    (call-form? N)
+      (fn [x] (when-some [t (name-of X)] (assign-to t x))))
+    ;; F(args) is called by name as the pattern is built (call-by-name): a function the program defined gives the name it returns by NRETURN, ITEM its element,
+    ;; a field the field, EVAL its expression's name, and any other value is "021 function called by name returned a value" (sbl -bf: LEN(1) . S(), S returning
+    ;; .G by NRETURN, assigns G; LEN(1) . BREAK('a'), LEN(1) $ SIZE('a') and @SIZE('a') are 21 as the pattern is built)
+    (and (list? N) (symbol? (first N)) (not (:subscript (meta N))) (not (contains? value-operators (first N)))
+         (let [v (reference (first N))] (not (or (table? v) (array? v)))))
     (when-some [args (eval-operands (rest N))]
-      (let [r (apply INVOKE (first N) args)]
-        (if (instance? SNOBOL4clojure.env.NameResult r)
-          (let [t (:target r)] (fn [x] (assign-to t x)))
-          (when (some? r) (throw (ex-info "function called by name returned a value" {:snobol/error 21}))))))
+      (when-some [t (call-by-name (first N) args)] (fn [x] (assign-to t x))))
     ;; an element takes its subscripts now, and one out of bounds fails the statement, as a reference to it does (sbl -bf: 'y' . A[7] of ARRAY(3))
     (list? N)
     (let [t (element-target N)
@@ -876,6 +914,8 @@
       (integer? E) E
       ;; a reference to a variable fires its ACCESS trace (trace.clj); a bare FENCE is the pattern, not the function that builds one
       (symbol? E)  (let [v ($$ E)] (when (pos? (long @SNOBOL4clojure.env/&TRACE)) (fire-access! E v)) (if (identical? v FENCE) (FENCE) v))
+      ;; the name of an expression is read as the expression's value (sbl.min acess: "here for expression variable, evaluate variable")
+      (instance? SNOBOL4clojure.env.ExprVar E) (EVAL! (.ir ^SNOBOL4clojure.env.ExprVar E))
       ;; (e1, e2, ...): the value of the first expression that succeeds, the later ones not evaluated; failure if none does. Each alternative but the last is a
       ;; failure point; the last is evaluated in the selection's own (sbl.min o_sld: "pop failure offset ... restore old failure pointer")
       (and (vector? E) (clojure.core/= :comma (first E)))
@@ -932,14 +972,18 @@
                   ;; .$X is the name of the variable or element X names (sbl -bf: IDENT(.$M, .VB) when M is 'VB')
                   (and (list? x) (equal (first x) '$) (clojure.core/= 2 (count x)))
                   (when-some [v (EVAL! (second x))] (NAME. (indirect-target v)))
+                  ;; .*E is the name of an expression: .X when E is the variable X ("a variable which is of the form *var is equivalent to var"), else a
+                  ;; pseudo-variable, a new one each time (sbl.min o_lex, evblk; sbl -bf: $N of N = .*A[I] reads A[I] with I as it is then)
+                  (and (list? x) (equal (first x) '*) (clojure.core/= 2 (count x)))
+                  (let [E (second x)] (NAME. (if (symbol? E) E (SNOBOL4clojure.env/->ExprVar E))))
                   (and (list? x) (>= (count x) 2))
                   (when-some [ks (eval-operands (rest x))]
-                    (if (equal (first x) 'APPLY)
-                      ;; APPLY(F, args) is the call F(args): its name is the name of that call (.APPLY('LEFT', N) is the field LEFT(N), sbl -bf)
-                      (NAME. (apply list (symbol (SNOBOL4clojure.env/name-string (first ks))) (rest ks)))
-                      (let [v (when (symbol? (first x)) (reference (first x)))]
+                    (let [v (when (symbol? (first x)) (reference (first x)))]
+                      (if (or (table? v) (array? v) (:subscript (meta x)) (not (symbol? (first x))))
                         (NAME. (cond-> (apply list (first x) ks)
-                                 (or (table? v) (array? v)) (with-meta {:container v}))))))
+                                 (or (table? v) (array? v)) (with-meta {:container v})))
+                        ;; any other function is called by name: APPLY(F, args) is the call F(args), so .APPLY('LEFT', N) is the field LEFT(N) (sbl -bf)
+                        (when-some [t (call-by-name (first x) ks)] (NAME. t)))))
                   :else (NAME. x)))
               ;; Binary P . V — CAPTURE-COND (conditional assignment on match success).
               (let [[P N] parms] (when-some [t (capture-target N)] (INVOKE '. (EVAL! P) t)))))

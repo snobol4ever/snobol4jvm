@@ -392,7 +392,7 @@
                                                            (SNOBOL4clojure.env/next-serial!)))
                            {:data true}))
          ~@(for [f fnames]
-             `(swap! SNOBOL4clojure.env/<FUNS> assoc ~f (with-meta (field-fn ~f) {:data true})))))))
+             `(swap! SNOBOL4clojure.env/<FUNS> assoc ~f (with-meta (field-fn ~f) {:data true :field true})))))))
 
 (defn DATA [S]
   (when-let [form (DATA! S)]

@@ -169,6 +169,11 @@
   (hashCode [this]   (hash n))
   (toString [this]   (str n)))
 
+;; The name of an expression, .*E for an E that is no variable: a pseudo-variable, a new one each time, whose value is E evaluated when it is read and which is
+;; assigned through E evaluated by name (sbl.min evblk: "an expression can be used in any position which would normally expect a name ... this corresponds to
+;; the creation of a pseudo-variable"). Its identity is its own: two are never IDENT, and it keys a table by itself.
+(deftype ExprVar [ir])
+
 (defrecord NameResult [target])   ; what a call that returned with NRETURN gives: the variable (a symbol) or element (T k...) it names; used as a value it is that variable's value
 
 ;; Upper-case S outside its quoted strings: the names of source compiled with case folding on (-CASE 1, or &CASE not 0 for CODE and EVAL). Only ASCII letters change.

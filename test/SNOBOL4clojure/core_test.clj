@@ -5720,3 +5720,65 @@
                    "END\n"))
       (is (= "1 F 187\n2 F 187\n3 F 187\n4 F 187\n5 []\n6 [lab1]\n7 []\n8 [lab1]\n9 []\n10 [CONTINUE]\n11 F 187\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; An expression where a name is wanted is evaluated by name (sbl.min o_lex, evalx by name, s_evl): .*E is .X for a variable, else a pseudo-variable read as
+;; E's value and assigned through E evaluated by name; a capture target *E is E evaluated by name; a function called by name, .F(x) or a capture target F(x),
+;; gives the name it names (a field, ITEM's element, APPLY's call, EVAL's expression) or, giving a value, is "021 function called by name returned a value";
+;; any other expression evaluated by name is "249 expression evaluated by name returned value". The engine made a name of the call or the form. Expected
+;; output is sbl -bf's.
+(deftest a-name-position-evaluates-by-name
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 50\n"
+                   "        A = ARRAY(3)\n"
+                   "        A[1] = 'one'\n"
+                   "        A[2] = 'two'\n"
+                   "        X = 'x'\n"
+                   "        I = 1\n"
+                   "        N = .*A[I]\n"
+                   "        I = 2\n"
+                   "        OUTPUT = '1 ' DATATYPE(N) ' ' $N\n"
+                   "        $N = 'set'\n"
+                   "        OUTPUT = '2 ' A[1] ' ' A[2]\n"
+                   "        M = .*SIZE(X)\n"
+                   "        OUTPUT = '3 ' $M\n"
+                   "        $M = 5                                  :S(E4)\n"
+                   "        OUTPUT = '4 ' &ERRTYPE\n"
+                   "E4      OUTPUT = '5 ' (IDENT(.*X, .X) 'ident', 'differ') ' ' (IDENT(.*(X X), .*(X X)) 'ident', 'differ')\n"
+                   "        'abc' ? LEN(1) . *(X X)\n"
+                   "        OUTPUT = '6 ' X ' ' &ERRTYPE\n"
+                   "        'abc' ? LEN(1) . *LEN(1)\n"
+                   "        OUTPUT = '7 ' X ' ' &ERRTYPE\n"
+                   "        'abc' ? LEN(1) . *A[3]\n"
+                   "        OUTPUT = '8 ' A[3]\n"
+                   "        V = .CONVERT(X, 'STRING')               :S(E9)\n"
+                   "        OUTPUT = '9 ' &ERRTYPE\n"
+                   "E9      DATA('NODE(LEFT,RIGHT)')\n"
+                   "        P = NODE(1, 2)\n"
+                   "        V = .NODE(1, 2)                         :S(E10)\n"
+                   "        OUTPUT = '10 ' &ERRTYPE\n"
+                   "E10     $.APPLY('LEFT', P) = 'l'\n"
+                   "        OUTPUT = '11 ' LEFT(P)\n"
+                   "        $.ITEM(A, 3) = 'it'\n"
+                   "        OUTPUT = '12 ' A[3]\n"
+                   "        $.EVAL('X') = 'ev'\n"
+                   "        OUTPUT = '13 ' X\n"
+                   "        V = .EVAL('X 1')                        :S(E14)\n"
+                   "        OUTPUT = '14 ' &ERRTYPE\n"
+                   "E14     V = .APPLY('SIZE', X)                   :S(E15)\n"
+                   "        OUTPUT = '15 ' &ERRTYPE\n"
+                   "E15     &ERRTYPE = 0\n"
+                   "        V = .SIZE(DIFFER(1, 1))                 :S(E16)\n"
+                   "        OUTPUT = '16 ' &ERRTYPE\n"
+                   "E16     P = LEN(1) . BREAK('a')                 :S(E17)\n"
+                   "        OUTPUT = '17 ' &ERRTYPE\n"
+                   "E17     &ERRTYPE = 0\n"
+                   "        P = @SIZE('a')                          :S(E18)\n"
+                   "        OUTPUT = '18 ' &ERRTYPE\n"
+                   "E18     'abc' ? LEN(1) . ITEM(A, 1)\n"
+                   "        OUTPUT = '19 ' A[1]\n"
+                   "        OUTPUT = 'end ' $.EVAL(*X)\n"
+                   "END\n"))
+      (is (= (str "1 NAME two\n2 one set\n3 1\n4 21\n5 ident differ\n6 x 249\n7 x 21\n8 a\n9 21\n10 21\n11 l\n12 it\n13 ev\n14 249\n15 21\n16 0\n17 21\n18 21\n19 a\nend ev\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
