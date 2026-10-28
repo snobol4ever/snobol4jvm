@@ -716,11 +716,18 @@
                                            {:snobol/error 22 :function op})))))))
 
 ;; ── APPLY ─────────────────────────────────────────────────────────────────────
+;; APPLY's first argument names a natural variable, the function of that name (sbl.min s_apy, gtnvr): a string, a number or the name of a variable; the null
+;; string, an array, a pattern or the name of an element is "060 apply first arg is not natural variable name" (sbl -bf: APPLY(Y, 1) of an unset Y is 60,
+;; APPLY('NOSUCH', 1) and APPLY(5) are 22, APPLY(.SIZE, 'abc') is 3).
+(defn- applied-function [fname]
+  (let [s (SNOBOL4clojure.env/gtstg fname 60)]
+    (when (clojure.core/= "" s) (throw (ex-info (SNOBOL4clojure.env/error-message 60) {:snobol/error 60})))
+    (symbol s)))
+
 (defn APPLY
-  "APPLY(fname, arg1, ...) — call the function fname, a string or a NAME, as a
-   call written in the program calls it: through INVOKE, built-ins included."
+  "APPLY(fname, arg1, ...) — call the function fname names as a call written in the program calls it: through INVOKE, built-ins included."
   [fname & fargs]
-  (apply INVOKE (symbol (name-string fname)) fargs))
+  (apply INVOKE (applied-function fname) fargs))
 
 ;; ── EVAL! / EVAL ─────────────────────────────────────────────────────────────
 ;; Unary operators SPITBOL leaves unused, each with the name OPSYN files it
@@ -807,7 +814,7 @@
       (and f (:field (meta f)))                          (apply list fsym args)
       (and (nil? f) (clojure.core/= fname "ITEM") (seq args))
       (let [c (first args)] (with-meta (apply list c (rest args)) {:subscript true :container c}))
-      (and (nil? f) (clojure.core/= fname "APPLY") (seq args)) (call-by-name (symbol (SNOBOL4clojure.env/name-string (first args))) (rest args))
+      (and (nil? f) (clojure.core/= fname "APPLY") (seq args)) (call-by-name (applied-function (first args)) (rest args))
       (and (nil? f) (clojure.core/= fname "EVAL"))
       (let [x (first args)]
         (cond

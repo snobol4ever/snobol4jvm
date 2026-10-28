@@ -5782,3 +5782,31 @@
       (is (= (str "1 NAME two\n2 one set\n3 1\n4 21\n5 ident differ\n6 x 249\n7 x 21\n8 a\n9 21\n10 21\n11 l\n12 it\n13 ev\n14 249\n15 21\n16 0\n17 21\n18 21\n19 a\nend ev\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; APPLY's first argument names a natural variable (sbl.min s_apy, gtnvr): the null string, an array, a pattern or the name of an element is "060 apply first arg
+;; is not natural variable name", and a name no function has is 22. The engine called whatever its text spelled, and threw on the null string. Expected output
+;; is sbl -bf's.
+(deftest apply-takes-the-name-of-a-function
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 20\n"
+                   "        APPLY(Y, 1)                             :S(E1)\n"
+                   "        OUTPUT = '1 ' &ERRTYPE\n"
+                   "E1      APPLY('', 1)                            :S(E2)\n"
+                   "        OUTPUT = '2 ' &ERRTYPE\n"
+                   "E2      APPLY(ARRAY(2), 1)                      :S(E3)\n"
+                   "        OUTPUT = '3 ' &ERRTYPE\n"
+                   "E3      APPLY(LEN(1), 1)                        :S(E4)\n"
+                   "        OUTPUT = '4 ' &ERRTYPE\n"
+                   "E4      A = ARRAY(2)\n"
+                   "        APPLY(.A[1], 1)                         :S(E5)\n"
+                   "        OUTPUT = '5 ' &ERRTYPE\n"
+                   "E5      APPLY('NOSUCH', 1)                      :S(E6)\n"
+                   "        OUTPUT = '6 ' &ERRTYPE\n"
+                   "E6      OUTPUT = '7 ' APPLY(.SIZE, 'abc') ' ' APPLY('DUPL', 'ab', 2)\n"
+                   "        APPLY(5)                                :S(E8)\n"
+                   "        OUTPUT = '8 ' &ERRTYPE\n"
+                   "E8      OUTPUT = 'end'\n"
+                   "END\n"))
+      (is (= "1 60\n2 60\n3 60\n4 60\n5 60\n6 22\n7 3 abab\n8 22\nend\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
