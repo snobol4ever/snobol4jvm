@@ -5905,3 +5905,30 @@
                    "END\n"))
       (is (= (str "1 8\n2 9\n3 9\n4 8\n5 8\n6 9\n7 Xy PATTERN PATTERN\n8 241\n9 241\n10 ok\n11 n 8\n11b TABLE TABLE NAME\nNAME\nX\nNAME\n12 [xv]\n13 103\n14 103\n15 103\n16 X nope PATTERN nope\n") (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; An assignment to a keyword is worth the value given, as it was, and the keyword keeps what it takes: (&ANCHOR = ' 1') is the STRING ' 1' while &ANCHOR is 1.
+;; The engine gave the keyword's converted value. Expected output is sbl -bf's.
+(deftest a-keyword-assignment-is-the-value-given
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 10\n"
+                   "        V = (&ANCHOR = ' 1')\n"
+                   "        OUTPUT = '1 ' DATATYPE(V) ' [' V '] ' &ANCHOR\n"
+                   "        V = (&ANCHOR = 2.5)\n"
+                   "        OUTPUT = '2 ' DATATYPE(V) ' [' V '] ' &ANCHOR\n"
+                   "        V = (&TRIM = '')\n"
+                   "        OUTPUT = '3 ' DATATYPE(V) ' [' V '] ' &TRIM\n"
+                   "        V = (&ERRTEXT = 5)\n"
+                   "        OUTPUT = '4 ' DATATYPE(V) ' [' V '] ' &ERRTEXT\n"
+                   "        V = (&MAXLNGTH = '5000')\n"
+                   "        OUTPUT = '5 ' DATATYPE(V) ' [' V '] ' &MAXLNGTH\n"
+                   "        V = (&ANCHOR = '0') 'z'\n"
+                   "        OUTPUT = '6 ' DATATYPE(V) ' [' V '] ' &ANCHOR\n"
+                   "        'abc' ? BREAK((&FULLSCAN = 'c')) . W                :S(Y7)\n"
+                   "        OUTPUT = '7 F ' &ERRTYPE                            :(E7)\n"
+                   "Y7      OUTPUT = '7 S ' W\n"
+                   "E7      'abc' ? LEN((&TRIM = '1')) . W\n"
+                   "        OUTPUT = '8 ' W ' ' &TRIM\n"
+                   "END\n"))
+      (is (= "1 STRING [ 1] 1\n2 REAL [2.5] 2\n3 STRING [] 0\n4 INTEGER [5] 5\n5 STRING [5000] 5000\n6 STRING [0z] 0\n7 F 208\n8 a 1\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

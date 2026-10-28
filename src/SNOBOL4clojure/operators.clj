@@ -337,9 +337,10 @@
                 ;; the name of an expression is assigned through the expression evaluated by name (sbl.min asign: "assignment to expression variable")
                 (instance? SNOBOL4clojure.env.ExprVar N)
                 (when-some [t (name-of (.ir ^SNOBOL4clojure.env.ExprVar N))] (INVOKE '= t r))
-                ;; keyword assignment: (= (& K) val)
+                ;; keyword assignment: (= (& K) val). The keyword keeps what it takes, and the assignment's value is the value given, as it was (sbl -bf:
+                ;; (&ANCHOR = ' 1') is the STRING ' 1' and &ANCHOR 1; (&ERRTEXT = 5) the INTEGER 5 and &ERRTEXT '5')
                 (and (list? N) (clojure.core/= (first N) '&))
-                (assign-keyword! (second N) r)
+                (do (assign-keyword! (second N) r) r)
                 ;; subscript assignment: (= (A k...) val) — mutate TABLE, ARRAY, or PDD
                 (and (list? N) (>= (count N) 2))
                 (let [[container-sym & ks] N
