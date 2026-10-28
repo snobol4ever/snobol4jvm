@@ -6107,3 +6107,23 @@
                    "END\n"))
       (is (= (str "212:  Y = A . (1 / 0)\n14:  Y = (1 / 0) . A\n212:  Y = F(.('a' + 1), 1 / 0)\n14:  Y = F(1 / 0, .('a' + 1))\n212:  (1 / 0) = 5\n212:  Y = 1 :(1 / 0)\n14:  Y = .X[1 / 0]\n212:  Y = &(X ? 'a')\n212:  Y = A $ (X ? 'a')\n212:  Y = 1 :(X . Y)\n212:  Y = 1 :('L')\ncompiled:  Y = 1 :(!X)\ncompiled:  Y = 1 :(X @ Y)\ncompiled:  Y = 1 :(*X)\ncompiled:  Y = 1 :($(A + B))\ncompiled:  Y = 1 :(F(1 + 2))\ncompiled:  Y = 1 :<C>\n212:  'x' = 5\n212:  OUTPUT = 'x' :S(END)F(1)\n") (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; The seven variables that hold the primitive patterns (ABORT ARB BAL FAIL FENCE REM SUCCEED) are protected: an assignment to one, by a statement, a capture or
+;; $, is "042 attempt to change value of protected variable", and the variable keeps its pattern; a name in other case is another variable. The engine assigned
+;; them. Expected output is sbl -bf's.
+(deftest the-pattern-variables-are-protected
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 30\n"
+                   "        ARB = 'Q'\n"
+                   "        OUTPUT = '1 ' &ERRTYPE ' ' DATATYPE(ARB)\n"
+                   "        'abc' ? LEN(1) . REM\n"
+                   "        OUTPUT = '2 ' &ERRTYPE ' ' DATATYPE(REM)\n"
+                   "        $'FENCE' = 1\n"
+                   "        OUTPUT = '3 ' &ERRTYPE ' ' DATATYPE(FENCE)\n"
+                   "        &ERRTYPE = 0\n"
+                   "        arb = 'lower'\n"
+                   "        OUTPUT = '4 ' arb ' ' DATATYPE(ARB)\n"
+                   "END\n"))
+      (is (= "1 42 PATTERN\n2 42 PATTERN\n3 42 PATTERN\n4 lower PATTERN\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

@@ -405,10 +405,16 @@
           (throw (ex-info "keyword in assignment is protected" {:snobol/error 209}))))))))
 
 ;; ── Variable write / read ─────────────────────────────────────────────────────
+;; "These variables contain the primitive patterns of the same name" (manual ch. 18), and SPITBOL protects them: an assignment to one is "042 attempt to change
+;; value of protected variable" (sbl -bf: ARB = 'Q', BAL = P and FENCE = 'f' are 42), so the compiler may take their values as constants.
+(def protected-variables '#{ABORT ARB BAL FAIL FENCE REM SUCCEED})
+
 (defn snobol-set!
   "Assign val to the SNOBOL4 user variable named by sym."
   [sym val]
-  (swap! <VARS> assoc (symbol (name sym)) val)
+  (let [s (symbol (name sym))]
+    (when (protected-variables s) (throw (ex-info (error-message 42) {:snobol/error 42})))
+    (swap! <VARS> assoc s val))
   val)
 
 (defn reference
