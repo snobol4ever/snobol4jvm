@@ -774,14 +774,16 @@
 ;; SETEXIT(label) arms the label (a string or a NAME) as the error handler and returns the handler it replaces, as a NAME, or the null string when there was none.
 ;; The null string, or no argument, disarms. Anything else names a natural variable whose label is defined, else "187 setexit argument is not label name or null"
 ;; (sbl.min s_stx, gtnvr): a string folds as &CASE says at that moment (sbl -bf, under -f: with &CASE 1 SETEXIT('lab1') looks for LAB1), the name of a
-;; variable does not, and a pattern or the name of an element is no variable.
+;; variable does not, and a pattern or the name of an element is no variable. The system labels are always defined, in capitals (sbl -bf: SETEXIT(.CONTINUE)
+;; and SETEXIT('RETURN') arm, SETEXIT('continue') is 187; END is END or end).
+(def ^:private system-labels #{"ABORT" "CONTINUE" "SCONTINUE" "RETURN" "FRETURN" "NRETURN" "END" "end"})
 (defn SETEXIT
   ([] (SETEXIT ε))
   ([label]
    (let [prev @env/<SETEXIT>
          s    (env/gtstg label 187)
          s    (if (and (string? label) (not (zero? (long @env/&CASE)))) (env/fold-case s) s)]
-     (when-not (or (clojure.core/= "" s) (@env/<STNO> (keyword s)))
+     (when-not (or (clojure.core/= "" s) (system-labels s) (@env/<STNO> (keyword s)))
        (throw (ex-info (env/error-message 187) {:snobol/error 187})))
      (reset! env/<SETEXIT> (when-not (clojure.core/= "" s) (keyword s)))
      (if prev (SNOBOL4clojure.env.NAME. (symbol (name prev))) ε))))

@@ -5710,8 +5710,13 @@
                    "        OUTPUT = '6 [' SETEXIT('') ']'\n"
                    "        &CASE = 0\n"
                    "        OUTPUT = '7 [' SETEXIT('lab1') ']'\n"
-                   "        OUTPUT = '8 [' SETEXIT() ']'                    :(END)\n"
+                   "        OUTPUT = '8 [' SETEXIT() ']'\n"
+                   "        OUTPUT = '9 [' SETEXIT(.CONTINUE) ']'\n"
+                   "        OUTPUT = '10 [' SETEXIT('RETURN') ']'\n"
+                   "        SETEXIT()\n"
+                   "        SETEXIT('continue')                             :S(END)\n"
+                   "        OUTPUT = '11 F ' &ERRTYPE                       :(END)\n"
                    "lab1    OUTPUT = 'handler'\n"
                    "END\n"))
-      (is (= "1 F 187\n2 F 187\n3 F 187\n4 F 187\n5 []\n6 [lab1]\n7 []\n8 [lab1]\n" (with-out-str (-main (.getPath f)))))
+      (is (= "1 F 187\n2 F 187\n3 F 187\n4 F 187\n5 []\n6 [lab1]\n7 []\n8 [lab1]\n9 []\n10 [CONTINUE]\n11 F 187\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
