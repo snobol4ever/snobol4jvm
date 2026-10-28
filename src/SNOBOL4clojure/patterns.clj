@@ -47,8 +47,10 @@
       (or (neg? n) (clojure.core/> n 16777216)) (throw (ex-info (env/error-message big) {:snobol/error big}))
       :else                                     (list op n))))
 
+;; A deferred argument that fails fails the pattern there, and the match backtracks, as a deferred argument of ANY does (sbl -bf: 'abc' ? (LEN(*EVAL('1 / N')) |
+;; 'c') . R assigns c; the engine read the failure as the null string, 0).
 (defn- int-pattern-of [op I [bad big ebad ebig]]
-  (if (deferred? I) (list 'DEFER! (fn [] (int-pattern op ((second I)) ebad ebig))) (int-pattern op I bad big)))
+  (if (deferred? I) (list 'DEFER! (fn [] (when-some [v ((second I))] (int-pattern op v ebad ebig)))) (int-pattern op I bad big)))
 
 (defn LEN  [I] (int-pattern-of 'LEN#  I [120 121 47 48]))
 (defn POS  [I] (int-pattern-of 'POS#  I [162 163 50 51]))

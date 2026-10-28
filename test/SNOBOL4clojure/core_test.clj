@@ -5981,3 +5981,22 @@
                    "END\n"))
       (is (= "1 same differ differ\n2 differ differ same\n3 differ same same\n4 same same differ\n5 [p] [] [p] [] []\n6 a \n7 7\n8 same same\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A deferred argument of LEN, POS, RPOS, TAB or RTAB that fails fails the pattern where the match reaches it, and the match backtracks; an unset one is the null
+;; string, 0. The engine read the failure as 0. Expected output is sbl -bf's.
+(deftest a-failed-deferred-integer-argument-fails-the-pattern
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 10\n"
+                   "        N = 0\n"
+                   "        'abc' ? (LEN(*EVAL('1 / N')) | 'c') . R\n"
+                   "        OUTPUT = '1 ' R\n"
+                   "        'abc' ? (POS(*DIFFER(1, 1)) 'a' | 'b') . R\n"
+                   "        OUTPUT = '2 ' R\n"
+                   "        'abc' ? (TAB(*IDENT(2, 3)) | RTAB(*N)) . R\n"
+                   "        OUTPUT = '3 [' R ']'\n"
+                   "        'abc' ? (LEN(*N) 'a') . R\n"
+                   "        OUTPUT = '4 [' R ']'\n"
+                   "END\n"))
+      (is (= "1 c\n2 b\n3 [abc]\n4 [a]\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
