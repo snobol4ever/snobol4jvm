@@ -186,6 +186,40 @@
 (def ^:private folded-functions
   '#{SIZE LEN ANY NOTANY SPAN BREAK BREAKX POS RPOS TAB RTAB ARBNO FENCE REMDR CHAR TRIM REPLACE LPAD RPAD REVERSE DIFFER IDENT INTEGER DATATYPE LGT})
 
+;; -- Names ----------------------------------------------------------------------
+;; Where a name is wanted -- the operand of unary . @ and &, the right of binary . and $, the subject of an assignment, a goto's operand -- an expression that
+;; gives a value is "212 syntax error: value used where name is required" as the statement is compiled, found before an error folding what is inside it, and
+;; operands left to right (sbl -bf: A . (1 / 0) is 212 and (1 / 0) . A is 14; F(.('a' + 1), 1 / 0) is 212 and F(1 / 0, .('a' + 1)) 14; :(1 + 2), :('L'),
+;; :(X ? 'L') and (1 / 0) = 5 are 212). A name is a variable, an element, a call, $X, *X, &K, or an operator SPITBOL leaves for OPSYN, which is called as a
+;; function is (unary ! % / # = |, binary # % & ~ @: :(!X) and :(X @ Y) compile); the operators SPITBOL defines give values, and so do a literal, a
+;; concatenation and a selection (:(+X), :(.X), :(X ** Y), :((X, Y)) are 212).
+(def ^:private unary-names  '#{$ * & ! % / sharp = |})
+(def ^:private binary-names '#{sharp % & tilde at})
+(def ^:private operators    '#{+ - * / ** sharp % at & tilde | ? ?= = . $ !})
+
+(defn- name-form? [x]
+  (cond
+    (or (symbol? x) (keyword? x)) true
+    (list? x) (let [[op & args] x n (count args)]
+                (cond (:subscript (meta x))                   true
+                      (not (symbol? op))                      true
+                      (and (= 1 n) (unary-names op))          true
+                      (and (= 2 n) (binary-names op))         true
+                      (operators op)                          false
+                      :else                                   true))
+    :else false))
+
+(defn- name-required! [x]
+  (when-not (name-form? x) (throw (ex-info "syntax error: value used where name is required" {:snobol/error 212}))))
+
+;; the operands of op given args that are name positions, by their index
+(defn- name-positions [op args]
+  (let [n (count args)]
+    (cond (and (= 1 n) ('#{. at &} op)) #{0}
+          (and (= 2 n) ('#{. $} op))    #{1}
+          (and (= 2 n) (= '= op))       #{0}
+          :else                          #{})))
+
 (defn- fold
   "[constant? value] of the IR n, its constant parts evaluated as SPITBOL's compiler evaluates them; an error raised there is thrown."
   [n]
@@ -197,12 +231,14 @@
             parts  (mapv fold (if comma? (rest n) n))]
         (if (and (not comma?) (every? first parts)) [true (eval! n)] [false nil]))
       (list? n)
-      (let [[op & args] n]
+      (let [[op & args] n
+            names (name-positions op args)]
         (cond
-          (and (= '& op) (= 1 (count args)))  (if (constant-keywords (first args)) [true (eval! n)] [false nil])
+          (and (= '& op) (= 1 (count args)))  (do (when-not (symbol? (first args)) (name-required! (first args)))
+                                                  (if (constant-keywords (first args)) [true (eval! n)] [false nil]))
           (and (= '* op) (= 1 (count args)))  (do (fold (first args)) [false nil])   ; folded within, never a value itself
           :else
-          (let [parts (mapv fold args)]
+          (let [parts (vec (map-indexed (fn [i a] (when (names i) (name-required! a)) (fold a)) args))]
             (if (and (every? first parts)
                      (or (and (folded-operators op) (<= 1 (count args) 2))
                          (and (folded-functions op) (not (:subscript (meta n))))))
@@ -211,10 +247,15 @@
       :else [false nil])))
 
 (defn- fold-error
-  "The number of the error folding the statement body raises, or nil."
-  [body]
-  (try (fold body) nil
-       (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e)))))
+  "The number of the error folding the statement body raises, then its goto's operands, or nil."
+  ([body] (fold-error body nil))
+  ([body goto]
+   (try (fold body)
+        (doseq [k [:S :F :G] :let [t (get goto k)] :when (and (some? t) (not (keyword? t)) (not (and (list? t) (= 'DIRECT (first t)))))]
+          (name-required! t)
+          (fold t))
+        nil
+        (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e))))))
 
 ;; -- CODE! — parse source into {CODES NOS LABELS} ----------------------------
 (defn CODE!
@@ -258,7 +299,7 @@
                  (let [label  (:label code)
                        body   (:body  code)
                        goto   (:goto  code)
-                       _      (when-let [n (fold-error body)] (swap! <DIAGNOSTICS> conj [pline n nil]))
+                       _      (when-let [n (fold-error body (when (map? goto) goto))] (swap! <DIAGNOSTICS> conj [pline n nil]))
                        key    (if label label NO)
                        code   (reduce #(conj %1 %2) [] [body goto])
                        nos    (if (keyword? key) (assoc NOS   key NO) NOS)
