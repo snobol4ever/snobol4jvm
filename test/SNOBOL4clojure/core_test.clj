@@ -5548,3 +5548,14 @@
             "        OUTPUT = 'matched ' SIZE(S)"
             "END")]
     (is (= "matched 20000\n" (:stdout r)))))
+
+;; The matcher read the top of its backtrack stack with last, which walks the whole stack, and a FENCE that matched leaves the stack a subvector, whose walk
+;; is slower still. A conditional assignment keeps its undo frame there across the FENCE, so a long match full of them grew the stack by one frame per
+;; assignment and spent its time reading it at every alternative that failed: SnoDemo calculator-1 (2,000 lines of . *PSH() and the like) took 62.8 s, 4.3 s with peek.
+(deftest the-backtrack-stack-is-read-at-its-top
+  (let [r (prog-timeout 10000
+            "        S = DUPL('a', 40000)"
+            "        S ? POS(0) ARBNO(FENCE(LEN(1) . X) ('b' 'c' | '')) RPOS(0)     :F(END)"
+            "        OUTPUT = 'matched ' SIZE(S) ' ' X"
+            "END")]
+    (is (= "matched 40000 a\n" (:stdout r)))))
