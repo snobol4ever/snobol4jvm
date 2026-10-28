@@ -220,12 +220,31 @@
           (and (= 2 n) (= '= op))       #{0}
           :else                          #{})))
 
+;; The constants beyond literals and keywords, as sbl -bf's compiler takes them (sbl.min svkvc; CODE refuses each): the seven protected pattern variables
+;; (SIZE(ARB) is 189, ARB + 1 is 1; env/protected-variables); a deferred expression, *E, folded within too (*X + 1 is 1, *(1 / 0) 14); an alternation of
+;; constants (('a' | 'b') + 1 is 1); the name of a variable, a keyword or an expression, .X .&K .*E (.X + 1 is 1, .&ERRTEXT 'z' is 8, LEN(.X) 120), and .$C of
+;; a constant C, whose value names a variable or is "239 indirection operand is not name" (.$ARB, .$LEN(1), .$*X and .$&FENCE are 239, .$'X' and .$1 compile);
+;; a cursor assignment @X or @$C (SIZE(@X) is 189, @$ARB 239); and a capture into such a name of a constant pattern (LEN(1) . X + 1 is 1, LEN(1) . $ARB 239).
+;; A name that holds an element or a call's is found as the program runs (.A[1] + 1, .F() + 1, LEN(1) . A[1] + 1 and Q . $ARB compile).
+(defn- pattern-variable [sym]
+  (some-> (requiring-resolve (symbol "SNOBOL4clojure.patterns" (name sym))) var-get))
+
+(declare fold)
+
+(defn- constant-name?
+  "True for a name that is a constant: a variable, a keyword, an expression, or $C of a constant C."
+  [x]
+  (or (symbol? x)
+      (and (list? x) (= 2 (count x)) (or (= '& (first x)) (= '* (first x))))
+      (and (list? x) (= 2 (count x)) (= '$ (first x)) (first (fold (second x))))))
+
 (defn- fold
   "[constant? value] of the IR n, its constant parts evaluated as SPITBOL's compiler evaluates them; an error raised there is thrown."
   [n]
   (let [eval! (requiring-resolve 'SNOBOL4clojure.operators/EVAL!)]
     (cond
       (or (string? n) (number? n)) [true n]
+      (and (symbol? n) (SNOBOL4clojure.env/protected-variables n)) [true (pattern-variable n)]
       (vector? n)
       (let [comma? (= :comma (first n))
             parts  (mapv fold (if comma? (rest n) n))]
@@ -236,11 +255,22 @@
         (cond
           (and (= '& op) (= 1 (count args)))  (do (when-not (symbol? (first args)) (name-required! (first args)))
                                                   (if (constant-keywords (first args)) [true (eval! n)] [false nil]))
-          (and (= '* op) (= 1 (count args)))  (do (fold (first args)) [false nil])   ; folded within, never a value itself
+          (and (= '* op) (= 1 (count args)))  (do (fold (first args)) [true (eval! n)])   ; folded within, and itself a constant expression
+          ;; .X .&K .*E .$C and @X @$C, each checked for a name first
+          (and ('#{. at} op) (= 1 (count args)) (do (name-required! (first args)) true) (constant-name? (first args))
+               (or (= '. op) (symbol? (first args)) (= '$ (first (first args)))))
+          (do (fold (first args)) [true (eval! n)])
+          ;; a constant pattern captured into a constant name
+          (and ('#{. $} op) (= 2 (count args)))
+          (let [p (fold (first args))]
+            (name-required! (second args))
+            (let [t (fold (second args))]
+              (if (and (first p) (constant-name? (second args))) [true (eval! n)] [false nil])))
           :else
           (let [parts (vec (map-indexed (fn [i a] (when (names i) (name-required! a)) (fold a)) args))]
             (if (and (every? first parts)
                      (or (and (folded-operators op) (<= 1 (count args) 2))
+                         (and (= '| op) (<= 2 (count args)))
                          (and (folded-functions op) (not (:subscript (meta n))))))
               (let [v (eval! n)] (if (nil? v) [false nil] [true v]))
               [false nil]))))
