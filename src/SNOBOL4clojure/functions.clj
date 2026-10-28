@@ -205,7 +205,12 @@
       ;; PATTERN stays PATTERN
       (and (clojure.core/= from "PATTERN") (clojure.core/= to "PATTERN")) x
 
-      ;; NAME conversions (a NAME, or a symbol where the engine keeps one, reads as its variable's name)
+      ;; NAME conversions (a NAME, or a symbol where the engine keeps one, reads as its variable's name). Only the name of a natural variable has text: the name of a
+      ;; keyword, an element or an expression converts to no string, integer, real or pattern, and CONVERT fails (sbl.min gtstg; sbl -bf: CONVERT(.A[1], 'STRING')
+      ;; and CONVERT(.&ERRTEXT, 'PATTERN') fail, CONVERT(.Y, 'INTEGER') fails whatever Y holds)
+      (and (clojure.core/= from "NAME") (#{"STRING" "INTEGER" "REAL" "PATTERN"} to) (instance? SNOBOL4clojure.env.NAME x) (not (symbol? (.n ^SNOBOL4clojure.env.NAME x))))
+      nil
+
       (and (clojure.core/= from "NAME") (clojure.core/= to "STRING"))
       (str x)
 

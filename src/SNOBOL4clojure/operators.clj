@@ -211,9 +211,23 @@
 ;; flattened into text. Null parts drop out, and a part they leave alone is
 ;; the value itself: P '' is P, NE(1,2) 5 is the INTEGER 5. (A one-part SEQ that had no null parts, as
 ;; CONVERT(x,'PATTERN') builds it, stays as it is.)
+;; A value that is neither a string nor a pattern and has no text: the name of a keyword, of an element or of an expression, a table, an array, a DATA object or
+;; code (sbl.min gtstg converts only an integer, a real or the name of a natural variable).
+(defn- textless? [v]
+  (or (and (instance? NAME v) (not (symbol? (.n ^NAME v))))
+      (array? v) (table? v) (instance? SNOBOL4clojure.env.DataObj v) (instance? SNOBOL4clojure.env.CodeBlock v)))
+
+;; The null string concatenated is the other operand, as it was; a concatenation of a value with no text with anything else is "008 concatenation left operand is
+;; not a string or pattern" for the first operand, "009 ... right operand" for a later one, the concatenation being left to right (sbl -bf: '' T is the table T,
+;; T 'x' and T '' 'x' are 8, 'x' 'y' N of a keyword's name N is 9, LEN(1) T is 9).
 (defn- concat-value [r]
   (if (and (list? r) (clojure.core/= (first r) 'SEQ))
-    (let [parts (remove #(clojure.core/= ε %) (rest r))]
+    (let [parts (remove #(clojure.core/= ε %) (rest r))
+          _     (when (next parts)
+                  (when-some [i (first (keep-indexed (fn [i v] (when (textless? v) i)) parts))]
+                    (if (zero? (long i))
+                      (throw (ex-info "concatenation left operand is not a string or pattern" {:snobol/error 8}))
+                      (throw (ex-info "concatenation right operand is not a string or pattern" {:snobol/error 9})))))]
       (cond
         (every? #(or (string? %) (number? %) (instance? NAME %)) parts)
         (if (and (clojure.core/= 1 (count parts)) (< 1 (count (rest r))))
@@ -227,8 +241,7 @@
 ;; What OUTPUT writes for a value: an object that is not a string, a number or a name prints as its datatype name, as SPITBOL prints it (PATTERN, EXPRESSION, ARRAY,
 ;; TABLE, the type of a DATA object); everything else as sstr.
 (defn- output-text [v]
-  (if (or (and (or (list? v) (vector? v)) (#{"PATTERN" "EXPRESSION"} (SNOBOL4clojure.env/DATATYPE v)))
-          (array? v) (table? v) (instance? SNOBOL4clojure.env.DataObj v) (instance? SNOBOL4clojure.env.CodeBlock v))
+  (if (or (and (or (list? v) (vector? v)) (#{"PATTERN" "EXPRESSION"} (SNOBOL4clojure.env/DATATYPE v))) (textless? v))
     (SNOBOL4clojure.env/DATATYPE v)
     (sstr v)))
 
@@ -315,7 +328,8 @@
     **      (let [[x y] args] (pow-fn x y))
     ;; "(SUBJECT ? PATTERN) performs pattern matching and returns the substring matched, or failure as its value" (manual ch. 9, Binary operator extensions)
     ;; the subject is a string, a real its SPITBOL text (0.0 is 0.)
-    ?       (let [[s p] args s (sstr s)] (when-let [[a b] (SEARCH s p)] (subs s a b)))
+    ;; a subject with no text is "241 pattern match left operand is not a string" (sbl.min gtstg; sbl -bf: N ? 'x' of a keyword's name N, and T ? 'x')
+    ?       (let [[s p] args s (gtstg s 241)] (when-let [[a b] (SEARCH s p)] (subs s a b)))
     =       (let [[N r] args]
               ;; nil replacement = sub-expression failure → statement fails
               (when-not (nil? r)
@@ -374,9 +388,10 @@
                   v))))
     ;; the subject is a variable, or an element or field whose subscripts the evaluator has already taken
     ?=      (let [[n p R] args
-                  subject (sstr (if (list? n)
+                  subject (gtstg (if (list? n)
                                   (apply INVOKE (or (:container (meta n)) (first n)) (rest n))
-                                  (let [v ($$ n)] (when (pos? (long @SNOBOL4clojure.env/&TRACE)) (fire-access! n v)) v)))   ; the subject is a reference
+                                  (let [v ($$ n)] (when (pos? (long @SNOBOL4clojure.env/&TRACE)) (fire-access! n v)) v))   ; the subject is a reference
+                                241)
                   pat     p]                      ; already evaluated by EVAL! dispatch
               (when-let [[start end] (SEARCH subject pat)]
                 ;; The replacement is evaluated after the match, so it sees the
@@ -1152,9 +1167,15 @@
       (reset! SNOBOL4clojure.env/<STAGE> :xt)
       v)))
 
+;; The name of a natural variable is its name, compiled as any string is; a pattern or a value with no text is "103 eval argument is not expression" (sbl.min
+;; gtexp; sbl -bf: EVAL(.X) is the value of X, EVAL(LEN(1)), EVAL(TABLE()) and EVAL(.&ERRTEXT) are 103). A pattern is a matcher node list; the engine's own
+;; callers hand EVAL the IR, a vector or an operator's list, which is evaluated.
 (defn EVAL [X]
   (cond
     (deferred? X) (evaluated-or-fail (second X))
     (string? X)   (let [ir (compile-or-fail X)] (when-not (nil? ir) (evaluated-or-fail #(EVAL! ir))))
     (number? X)   X
+    (and (instance? NAME X) (symbol? (.n ^NAME X))) (EVAL (name (.n ^NAME X)))
+    (or (textless? X) (and (list? X) (clojure.core/= "PATTERN" (SNOBOL4clojure.env/DATATYPE X))))
+    (throw (ex-info "eval argument is not expression" {:snobol/error 103}))
     true          (EVAL! X)))

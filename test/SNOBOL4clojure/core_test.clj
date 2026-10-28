@@ -5851,3 +5851,57 @@
                    "END\n"))
       (is (= "1 189\n2 200\n3 177\n4 168\n5 168\n6 168\n7 144\n8 144\n9 180\n10 194\n11 91\n12 1 X 21 PATTERN 3 y\n13 91\n14 abc PATTERN 2.52.5\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; Only a string, an integer, a real and the name of a natural variable have text (sbl.min gtstg): the name of a keyword or an element, a table or an array
+;; concatenated is "008 concatenation left operand is not a string or pattern" or 009 for a right operand, as a match subject "241 pattern match left operand
+;; is not a string", given to EVAL "103 eval argument is not expression", converted by CONVERT a failure, and written by OUTPUT its datatype, NAME. The engine
+;; took the printed form of the IR. Expected output is sbl -bf's.
+(deftest a-value-with-no-text-is-no-string
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 40\n"
+                   "        T = TABLE()\n"
+                   "        A = ARRAY(2)\n"
+                   "        N = .&ERRTEXT\n"
+                   "        M = .A[1]\n"
+                   "        X = 'x'\n"
+                   "        P = LEN(1)\n"
+                   "        E = *X\n"
+                   "        V = T 'x'                       :S(E1)\n"
+                   "        OUTPUT = '1 ' &ERRTYPE\n"
+                   "E1      V = 'x' A                       :S(E2)\n"
+                   "        OUTPUT = '2 ' &ERRTYPE\n"
+                   "E2      V = 'x' 'y' N                   :S(E3)\n"
+                   "        OUTPUT = '3 ' &ERRTYPE\n"
+                   "E3      V = M 'y'                       :S(E4)\n"
+                   "        OUTPUT = '4 ' &ERRTYPE\n"
+                   "E4      V = N P                         :S(E5)\n"
+                   "        OUTPUT = '5 ' &ERRTYPE\n"
+                   "E5      V = P T                         :S(E6)\n"
+                   "        OUTPUT = '6 ' &ERRTYPE\n"
+                   "E6      V = .X 'y'\n"
+                   "        OUTPUT = '7 ' V ' ' DATATYPE(E 'y') ' ' DATATYPE(.X P)\n"
+                   "        N ? 'x'                         :S(E8)\n"
+                   "        OUTPUT = '8 ' &ERRTYPE\n"
+                   "E8      T ? 'x'                         :S(E9)\n"
+                   "        OUTPUT = '9 ' &ERRTYPE\n"
+                   "E9      .X ? 'X'                        :F(E10)\n"
+                   "        OUTPUT = '10 ok'\n"
+                   "E10     OUTPUT = '11 ' (IDENT(N 'a') 'i', 'n') ' ' &ERRTYPE\n"
+                   "        OUTPUT = '11b ' DATATYPE('' T) ' ' DATATYPE(T '') ' ' DATATYPE('' N '')\n"
+                   "        OUTPUT = N\n"
+                   "        OUTPUT = .X\n"
+                   "        OUTPUT = M\n"
+                   "        X = 'xv'\n"
+                   "        OUTPUT = '12 [' EVAL(.X) ']'\n"
+                   "        V = EVAL(TABLE())                :S(E13)\n"
+                   "        OUTPUT = '13 ' &ERRTYPE\n"
+                   "E13     V = EVAL(LEN(1))                 :S(E14)\n"
+                   "        OUTPUT = '14 ' &ERRTYPE\n"
+                   "E14     &ERRTYPE = 0\n"
+                   "        V = EVAL(N)                      :S(E15)\n"
+                   "        OUTPUT = '15 ' &ERRTYPE\n"
+                   "E15     OUTPUT = '16 ' CONVERT(.X, 'STRING') ' ' (CONVERT(M, 'STRING'), 'nope') ' ' DATATYPE(CONVERT(.X, 'PATTERN')) ' ' (CONVERT(N, 'PATTERN'), 'nope')\n"
+                   "END\n"))
+      (is (= (str "1 8\n2 9\n3 9\n4 8\n5 8\n6 9\n7 Xy PATTERN PATTERN\n8 241\n9 241\n10 ok\n11 n 8\n11b TABLE TABLE NAME\nNAME\nX\nNAME\n12 [xv]\n13 103\n14 103\n15 103\n16 X nope PATTERN nope\n") (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
