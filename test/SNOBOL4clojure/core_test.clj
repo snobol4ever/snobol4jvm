@@ -5932,3 +5932,24 @@
                    "END\n"))
       (is (= "1 STRING [ 1] 1\n2 REAL [2.5] 2\n3 STRING [] 0\n4 INTEGER [5] 5\n5 STRING [5000] 5000\n6 STRING [0z] 0\n7 F 208\n8 a 1\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; "If stlimit is exceeded, up to 10 more statements are obeyed so that a setexit trap can regain control" (sbl.min stcov): under &ERRLIMIT the overrun is
+;; error 244, trapped as any error is, after &STLIMIT is raised by 10; at the third such fatal error the program ends whatever &ERRLIMIT is. The engine ended the
+;; program at the first overrun. Expected output is sbl -bf's.
+(deftest a-statement-limit-overrun-is-trapped
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 5\n"
+                   "        SETEXIT(.OVER)\n"
+                   "        &STLIMIT = 20\n"
+                   "LOOP    N = N + 1                       :(LOOP)\n"
+                   "OVER    OUTPUT = 'over ' &ERRTYPE ' ' &STLIMIT ' ' &ERRLIMIT\n"
+                   "        K = K + 1\n"
+                   "        SETEXIT(.OVER)\n"
+                   "        LT(K, 2)                        :S(LOOP)\n"
+                   "        SETEXIT()\n"
+                   "        &STLIMIT = -1\n"
+                   "        OUTPUT = 'end'\n"
+                   "END\n"))
+      (is (= "over 244 30 4\nover 244 40 3\nend\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

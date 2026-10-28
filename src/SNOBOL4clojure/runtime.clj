@@ -51,6 +51,15 @@
           to   false
           :else (throw e))))
 
+;; "if stlimit is exceeded, up to 10 more statements are obeyed so that a setexit trap can regain control" (sbl.min stcov): under &ERRLIMIT the overrun is
+;; error 244, trapped as an error in the statement is, after &STLIMIT is raised by 10; it is a fatal error, and at the third the program ends whatever &ERRLIMIT
+;; is (err07), as it ends with &ERRLIMIT at 0 (sbl -bf: SETEXIT(.OVER) at &ERRLIMIT 1 and &STLIMIT 20 reaches OVER with &ERRTYPE 244 and &STLIMIT 30).
+(defn- overrun [n]
+  (if (and (pos? (long @&ERRLIMIT)) (< (long (swap! SNOBOL4clojure.env/<ERRFT> inc)) 3))
+    (do (swap! &STLIMIT clojure.core/+ 10)
+        (ex-info (SNOBOL4clojure.env/error-message 244) {:snobol/error 244}))
+    (snobol-steplimit! n)))
+
 (defn- exec-body [body]
   (try
     (or (nil? body) (EVAL! body))
@@ -155,16 +164,17 @@
             (reset! &STNO (get @<DISPNO> (first current) (first current)))
             ;; a negative &STLIMIT is unlimited execution, and &STCOUNT stops counting; 0 is no limit too, as sbl -bf counts (its countdown starts at the limit,
             ;; sbl.min stgcc, so at 0 the check is never reached), and &STCOUNT goes on
+            (let [over
             (let [n (if (neg? (long @&STLIMIT)) @&STCOUNT (swap! &STCOUNT inc))]
               ;; "tracing keyword &STCOUNT produces a trace after every SPITBOL statement" (manual ch. 16): as the count moves; a negative &STLIMIT moves none
               (when (and (pos? (long @&TRACE)) (not (neg? (long @&STLIMIT)))) (fire-keyword! "STCOUNT" n))
-              (when (and (pos? (long @&STLIMIT)) (> n @&STLIMIT))
-                (snobol-steplimit! n))
-              ;; ── LABEL trace ────────────────────────────────────────────────
-              (when (pos? @&TRACE)
-                (when (statement-trace-active?)
-                  (binding [*out* *err*]
-                    (println (format ">>> stmt %5d  %s" (dec n) (str key)))))))
+              (let [over (when (and (pos? (long @&STLIMIT)) (> n @&STLIMIT)) (overrun n))]
+                ;; ── LABEL trace ────────────────────────────────────────────────
+                (when (pos? @&TRACE)
+                  (when (statement-trace-active?)
+                    (binding [*out* *err*]
+                      (println (format ">>> stmt %5d  %s" (dec n) (str key))))))
+                over))]
             ;; the statement closing a CODE block ends the program, itself the last statement executed
             (when (identical? stmt block-end) (throw (ex-info "END" {:snobol/signal :end :snobol/closing true})))
             ;; ── Execute statement ────────────────────────────────────────────
@@ -172,7 +182,8 @@
                   seqond (second stmt)
                   body   (if (map? ferst) seqond ferst)
                   goto   (if (map? ferst) ferst  seqond)]
-              (let [r (exec-body body)]
+              ;; a statement the limit stops is not executed: the overrun is trapped as an error in it is
+              (let [r (if over (trap over) (exec-body body))]
                 (if (instance? Trapped r)
                   ;; control goes to the handler; CONTINUE and ABORT there refer back to the statement in error
                   (recur (saddr (:label r)) {:at current :goto goto :ex (:ex r)})
@@ -185,7 +196,7 @@
                                          (instance? Trapped res) [(saddr (:label res)) {:at current :goto goto :ex (:ex res)}]
                                          (clojure.core/= ::fail res) (recur false)
                                          :else res)))]
-                    (recur nxt err'))))))))
+                    (recur nxt err')))))))))
       (catch clojure.lang.ExceptionInfo e
         (case (get (ex-data e) :snobol/signal)
           :end        (if (pos? (long @&FNCLEVEL)) (throw e) (do (when-not (:snobol/closing (ex-data e)) (end-statement!)) nil))   ; program end, from any level
