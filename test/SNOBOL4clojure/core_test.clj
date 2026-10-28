@@ -5684,3 +5684,34 @@
                    "END\n"))
       (is (= "2 -1. 0\n3 1. 0\n4 1. 0\n5 1. 0\n6 0. 0\n9 266\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; SETEXIT's argument names a natural variable whose label is defined, else "187 setexit argument is not label name or null" (sbl.min s_stx, gtnvr): a string
+;; folds as &CASE says at that moment, the name of a variable does not, and a pattern or the name of an element is no variable. The engine armed any argument.
+;; Expected output is sbl -bf's.
+(deftest setexit-takes-a-defined-label
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 10\n"
+                   "        SETEXIT('nolab')                                :S(Y1)\n"
+                   "        OUTPUT = '1 F ' &ERRTYPE                        :(E1)\n"
+                   "Y1      OUTPUT = '1 S'\n"
+                   "E1      SETEXIT(LEN(1))                                 :S(Y2)\n"
+                   "        OUTPUT = '2 F ' &ERRTYPE                        :(E2)\n"
+                   "Y2      OUTPUT = '2 S'\n"
+                   "E2      A = ARRAY(1)\n"
+                   "        SETEXIT(.A<1>)                                  :S(Y3)\n"
+                   "        OUTPUT = '3 F ' &ERRTYPE                        :(E3)\n"
+                   "Y3      OUTPUT = '3 S'\n"
+                   "E3      &CASE = 1\n"
+                   "        SETEXIT('lab1')                                 :S(Y4)\n"
+                   "        OUTPUT = '4 F ' &ERRTYPE                        :(E4)\n"
+                   "Y4      OUTPUT = '4 S'\n"
+                   "E4      OUTPUT = '5 [' SETEXIT(.lab1) ']'\n"
+                   "        OUTPUT = '6 [' SETEXIT('') ']'\n"
+                   "        &CASE = 0\n"
+                   "        OUTPUT = '7 [' SETEXIT('lab1') ']'\n"
+                   "        OUTPUT = '8 [' SETEXIT() ']'                    :(END)\n"
+                   "lab1    OUTPUT = 'handler'\n"
+                   "END\n"))
+      (is (= "1 F 187\n2 F 187\n3 F 187\n4 F 187\n5 []\n6 [lab1]\n7 []\n8 [lab1]\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
