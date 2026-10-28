@@ -5,9 +5,9 @@
   (:require [clojure.tools.trace      :refer :all]
             [SNOBOL4clojure.env       :refer
              [ε η equal not-equal Σ+ subtract multiply divide
-              ncvt scvt sstr num $$ $$fn out reference snobol-set!
+              ncvt sstr num $$ $$fn out reference snobol-set!
               table? table-get table-set
-              array? array-get array-set array-prototype assign-keyword! name-string
+              array? array-get array-set array-prototype assign-keyword! name-string gtstg
               snobol-return! snobol-freturn! snobol-nreturn!
               <FUNS> <FDEFS> <CHANNELS> <OPSYN> &STNO &FNCLEVEL &CASE &OUTPUT &FILE &LINE &RTNTYPE <LASTOUT> fold-case]]
             [SNOBOL4clojure.functions :refer
@@ -59,12 +59,16 @@
     (list ['x]          (list 'if (condition (cvt 'x) default) ε))
     (list ['x 'y '& '_] (list 'if (condition (cvt 'x) (cvt 'y)) ε))))
 
-(eval (primitive 'LEQ    ε   ε scvt     #(list 'equal %1 %2)))
-(eval (primitive 'LNE    ε nil scvt     #(list 'not=  %1 %2)))
-(eval (primitive 'LLE    ε   ε scvt     #(list '<=   (list 'compare %1 %2) 0)))
-(eval (primitive 'LLT    ε nil scvt     #(list '<    (list 'compare %1 %2) 0)))
-(eval (primitive 'LGE    ε   ε scvt     #(list '>=   (list 'compare %1 %2) 0)))
-(eval (primitive 'LGT    ε nil scvt     #(list '>    (list 'compare %1 %2) 0)))
+;; The lexical comparisons compare their arguments as strings, the second converted first ("convert second arg to string", sbl.min lcomp), so of two that
+;; are not strings the second's error is raised (sbl -bf: LGE(ANY('bcd'), TABLE()) is 125, LGT(ANY('bcd')) 126); an omitted argument is the null string.
+;; n1 is the function's error for its first argument, n1 + 1 for its second.
+(defn- lexical [x y n1 test] (let [b (gtstg y (inc (long n1))) a (gtstg x n1)] (when (test (compare a b)) ε)))
+(defn LEQ ([] (LEQ ε ε)) ([x] (LEQ x ε)) ([x y & _] (lexical x y 122 zero?)))
+(defn LNE ([] (LNE ε ε)) ([x] (LNE x ε)) ([x y & _] (lexical x y 132 #(not (zero? %)))))
+(defn LLE ([] (LLE ε ε)) ([x] (LLE x ε)) ([x y & _] (lexical x y 128 #(<= % 0))))
+(defn LLT ([] (LLT ε ε)) ([x] (LLT x ε)) ([x y & _] (lexical x y 130 neg?)))
+(defn LGE ([] (LGE ε ε)) ([x] (LGE x ε)) ([x y & _] (lexical x y 124 #(>= % 0))))
+(defn LGT ([] (LGT ε ε)) ([x] (LGT x ε)) ([x y & _] (lexical x y 126 pos?)))
 (eval (primitive 'IDENT  ε   ε identity #(list 'equal %1 %2)))
 (eval (primitive 'DIFFER ε nil identity #(list 'not= %1 %2)))
 

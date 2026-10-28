@@ -5621,3 +5621,33 @@
                    "END\n"))
       (is (= "1 []\n2 [b]\n5 [f]\n6 [g]\n7 [h]\n9 []\n10 []\nend 0 14\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; The lexical comparisons take their arguments as strings, the second converted first (sbl.min lcomp), so an argument that is no string is the function's
+;; error for it, and of two the second's: a pattern, a table, the name of an element or a keyword, an expression; the name of a natural variable is its name.
+;; The engine compared any value's printed form. Expected output is sbl -bf's.
+(deftest a-lexical-comparison-takes-strings
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 30\n"
+                   "        P = ANY('bcd')\n"
+                   "        T = TABLE()\n"
+                   "        LGE(P, T)\n"
+                   "        OUTPUT = 'LGE ' &ERRTYPE ' ' &ERRTEXT\n"
+                   "        LGT(P)\n"
+                   "        OUTPUT = 'LGT ' &ERRTYPE\n"
+                   "        LLE('a', T)\n"
+                   "        OUTPUT = 'LLE ' &ERRTYPE\n"
+                   "        &ERRTYPE = 0\n"
+                   "        OUTPUT = 'N ' (LEQ(.X, 'X') 'eq', 'ne') ' ' &ERRTYPE\n"
+                   "        A = ARRAY(2)\n"
+                   "        LEQ(.A<1>, 'x')\n"
+                   "        OUTPUT = 'E ' &ERRTYPE\n"
+                   "        LNE(.&ANCHOR, 'x')\n"
+                   "        OUTPUT = 'K ' &ERRTYPE\n"
+                   "        OUTPUT = 'R ' (LGT(2.5, 10) 'gt', 'le') ' ' (LLT(10, 9) 'lt', 'ge') ' ' (LEQ() 'eq', 'ne') ' ' (LNE('a') 'ne', 'eq')\n"
+                   "        LLT(*X, 'x')\n"
+                   "        OUTPUT = 'X ' &ERRTYPE\n"
+                   "END\n"))
+      (is (= "LGE 125 lge second argument is not a string\nLGT 126\nLLE 129\nN eq 0\nE 122\nK 132\nR gt lt eq ne\nX 130\n"
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

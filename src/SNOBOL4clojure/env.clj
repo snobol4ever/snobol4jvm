@@ -349,6 +349,17 @@
   (merge (into {} (for [[n m] errors/error-messages :when (not (#{274 276 278} n))] [n (clojure.string/lower-case m)]))
          {274 "value assigned to keyword fullscan is zero"}))
 
+;; A value as SPITBOL's gtstg converts it to a string: a string, an integer, a real, or the name of a natural variable, which is its name ("convert a name
+;; (only possible if natural var)", sbl.min gtstg); any other value is SPITBOL's error n
+(defn gtstg ^String [x n]
+  (cond (string? x)  x
+        (nil? x)     ""
+        (char? x)    (str x)
+        (integer? x) (str x)
+        (double? x)  (real-str x)
+        (and (instance? NAME x) (symbol? (.n ^NAME x))) (name (.n ^NAME x))
+        :else (throw (ex-info (error-message n) {:snobol/error n}))))
+
 ;; &K = V, with SPITBOL's errors: an unknown keyword is 251, a value that is not
 ;; an integer is 208, a protected keyword is 209. Assigning &ERRTYPE raises the
 ;; error it names.
