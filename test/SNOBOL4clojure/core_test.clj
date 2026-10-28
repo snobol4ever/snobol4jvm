@@ -5810,3 +5810,44 @@
                    "END\n"))
       (is (= "1 60\n2 60\n3 60\n4 60\n5 60\n6 22\n7 3 abab\n8 22\nend\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A string function converts its string arguments as SPITBOL's gtstg does, in sbl.min's order, the last first: an integer, a real, or the name of a natural
+;; variable; a pattern, a table or the name of a keyword is the function's error for that argument (SIZE 189, TRIM 200, REVERSE 177, REPLACE 168 169 170,
+;; LPAD 144 146, RPAD 178 180, SUBSTR 194, DUPL 91). DUPL repeats a pattern too. The engine took the printed form of any value. Expected output is sbl -bf's.
+(deftest a-string-function-takes-strings
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 40\n"
+                   "        P = LEN(1)\n"
+                   "        T = TABLE()\n"
+                   "        N = .&ERRTEXT\n"
+                   "        OUTPUT = SIZE(P)\n"
+                   "        OUTPUT = '1 ' &ERRTYPE\n"
+                   "        OUTPUT = TRIM(T)\n"
+                   "        OUTPUT = '2 ' &ERRTYPE\n"
+                   "        OUTPUT = REVERSE(N)\n"
+                   "        OUTPUT = '3 ' &ERRTYPE\n"
+                   "        OUTPUT = REPLACE(P, T, N)\n"
+                   "        OUTPUT = '4 ' &ERRTYPE\n"
+                   "        OUTPUT = REPLACE('a', T, N)\n"
+                   "        OUTPUT = '5 ' &ERRTYPE\n"
+                   "        OUTPUT = REPLACE('a', 'b', N)\n"
+                   "        OUTPUT = '6 ' &ERRTYPE\n"
+                   "        OUTPUT = LPAD(P, 3, T)\n"
+                   "        OUTPUT = '7 ' &ERRTYPE\n"
+                   "        OUTPUT = LPAD('a', 3, T)\n"
+                   "        OUTPUT = '8 ' &ERRTYPE\n"
+                   "        OUTPUT = RPAD(T, 3)\n"
+                   "        OUTPUT = '9 ' &ERRTYPE\n"
+                   "        OUTPUT = SUBSTR(P, 1, 1)\n"
+                   "        OUTPUT = '10 ' &ERRTYPE\n"
+                   "        OUTPUT = DUPL(T, 2)\n"
+                   "        OUTPUT = '11 ' &ERRTYPE\n"
+                   "        OUTPUT = '12 ' SIZE(.X) ' ' TRIM(.X) ' ' REVERSE(12) ' ' DATATYPE(DUPL(P, 2)) ' ' SIZE(2.5) ' ' REPLACE(.X, 'X', 'y')\n"
+                   "        OUTPUT = DUPL(N, 2)\n"
+                   "        OUTPUT = '13 ' &ERRTYPE\n"
+                   "        'abcd' ? DUPL(P, 3) . V\n"
+                   "        OUTPUT = '14 ' V ' ' DATATYPE(DUPL(P, 0)) ' ' DUPL(2.5, 2)\n"
+                   "END\n"))
+      (is (= "1 189\n2 200\n3 177\n4 168\n5 168\n6 168\n7 144\n8 144\n9 180\n10 194\n11 91\n12 1 X 21 PATTERN 3 y\n13 91\n14 abc PATTERN 2.52.5\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

@@ -52,39 +52,51 @@
   (if-some [n (integer-of x)] n (throw (ex-info "argument is not integer" {:snobol/error err}))))
 
 
-;; A string argument as SPITBOL converts it: an integer as its digits and a real "converted to its standard representation" (manual ch. 17, Real to string: 21. for 21.0,
-;; 2.71828182845905 for e), which sstr writes; the null string for nil.
-(defn- str-arg ^String [x] (sstr x))
+;; A string argument as SPITBOL converts it (sbl.min gtstg): an integer as its digits, a real "converted to its standard representation" (manual ch. 17, Real to
+;; string: 21. for 21.0, 2.71828182845905 for e), the name of a natural variable as its name, the null string for nil; anything else is the function's error n for
+;; that argument. The arguments are converted in sbl.min's order, the last first (sbl -bf: REPLACE(P, T, N) of a pattern, a table and a keyword's name is 168,
+;; LPAD(P, 3, T) 144, SIZE(LEN(1)) 189, TRIM(TABLE()) 200).
+(defn- str-arg ^String [x n] (env/gtstg x n))
 
-(defn SIZE    [s]         (count (str-arg s)))
+(defn SIZE    [s]         (count (str-arg s 189)))
 (defn REPLACE [s1 s2 s3]
   ;; Replace chars in s1: each char of s2 mapped to corresponding char of s3
-  (let [s1 (str-arg s1) s2 (str-arg s2) s3 (str-arg s3)]
+  (let [s3 (str-arg s3 168) s2 (str-arg s2 169) s1 (str-arg s1 170)]
     (apply str (map #(let [i (.indexOf ^String s2 (str %))]
                        (if (>= i 0) (.charAt ^String s3 i) %))
                     s1))))
-(defn DUPL    [x i]   (apply str (repeat (int-arg i 90) (if (string? x) x (if (number? x) (str-arg x) x)))))
-(defn TRIM    [s]     (clojure.string/trimr (str-arg s)))
-(defn REVERSE [s]     (apply str (clojure.string/reverse (str-arg s))))
+;; DUPL's first argument is a string or a pattern, "091 dupl first argument is not a string or pattern": a pattern repeated is the pattern of its copies in turn
+;; (sbl -bf: 'abcd' ? DUPL(LEN(1), 3) . V assigns abc; DUPL(P, 0) is a PATTERN)
+(defn DUPL    [x i]
+  (let [n (int-arg i 90)]
+    (if (clojure.core/= "PATTERN" (env/DATATYPE x))
+      (apply list 'SEQ (repeat n x))
+      (let [s (str-arg x 91)] (apply str (repeat n s))))))
+(defn TRIM    [s]     (clojure.string/trimr (str-arg s 200)))
+(defn REVERSE [s]     (apply str (clojure.string/reverse (str-arg s 177))))
 (defn LPAD
   ([s n]        (LPAD s n " "))
-  ([s n fill]   (let [s-str  (str-arg s)
-                      pad    (clojure.core/- (int-arg n 145) (count s-str))
-                      fill-c (let [f (str fill)] (if (clojure.core/= "" f) " " (subs f 0 1)))]   ; a null fill pads with blanks
+  ([s n fill]   (let [f      (str-arg fill 144)
+                      w      (int-arg n 145)
+                      s-str  (str-arg s 146)
+                      pad    (clojure.core/- w (count s-str))
+                      fill-c (if (clojure.core/= "" f) " " (subs f 0 1))]   ; a null fill pads with blanks
                   (if (clojure.core/<= pad 0) s-str
                     (str (apply str (repeat pad fill-c)) s-str)))))
 (defn RPAD
   ([s n]        (RPAD s n " "))
-  ([s n fill]   (let [s-str  (str-arg s)
-                      pad    (clojure.core/- (int-arg n 179) (count s-str))
-                      fill-c (let [f (str fill)] (if (clojure.core/= "" f) " " (subs f 0 1)))]   ; a null fill pads with blanks
+  ([s n fill]   (let [f      (str-arg fill 178)
+                      w      (int-arg n 179)
+                      s-str  (str-arg s 180)
+                      pad    (clojure.core/- w (count s-str))
+                      fill-c (if (clojure.core/= "" f) " " (subs f 0 1))]   ; a null fill pads with blanks
                   (if (clojure.core/<= pad 0) s-str
                     (str s-str (apply str (repeat pad fill-c)))))))
 (defn SUBSTR
   "SUBSTR(s, i, n): the n characters of s from the 1-based position i, where n = 0 means all the rest of s from i. It fails when i is not from 1 to one past
    the end of s, when n is negative, or when the n characters are not all there, as sbl -bf does."
   [s i n]
-  (let [s (str-arg s) i (int-arg i 193) n (int-arg n 192) len (count s)]
+  (let [n (int-arg n 192) i (int-arg i 193) s (str-arg s 194) len (count s)]
     (when (and (clojure.core/<= 1 i (inc len)) (clojure.core/>= n 0))
       (if (zero? n)
         (subs s (dec i))
@@ -157,16 +169,16 @@
 
       ;; REAL conversions: "The real number is converted to its standard representation" (manual ch. 17, Real to string), as sstr writes it
       (and (clojure.core/= from "REAL") (clojure.core/= to "STRING"))
-      (str-arg x)
+      (sstr x)
 
       (and (clojure.core/= from "REAL") (clojure.core/= to "INTEGER"))
       (real->integer x)
 
       (and (clojure.core/= from "REAL") (clojure.core/= to "PATTERN"))
-      (list 'SEQ (list 'LIT$ (str-arg x)))
+      (list 'SEQ (list 'LIT$ (sstr x)))
 
       (and (clojure.core/= from "REAL") (clojure.core/= to "NAME"))
-      (SNOBOL4clojure.env.NAME. (symbol (str-arg x)))
+      (SNOBOL4clojure.env.NAME. (symbol (sstr x)))
 
       ;; ARRAY conversions
       (and (clojure.core/= from "ARRAY") (clojure.core/= to "TABLE"))
