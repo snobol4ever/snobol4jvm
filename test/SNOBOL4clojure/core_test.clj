@@ -5651,3 +5651,36 @@
       (is (= "LGE 125 lge second argument is not a string\nLGT 126\nLLE 129\nN eq 0\nE 122\nK 132\nR gt lt eq ne\nX 130\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A negative base takes an integral real power, the power chopped to an integer as sbl.min oexp9's rti does, which the x64 build spells cvttsd2si: a power
+;; past 64 bits is even, and the overflow test compares the integer with 80000000h, so the power 2147483648 is error 266. The engine refused every power past
+;; 64 bits with 266 and took 2147483648. Expected output is sbl -bf's.
+(deftest a-negative-base-takes-a-huge-integral-power
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 10\n"
+                   "        B = -1.0\n"
+                   "        E = 2147483648.0\n"
+                   "        OUTPUT = '1 ' (B ** E) ' ' &ERRTYPE\n"
+                   "        &ERRTYPE = 0\n"
+                   "        E = 2147483649.0\n"
+                   "        OUTPUT = '2 ' (B ** E) ' ' &ERRTYPE\n"
+                   "        E = -2147483648.0\n"
+                   "        OUTPUT = '3 ' (B ** E) ' ' &ERRTYPE\n"
+                   "        E = 1E19\n"
+                   "        OUTPUT = '4 ' (B ** E) ' ' &ERRTYPE\n"
+                   "        E = -9.3E18\n"
+                   "        OUTPUT = '5 ' (B ** E) ' ' &ERRTYPE\n"
+                   "        B = -0.5\n"
+                   "        E = 1E300\n"
+                   "        OUTPUT = '6 ' (B ** E) ' ' &ERRTYPE\n"
+                   "        B = -2.0\n"
+                   "        OUTPUT = '7 ' (B ** E) ' ' &ERRTYPE\n"
+                   "        &ERRTYPE = 0\n"
+                   "        B = -1.0\n"
+                   "        E = 2147483648.5\n"
+                   "        OUTPUT = '8 ' (B ** E) ' ' &ERRTYPE\n"
+                   "        OUTPUT = '9 ' &ERRTYPE\n"
+                   "END\n"))
+      (is (= "2 -1. 0\n3 1. 0\n4 1. 0\n5 1. 0\n6 0. 0\n9 266\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

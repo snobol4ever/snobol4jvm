@@ -168,12 +168,16 @@
       (let [b (double x) e (double y)]
         (if (zero? b)
           (if (zero? e) (undefined) 0.0)
+          ;; the power is chopped and converted to an integer as sbl.min oexp9 does with rti, which the x64 build spells cvttsd2si: a power past 64 bits
+          ;; gives 8000000000000000h, even, and the overflow test compares the result with 80000000h, so the one integer it refuses is 2147483648, error
+          ;; 266 before the power is found non-integral (sbl -bf: -1.0 ** 1E19 is 1., -0.5 ** 1E300 is 0., -1.0 ** 2147483648.5 is 266)
           (let [c   (when (neg? b)
-                      (let [c (if (neg? e) (Math/ceil e) (Math/floor e))]
-                        (when (clojure.core/>= (Math/abs c) 9.223372036854775807E18) (throw (ex-info ovf {:snobol/error 266})))
-                        (when-not (clojure.core/== c e)
+                      (let [t (if (neg? e) (Math/ceil e) (Math/floor e))
+                            c (if (< (Math/abs t) 9.223372036854775807E18) (long t) Long/MIN_VALUE)]
+                        (when (== c 2147483648) (throw (ex-info ovf {:snobol/error 266})))
+                        (when-not (== t e)
                           (throw (ex-info "exponentiation of negative base to non-integral power" {:snobol/error 311})))
-                        (long c)))
+                        c))
                 r   (finite (Math/exp (finite (clojure.core/* (finite (Math/log (Math/abs b)) 266 ovf) e) 266 ovf)) 266 ovf)]
             (if (and c (odd? c)) (clojure.core/- r) r)))))))
 (defn !     ([_x]       η)
