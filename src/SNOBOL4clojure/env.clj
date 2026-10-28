@@ -108,6 +108,14 @@
 (def <SOURCE> (atom nil))   ; the last source compiled, its -INCLUDEs spliced in, as {:text t :stmts its [text line] statements :cards the -INCLUDE lines}, for the listing
 ;; True while a pattern match is in progress, in the functions it calls too: an execution error is then not fatal (match.clj matching, runtime.clj trap)
 (def ^:dynamic *matching* false)
+;; Where an execution error goes (operators.clj error-decided, after sbl.min's error section, which keeps them as flptr, flprt, stage and gtcef): the depth of the
+;; innermost failure point (the statement, a negation's operand, a selection's alternative but its last, the expression EVAL evaluates, a function's body); the
+;; depth of the innermost function's body, below every failure point in the main program; the stage, :ee while EVAL evaluates an expression and :xt otherwise;
+;; and the depth the last EVAL was called at
+(def ^:dynamic *fp* 0)
+(def ^:dynamic *flprt* -1)
+(def <STAGE> (atom :xt))
+(def <GTCEF> (atom 0))
 (def <HOST0> (atom ""))   ; what HOST(0) returns: the -u text, or else the program's own arguments joined by blanks
 (def <ARGV>  (atom []))   ; the command line HOST(2, n) answers from: the engine's jar, then -main's arguments
 (def <ARGI>  (atom 0))    ; what HOST(3) returns: the index in <ARGV> of the program's first own argument
@@ -304,6 +312,8 @@
    (reset! <TRACES>   {})
    (reset! <DISPNO>   {})
    (reset! <SETEXIT>  nil)
+   (reset! <STAGE>    :xt)
+   (reset! <GTCEF>    0)
    (reset! <OBJNO>    0)
    (reset! <LASTOUT>  nil)
    (reset! <ASSOC-LAST> {})

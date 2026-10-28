@@ -428,8 +428,10 @@
                           ;; Run from entry label; catch RETURN/FRETURN/NRETURN. The function level is one deeper while the body runs.
                           (fire-keyword! "FNCLEVEL" (swap! &FNCLEVEL inc))
                           (let [run-fn  (ns-resolve 'SNOBOL4clojure.runtime 'RUN)
+                                ;; the body is the failure point of its statements, the innermost function's
+                                d       (inc (long SNOBOL4clojure.env/*fp*))
                                 outcome (try
-                                          (when run-fn ((var-get run-fn) entry))
+                                          (when run-fn (binding [SNOBOL4clojure.env/*fp* d SNOBOL4clojure.env/*flprt* d] ((var-get run-fn) entry)))
                                           :return   ; normal fall-through = return
                                           ;; only the three returns end a call; END, the step limit and an error go on up (END in a function ends the program)
                                           (catch clojure.lang.ExceptionInfo e
@@ -821,6 +823,41 @@
     true
     N))
 
+;; An execution error goes to a failure point (sbl.min, error section). With &ERRLIMIT above 0 one of it is spent and the error is recorded in &ERRTYPE and
+;; &ERRTEXT; the label SETEXIT armed takes control, or else the innermost failure point fails: a negation's operand, so the negation succeeds, a selection's
+;; alternative, so the next is tried, the expression EVAL evaluates, so EVAL fails, or the statement. With &ERRLIMIT at 0 the error is fatal, except while EVAL
+;; evaluates an expression or a match is in progress: then the failure point fails and nothing is spent. While EVAL evaluates, the failure point is the one EVAL
+;; was called in, so EVAL fails as a whole, unless a function's body is as deep as that or deeper (sbl -bf: (EVAL('1 / N'), 'f') is f, EVAL('~(1 / N)') fails,
+;; and in a function's statement T = EVAL('~(1 / N)') gives the null string).
+;; e, an error a failure point at depth d catches first: e marked :snobol/to, the depth of the failure point that fails, or :snobol/label, the label it goes to,
+;; or e itself when it is fatal or no error.
+(defn error-decided [^clojure.lang.ExceptionInfo e d]
+  (let [{n :snobol/error abort :snobol/abort :as data} (ex-data e)]
+    (if (or (nil? n) abort (contains? data :snobol/to) (contains? data :snobol/label))
+      e
+      (let [ee?    (clojure.core/= :ee @SNOBOL4clojure.env/<STAGE>)
+            gtcef? (and ee? (< (long SNOBOL4clojure.env/*flprt*) (long @SNOBOL4clojure.env/<GTCEF>)))
+            lim    (long @SNOBOL4clojure.env/&ERRLIMIT)]
+        (if (and (zero? lim) (not ee?) (not SNOBOL4clojure.env/*matching*))
+          e
+          (let [h (when (pos? lim) @SNOBOL4clojure.env/<SETEXIT>)]
+            (when gtcef? (reset! SNOBOL4clojure.env/<STAGE> :xt))
+            (when (pos? lim) (swap! SNOBOL4clojure.env/&ERRLIMIT dec))
+            (reset! SNOBOL4clojure.env/&ERRTYPE n)
+            (fire-keyword! "ERRTYPE" n)
+            (reset! SNOBOL4clojure.env/&ERRTEXT (ex-message e))
+            (when h (reset! SNOBOL4clojure.env/<SETEXIT> nil))
+            (ex-info (ex-message e) (if h (assoc data :snobol/label h) (assoc data :snobol/to (if gtcef? @SNOBOL4clojure.env/<GTCEF> d))) e)))))))
+
+;; f evaluated one failure point deeper: nil, failure, when an error in it fails this failure point
+(defn- failure-point [f]
+  (let [d (inc (long SNOBOL4clojure.env/*fp*))]
+    (binding [SNOBOL4clojure.env/*fp* d]
+      (try (f)
+           (catch clojure.lang.ExceptionInfo e
+             (let [e (error-decided e d) to (:snobol/to (ex-data e))]
+               (if (and to (>= (long to) d)) nil (throw e))))))))
+
 (defn EVAL! [E]
   (when E
     (cond
@@ -831,9 +868,10 @@
       (integer? E) E
       ;; a reference to a variable fires its ACCESS trace (trace.clj); a bare FENCE is the pattern, not the function that builds one
       (symbol? E)  (let [v ($$ E)] (when (pos? (long @SNOBOL4clojure.env/&TRACE)) (fire-access! E v)) (if (identical? v FENCE) (FENCE) v))
-      ;; (e1, e2, ...): the value of the first expression that succeeds, the later ones not evaluated; failure if none does
+      ;; (e1, e2, ...): the value of the first expression that succeeds, the later ones not evaluated; failure if none does. Each alternative but the last is a
+      ;; failure point; the last is evaluated in the selection's own (sbl.min o_sld: "pop failure offset ... restore old failure pointer")
       (and (vector? E) (clojure.core/= :comma (first E)))
-      (some EVAL! (rest E))
+      (loop [[a & more] (rest E)] (if more (if-some [v (failure-point #(EVAL! a))] v (recur more)) (EVAL! a)))
       (vector? E)  (let [evaled (eval-operands E)]
                     ;; nil in any SEQ element = sub-expression failed → whole SEQ fails
                     (when evaled
@@ -994,7 +1032,7 @@
                      ;; as its input; any other operator or function fails with it, binary ~ among them, an operator "available for user definition
                      ;; using OPSYN()" (manual ch. 15)
                      args     (if (and (equal op 'tilde) (clojure.core/= 1 (count parms)))
-                                (apply vector (map EVAL! parms))
+                                [(failure-point #(EVAL! (first parms)))]
                                 (eval-operands parms))
                      ;; OPSYN: an operator may be redefined, under its spelling
                      ;; and arity (opsyn-key). Check before the built-in INVOKE table.
@@ -1041,13 +1079,19 @@
 ;; error" (manual ch. 9): with &ERRLIMIT at 0 an error raised while the expression is evaluated fails EVAL as a syntax error does, &ERRTYPE and &ERRTEXT set, and is
 ;; not fatal (sbl -bf: EVAL('X / Z') with Z = 0 fails with 14, and so does EVAL(*(X / Z))); above 0 it is trapped as any error is, one of &ERRLIMIT spent and the
 ;; label SETEXIT armed taken, or the statement failed (spitbol_x64_tests setexit: EVAL('n1 / n0') goes to the handler with 262).
+;; The expression is a failure point, the stage :ee while it is evaluated, and the depth EVAL was called at is kept for an error in it (error-decided); the stage
+;; is :xt again when EVAL returns, the next EVAL out too (sbl.min evalx: evlx2, evlx7).
 (defn- evaluated-or-fail [f]
-  (try (f)
-       (catch clojure.lang.ExceptionInfo e
-         (let [n (:snobol/error (ex-data e))]
-           (if (and n (zero? (long @SNOBOL4clojure.env/&ERRLIMIT)))
-             (compile-failed! n (or (SNOBOL4clojure.env/error-message n) (ex-message e)))
-             (throw e))))))
+  (let [d0 (long SNOBOL4clojure.env/*fp*)]
+    (when (clojure.core/= :xt @SNOBOL4clojure.env/<STAGE>) (reset! SNOBOL4clojure.env/<STAGE> :ee))
+    (reset! SNOBOL4clojure.env/<GTCEF> d0)
+    (let [v (binding [SNOBOL4clojure.env/*fp* (inc d0)]
+              (try (f)
+                   (catch clojure.lang.ExceptionInfo e
+                     (let [e (error-decided e (inc d0)) to (:snobol/to (ex-data e))]
+                       (if (and to (>= (long to) d0)) nil (throw e))))))]
+      (reset! SNOBOL4clojure.env/<STAGE> :xt)
+      v)))
 
 (defn EVAL [X]
   (cond

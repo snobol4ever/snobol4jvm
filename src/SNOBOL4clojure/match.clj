@@ -590,8 +590,9 @@
   (binding [SNOBOL4clojure.env/*matching* true]
     (try (f)
          (catch clojure.lang.ExceptionInfo e
-           (let [{n :snobol/error abort :snobol/abort} (ex-data e)]
-             (if (and n (not abort) (zero? (long @SNOBOL4clojure.env/&ERRLIMIT)))
+           (let [{n :snobol/error abort :snobol/abort :as data} (ex-data e)]
+             ;; an error a failure point inside the match has already taken (operators.clj error-decided) goes on to it
+             (if (and n (not abort) (zero? (long @SNOBOL4clojure.env/&ERRLIMIT)) (not (contains? data :snobol/to)) (not (contains? data :snobol/label)))
                (do (reset! SNOBOL4clojure.env/&ERRTYPE n)
                    (fire-keyword! "ERRTYPE" n)
                    (reset! SNOBOL4clojure.env/&ERRTEXT (ex-message e))

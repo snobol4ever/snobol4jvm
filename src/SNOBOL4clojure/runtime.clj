@@ -14,12 +14,12 @@
   Statement-level trace (wildcard '*') prints each statement number + label.
   Pattern traces are handled in match.clj via *trace* dynamic var."
   (:require [SNOBOL4clojure.env   :refer [<STNO> <LABL> <CODE> <DISPNO> block-end
-                                           &STCOUNT &STLIMIT &TRACE &STNO &LASTNO &ERRLIMIT &ERRTYPE &ERRTEXT <SETEXIT> <POS> &FILE &LASTFILE &LINE &LASTLINE &FNCLEVEL
+                                           &STCOUNT &STLIMIT &TRACE &STNO &LASTNO &ERRLIMIT &ERRTYPE &ERRTEXT <POS> &FILE &LASTFILE &LINE &LASTLINE &FNCLEVEL
                                            snobol-return! snobol-freturn!
                                            snobol-nreturn! snobol-end!
                                            snobol-steplimit!]]
             [SNOBOL4clojure.trace :refer [fire-label! fire-keyword! statement-trace-active?]]
-            [SNOBOL4clojure.operators :refer [EVAL! INVOKE]]))
+            [SNOBOL4clojure.operators :refer [EVAL! INVOKE error-decided]]))
 
 ;; Special goto targets that trigger control-flow signals rather than label jumps. "If case-folding is in effect, they may appear with any combination of upper- or
 ;; lower-case letters" (manual ch. 16, Special names); without folding, as sbl -bf runs, RETURN, FRETURN and NRETURN are special in capitals only (:(return) is a label, or
@@ -44,18 +44,12 @@
 ;; An error with &ERRLIMIT at 0, one that ABORT passes on, and every other signal go on up -- but in a function a pattern match called, while the match is in
 ;; progress, an error with &ERRLIMIT at 0 fails the statement, SETEXIT not consulted (sbl -bf, measured: a division by zero in a function called from
 ;; 'x' ? ('x' . *G()) takes the statement's :F branch with &ERRTYPE 14, and the program goes on; at &ERRLIMIT 5 it goes to the label SETEXIT armed).
+;; The statement is the innermost failure point when no other in it caught the error (operators.clj error-decided).
 (defn- trap [^clojure.lang.ExceptionInfo e]
-  (let [{n :snobol/error abort :snobol/abort} (ex-data e)]
-    (if (and n (not abort) (or (pos? (long @&ERRLIMIT)) SNOBOL4clojure.env/*matching*))
-      (let [h (when (pos? (long @&ERRLIMIT)) @<SETEXIT>)]
-        (when (pos? (long @&ERRLIMIT)) (swap! &ERRLIMIT dec))
-        (reset! &ERRTYPE n)
-        (fire-keyword! "ERRTYPE" n)
-        (reset! &ERRTEXT (ex-message e))
-        (if h
-          (do (reset! <SETEXIT> nil) (->Trapped h e))
-          false))
-      (throw e))))
+  (let [e (error-decided e SNOBOL4clojure.env/*fp*) {to :snobol/to h :snobol/label} (ex-data e)]
+    (cond h    (->Trapped h e)
+          to   false
+          :else (throw e))))
 
 (defn- exec-body [body]
   (try

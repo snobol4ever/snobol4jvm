@@ -5593,3 +5593,31 @@
                    "END\n"))
       (is (= "1 S\n2 []\n3 Zabc\n4 []0\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; An execution error under &ERRLIMIT fails the innermost failure point, as SPITBOL's error section continues at flptr: a negation's operand, so the negation
+;; succeeds, a selection's alternative but its last, so the next is tried, or the statement. While EVAL evaluates, an error fails the EVAL as a whole unless a
+;; function's body is as deep as the EVAL's call (sbl.min err04: the stack is popped to flprt or gtcef, whichever comes first), and with &ERRLIMIT at 0 it is
+;; then a failure, not fatal. The engine failed the statement for every one. Expected output is sbl -bf's.
+(deftest an-error-fails-the-innermost-failure-point
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 20\n"
+                   "        N = 0\n"
+                   "        DEFINE('T(S)')                              :(TE)\n"
+                   "T       T = EVAL(S)                                 :S(RETURN)F(FRETURN)\n"
+                   "TE      OUTPUT = '1 [' ~(1 / N) ']'\n"
+                   "        OUTPUT = '2 [' (1 / N, 'b') ']'\n"
+                   "        OUTPUT = '3 [' (DIFFER(), 1 / N) ']'\n"
+                   "        OUTPUT = '4 [' EVAL(\"(1 / N, 'd')\") ']'\n"
+                   "        OUTPUT = '5 [' (EVAL('1 / N'), 'f') ']'\n"
+                   "        OUTPUT = '6 [' EVAL(\"(EVAL('1 / N'), 'g')\") ']'\n"
+                   "        OUTPUT = '7 [' T(\"(1 / N, 'h')\") ']'\n"
+                   "        OUTPUT = '8 [' T(\"EVAL('~(1 / N)')\") ']'\n"
+                   "        &ERRLIMIT = 0\n"
+                   "        OUTPUT = '9 [' T('~(1 / N)') ']'\n"
+                   "        OUTPUT = '10 [' EVAL(\"T('~(1 / N)')\") ']'\n"
+                   "        OUTPUT = '11 [' EVAL('~(1 / N)') ']'\n"
+                   "        OUTPUT = 'end ' &ERRLIMIT ' ' &ERRTYPE\n"
+                   "END\n"))
+      (is (= "1 []\n2 [b]\n5 [f]\n6 [g]\n7 [h]\n9 []\n10 []\nend 0 14\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
