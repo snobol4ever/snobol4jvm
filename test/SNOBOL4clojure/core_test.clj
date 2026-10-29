@@ -6448,3 +6448,55 @@
                    "END\n"))
       (is (= "fail 103|fail 103|fail 103|fail 221|fail 226|a:b;c\nerror 103 9|error 103 8\nhandler 103 7\n1 221 6\n2 221 6\n3 221 6\n4 226 5\n5 226 5\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; The text CODE compiles is one record: a line end in it is a character, so outside a literal it does not compile, 214 where it begins a statement's label field
+;; and 230 elsewhere, and inside a literal it is part of the literal; EVAL's text is the same. The engine split CODE's text into lines as it splits a program
+;; file, and dropped a carriage return. Expected output is sbl -bf's.
+(deftest code-text-is-one-record
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 10\n"
+                   "        C = CODE(' OUTPUT = 1' CHAR(10) ' OUTPUT = 2')    :S(N0)\n"
+                   "        OUTPUT = 'LF ' &ERRTYPE   :(M0)\n"
+                   "N0      OUTPUT = 'LF compiled'\n"
+                   "M0\n"
+                   "        C = CODE(' OUTPUT = 3' CHAR(13) ' OUTPUT = 4')    :S(N1)\n"
+                   "        OUTPUT = 'CR ' &ERRTYPE   :(M1)\n"
+                   "N1      OUTPUT = 'CR compiled'\n"
+                   "M1\n"
+                   "        C = CODE(CHAR(10) ' X = 1')    :S(N2)\n"
+                   "        OUTPUT = 'first ' &ERRTYPE   :(M2)\n"
+                   "N2      OUTPUT = 'first compiled'\n"
+                   "M2\n"
+                   "        C = CODE(' X = 1;' CHAR(10))    :S(N3)\n"
+                   "        OUTPUT = 'tail ' &ERRTYPE   :(M3)\n"
+                   "N3      OUTPUT = 'tail compiled'\n"
+                   "M3\n"
+                   "        C = CODE(' X = 1; ' CHAR(10))    :S(N4)\n"
+                   "        OUTPUT = 'blank-tail ' &ERRTYPE   :(M4)\n"
+                   "N4      OUTPUT = 'blank-tail compiled'\n"
+                   "M4\n"
+                   "        C = CODE(' X = (1' CHAR(10) ')')    :S(N5)\n"
+                   "        OUTPUT = 'paren ' &ERRTYPE   :(M5)\n"
+                   "N5      OUTPUT = 'paren compiled'\n"
+                   "M5\n"
+                   "        C = CODE(' X = 1 :(L' CHAR(10) ')')    :S(N6)\n"
+                   "        OUTPUT = 'goto ' &ERRTYPE   :(M6)\n"
+                   "N6      OUTPUT = 'goto compiled'\n"
+                   "M6\n"
+                   "        C = CODE(' X = (' CHAR(10))    :S(N7)\n"
+                   "        OUTPUT = 'before ' &ERRTYPE   :(M7)\n"
+                   "N7      OUTPUT = 'before compiled'\n"
+                   "M7\n"
+                   "        C = CODE(' X = \"a' CHAR(10) 'b\" :(BACK)')    :S(N8)\n"
+                   "        OUTPUT = 'literal ' &ERRTYPE   :(M8)\n"
+                   "N8      OUTPUT = 'literal compiled'\n"
+                   "M8\n"
+                   "        :<C>\n"
+                   "BACK    OUTPUT = 'ran ' SIZE(X)\n"
+                   "        Y = EVAL('1' CHAR(10) ' + 2')    :S(E1)\n"
+                   "        OUTPUT = 'EVAL ' &ERRTYPE\n"
+                   "E1      OUTPUT = 'EVAL literal ' SIZE(EVAL(\"'a\" CHAR(13) CHAR(10) \"b'\"))\n"
+                   "END\n"))
+      (is (= "LF 230\nCR 230\nfirst 214\ntail 214\nblank-tail 230\nparen 230\ngoto 230\nbefore 230\nliteral compiled\nran 3\nEVAL 230\nEVAL literal 4\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

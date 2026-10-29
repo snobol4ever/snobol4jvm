@@ -46,11 +46,15 @@
 
 (defn- split-source
   "Split SNOBOL4 source into raw statement strings, each with the physical line it begins on, as [statement line]. A blank physical line is a statement of its own as
-   SPITBOL numbers them, and is [:blank line]. ls is where the physical line being read begins, line is its number and sl the line the statement being read began on."
-  [src]
+   SPITBOL numbers them, and is [:blank line]. ls is where the physical line being read begins, line is its number and sl the line the statement being read began on.
+   A record, the text CODE compiles, is one line: a line end in it is a character as any other, and only a semicolon ends a statement (record? true)."
+  ([src] (split-source src false))
+  ([src record?]
   ;; the null string is no line at all, so CODE('') compiles no statement (sbl -bf), not a blank one
-  (let [chars (if (or (= "" (str src)) (string/ends-with? (str src) "\n")) (str src) (str src "\n"))
+  (let [chars (if (or record? (= "" (str src)) (string/ends-with? (str src) "\n")) (str src) (str src "\n"))
         n     (count chars)
+        ;; a record keeps the line ends at the end of a statement, which are no blanks
+        trimr (if record? #(string/replace % #"[ \t]+\z" "") string/trimr)
         blank-line? (fn [from to] (every? #(Character/isWhitespace ^char %) (subs chars from to)))]
     ;; "A continuation mark ... is placed in the first column of the additional lines" (manual ch. 14): a + or . line that continues nothing -- the first line, a
     ;; line after a comment line, or after a statement closed by a semicolon -- is "214 bad label or misplaced continuation line" at compile time, as sbl -bf reports it.
@@ -58,8 +62,9 @@
     (loop [i 0 cur (StringBuilder.) stmts [] in-sq false in-dq false ls 0 line 1 sl 1
            diags (if (and (pos? n) (#{\+ \.} (.charAt chars 0))) [[1 214]] [])]
       (if (>= i n)
-        (let [s (string/trimr (str cur))]
-          (with-meta (if (seq s) (conj stmts [s sl]) stmts) {:diagnostics diags}))
+        (let [s (trimr (str cur))]
+          ;; the blanks after a record's last semicolon are a statement (sbl -bf: CODE(' X = 1 ; ') is two statements and the block's closing one)
+          (with-meta (cond (seq s) (conj stmts [s sl]) (and record? (pos? (.length cur))) (conj stmts [:blank sl]) :else stmts) {:diagnostics diags}))
         (let [ch (.charAt chars i)
               sl (if (zero? (.length cur)) line sl)]
           (cond
@@ -70,9 +75,9 @@
             ;; a comment line (* in column 1) is one comment: a semicolon in it separates nothing. Every statement a semicolon ends is one, an empty or blank one a
             ;; statement SPITBOL numbers and never runs, as a blank line is (sbl -bf: X = 1 ;; Y = 2 is three statements, two executed)
             (and (= ch \;) (not in-sq) (not in-dq) (not (and (pos? (.length cur)) (= \* (.charAt cur 0)))))
-            (let [s (string/trimr (str cur))]
+            (let [s (trimr (str cur))]
               (recur (inc i) (StringBuilder.) (conj stmts (if (seq s) [s sl] [:blank sl])) false false ls line line diags))
-            (= ch \newline)
+            (and (= ch \newline) (not record?))
             (let [s (string/trimr (str cur))
                   next-i (inc i)
                   next-ch (when (< next-i n) (.charAt chars next-i))
@@ -94,7 +99,18 @@
                          ;; the line ended in a semicolon, which closed its last statement: a continuation after it is misplaced
                          (if (and cont? (not blank?)) (conj diags [(inc line) 214]) diags)))))
             :else
-            (recur (inc i) (.append cur ch) stmts in-sq in-dq ls line sl diags)))))))
+            (recur (inc i) (.append cur ch) stmts in-sq in-dq ls line sl diags))))))))
+
+;; A line end in a statement, outside its literals: in a record it is a character SPITBOL's scan takes in a label and refuses anywhere else (syntax.clj).
+(defn- line-end-outside-literals? [^String s]
+  (loop [i 0 q nil]
+    (when (< i (count s))
+      (let [c (.charAt s i)]
+        (cond (and q (= c q))                    (recur (inc i) nil)
+              q                                  (recur (inc i) q)
+              (#{\' \"} c)                       (recur (inc i) c)
+              (#{\return \newline} c)            true
+              :else                              (recur (inc i) nil))))))
 
 ;; -- -INCLUDE preprocessor ----------------------------------------------------
 
@@ -296,9 +312,12 @@
    -INCLUDE directives (default [\".\"]). file is the name the program was given, which &FILE reads."
   ([S] (CODE! S ["."]))
   ([S include-path] (CODE! S include-path nil))
-  ([S include-path file]
-   (let [[expanded _ cards] (preprocess-includes* (str S) include-path #{})
-         raw-stmts (split-source expanded)
+  ([S include-path file] (CODE! S include-path file false))
+  ([S include-path file record?]
+   (let [;; a record with a line end in it is read as it stands: the -INCLUDE preprocessor reads lines, and would end them
+         record?   (and record? (boolean (re-find #"[\r\n]" (str S))))
+         [expanded _ cards] (if record? [(str S) #{} []] (preprocess-includes* (str S) include-path #{}))
+         raw-stmts (split-source expanded record?)
          _         (reset! <DIAGNOSTICS> (:diagnostics (meta raw-stmts)))
          _         (reset! <SOURCE> {:text expanded :stmts raw-stmts :cards cards})]
      (loop [stmts raw-stmts NO 1 CODES {} NOS {} LABELS {} blanks 0 before [] fold (not (zero? (long @&CASE)))
@@ -312,18 +331,23 @@
              (control? command) (recur (rest stmts) NO CODES NOS LABELS blanks before (let [f (case-card fold command)] (if (nil? f) fold f)) poss
                                        (position-card fold command pline pos))
              :else
-             (let [stmt   (cond-> (string/replace command #"\r" "") fold fold-case)
-                   ast    (parse-statement stmt)
+             (let [stmt   (cond-> command (not record?) (string/replace #"\r" "") fold fold-case)
+                   ;; a line end outside a literal in a record does not compile: 214 where it begins the label field, 230 elsewhere (sbl -bf: CODE(' OUTPUT = 1'
+                   ;; CHAR(10) ' OUTPUT = 2') and CODE(' OUTPUT = 3' CHAR(13) ' OUTPUT = 4') are 230, CODE(' OUTPUT = 6;' CHAR(10)) 214)
+                   ast    (if (and record? (line-end-outside-literals? stmt)) ::line-end (parse-statement stmt))
                    ;; a compile error the emitter finds (an invalid numeric item) is the statement's error, as a parse failure is
-                   code   (try (emitter ast)
-                               (catch clojure.lang.ExceptionInfo e
-                                 (if (:snobol/compile (ex-data e)) {:reason :compile :line pline :column 1 :text (ex-message e)} (throw e))))
+                   code   (if (= ast ::line-end)
+                            {:reason :line-end :line pline :column 1}
+                            (try (emitter ast)
+                                 (catch clojure.lang.ExceptionInfo e
+                                   (if (:snobol/compile (ex-data e)) {:reason :compile :line pline :column 1 :text (ex-message e)} (throw e)))))
                    here   [(:file pos) (+ (:bl pos) (- pline (:bp pos)))]
                    pos''  (if (:revert pos) (assoc pos :file (:revert pos) :revert nil) pos)]
                (if (and (map? code) (:reason code))
                  ;; a statement that does not compile is the error SPITBOL's scan names, at its line and column (syntax.clj); 220 when the scan finds none. A line
                  ;; that starts with a continuation mark is split-source's to judge (214, or a continuation sbl takes after a blank line)
-                 (let [{n :error col :column} (or (when-not (= :compile (:reason code)) (syntax-error stmt)) {:error (if (= :compile (:reason code)) 231 220)})]
+                 (let [{n :error col :column} (or (when-not (= :compile (:reason code)) (syntax-error stmt))
+                                                  {:error (case (:reason code) :compile 231 :line-end 230 220)})]
                    (when-not (#{\+ \.} (first stmt))
                      (swap! <DIAGNOSTICS> conj [pline n (when col (min (long col) (max 1 (count stmt))))]))
                    (recur (rest stmts) (inc NO) (assoc CODES NO (error-node code)) NOS LABELS blanks (conj before blanks) fold (conj poss here) pos''))
@@ -389,7 +413,7 @@
 ;; "The call fails if syntactical errors are found. In this case, it is possible to inspect &ERRTEXT to find the error message" (manual ch. 19, CODE): a block with
 ;; a statement that does not compile loads nothing, and answers its first error as {:error n}.
 (defn CODE-block [S]
-  (let [ir (CODE! S)]
+  (let [ir (CODE! S ["."] nil true)]
     (if-let [[_ n] (first @<DIAGNOSTICS>)]
       {:error n}
       (let [entry (load-code ir)]
