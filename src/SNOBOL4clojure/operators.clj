@@ -914,14 +914,15 @@
             lim    (long @SNOBOL4clojure.env/&ERRLIMIT)]
         (if (and (zero? lim) (not ee?) (not SNOBOL4clojure.env/*matching*))
           e
-          (let [h (when (pos? lim) @SNOBOL4clojure.env/<SETEXIT>)]
+          (let [h (when (pos? lim) @SNOBOL4clojure.env/<SETEXIT>)
+                k (swap! SNOBOL4clojure.env/<ERRSERIAL> inc)]
             (when gtcef? (reset! SNOBOL4clojure.env/<STAGE> :xt))
             (when (pos? lim) (swap! SNOBOL4clojure.env/&ERRLIMIT dec))
             (reset! SNOBOL4clojure.env/&ERRTYPE n)
             (fire-keyword! "ERRTYPE" n)
             (reset! SNOBOL4clojure.env/&ERRTEXT (ex-message e))
             (when h (reset! SNOBOL4clojure.env/<SETEXIT> nil))
-            (ex-info (ex-message e) (if h (assoc data :snobol/label h) (assoc data :snobol/to (if gtcef? @SNOBOL4clojure.env/<GTCEF> d))) e)))))))
+            (ex-info (ex-message e) (if h (assoc data :snobol/label h :snobol/serial k) (assoc data :snobol/to (if gtcef? @SNOBOL4clojure.env/<GTCEF> d))) e)))))))
 
 ;; f evaluated one failure point deeper: nil, failure, when an error in it fails this failure point
 (defn- failure-point [f]

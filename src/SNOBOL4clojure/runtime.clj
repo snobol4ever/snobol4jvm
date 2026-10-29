@@ -60,6 +60,13 @@
         (ex-info (SNOBOL4clojure.env/error-message 244) {:snobol/error 244}))
     (snobol-steplimit! n)))
 
+;; An error SPITBOL counts fatal (icv errft before erb) is trapped as any error is, but the third such ends the program whatever &ERRLIMIT is (sbl.min err07).
+(defn- fatal-error [n]
+  (let [msg (SNOBOL4clojure.env/error-message n)]
+    (if (< (long (swap! SNOBOL4clojure.env/<ERRFT> inc)) 3)
+      (ex-info msg {:snobol/error n})
+      (ex-info msg {:snobol/error n :snobol/abort true}))))
+
 (defn- exec-body [body]
   (try
     (or (nil? body) (EVAL! body))
@@ -130,17 +137,22 @@
      (label-addr [tgt] (or (saddr tgt) (throw (ex-info "goto undefined label" {:snobol/error 38}))))
      ;; Where control goes after a statement that succeeded (r) or failed: [address err]. A Goto-field error is thrown, to be trapped as a body's is.
      ;; CONTINUE resumes at the failure exit of the statement in error; ABORT lets the error end the program, as though no intercept had been set.
+     ;; CONTINUE goes on from the latest error only: an error no handler takes goes on at once and uses the continuation up, so a CONTINUE after it, or with no
+     ;; error before it, is "37 goto continue with no preceding error", a fatal error a handler armed again takes (sbl.min lcnt1, lcnt3; sbl -bf: SETEXIT('E')
+     ;; :(CONTINUE) with no error reaches E with &ERRTYPE 37; a handler whose own error goes untrapped and that then continues reaches the next handler with 37).
      (step [r goto err current]
        (let [g   (when (map? goto) goto)
              tgt (computed-target (if r (or (:G g) (:S g)) (or (:G g) (:F g))))
              nm  (label-name tgt)]
          (cond
-           (and err (clojure.core/= nm "CONTINUE"))
-           (let [g2   (:goto err)
-                 etgt (computed-target (when (map? g2) (or (:G g2) (:F g2))))]
-             (if etgt
-               (do (goto! etgt) [(label-addr etgt) nil])
-               [(saddr (inc ((:at err) 0))) nil]))
+           (clojure.core/= nm "CONTINUE")
+           (if (and err (clojure.core/= (:snobol/serial (ex-data (:ex err))) @SNOBOL4clojure.env/<ERRSERIAL>))
+             (let [g2   (:goto err)
+                   etgt (computed-target (when (map? g2) (or (:G g2) (:F g2))))]
+               (if etgt
+                 (do (goto! etgt) [(label-addr etgt) nil])
+                 [(saddr (inc ((:at err) 0))) nil]))
+             (throw (fatal-error 37)))
            (and err (clojure.core/= nm "ABORT"))
            (let [e ^clojure.lang.ExceptionInfo (:ex err)] (throw (ex-info (ex-message e) (assoc (ex-data e) :snobol/abort true))))
            tgt

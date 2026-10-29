@@ -6930,3 +6930,31 @@
                   "alt X=[x5z] A=[x5z]\nstmt A=[x7zyz]\nnested X=[xa3cz] A=[xa3cz] C=[a3c]\nfail X=[xa3cz] A=[xyz]\nparen 212\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; CONTINUE goes on from the latest error only: an error no handler takes goes on at once and uses the continuation up, so a CONTINUE after it, or with no error
+;; before it, is 37, which a handler armed again takes. The engine went on from an older error, or looked for a label CONTINUE (38). Expected output is sbl -bf's.
+(deftest continue-goes-on-from-the-latest-error-only
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 10\n"
+                   "        N = 0\n"
+                   "        SETEXIT('E0')                       :(CONTINUE)\n"
+                   "E0      OUTPUT = 'E0 ' &ERRTYPE ' ' &ERRLIMIT\n"
+                   "        SETEXIT('ERR')\n"
+                   "        Y = 1 / N                           :S(S1)F(F1)\n"
+                   "S1      OUTPUT = 'succ'                     :(N2)\n"
+                   "F1      OUTPUT = 'fail ' &ERRTYPE           :(N2)\n"
+                   "ERR     OUTPUT = 'ERR ' &ERRTYPE            :(ERR2)\n"
+                   "ERR2    Z = 2 / N\n"
+                   "        OUTPUT = 'after untrapped ' &ERRTYPE\n"
+                   "        SETEXIT('E37')                      :(CONTINUE)\n"
+                   "E37     OUTPUT = 'E37 ' &ERRTYPE ' ' &ERRLIMIT\n"
+                   "N2      SETEXIT('H3')\n"
+                   "        Y = 1 / N                           :S(S3)F(F3)\n"
+                   "S3      OUTPUT = 'succ3'                    :(END)\n"
+                   "F3      OUTPUT = 'fail3 ' &ERRTYPE          :(END)\n"
+                   "H3      OUTPUT = 'H3 ' &ERRTYPE\n"
+                   "        SETEXIT('H3')                       :(CONTINUE)\n"
+                   "END\n"))
+      (is (= "E0 37 9\nERR 14\nafter untrapped 14\nE37 37 6\nH3 14\nfail3 14\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

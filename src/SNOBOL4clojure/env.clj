@@ -118,6 +118,7 @@
 (def <STAGE> (atom :xt))
 (def <GTCEF> (atom 0))
 (def <ERRFT> (atom 0))   ; the fatal errors so far (sbl.min errft): at the third the program ends whatever &ERRLIMIT is
+(def <ERRSERIAL> (atom 0))   ; the errors so far that went on (sbl.min err07 sets r_cnt for each): CONTINUE goes on from the latest only
 (def <HOST0> (atom ""))   ; what HOST(0) returns: the -u text, or else the program's own arguments joined by blanks
 (def <ARGV>  (atom []))   ; the command line HOST(2, n) answers from: the engine's jar, then -main's arguments
 (def <ARGI>  (atom 0))    ; what HOST(3) returns: the index in <ARGV> of the program's first own argument
@@ -324,6 +325,7 @@
    (reset! <STAGE>    :xt)
    (reset! <GTCEF>    0)
    (reset! <ERRFT>    0)
+   (reset! <ERRSERIAL> 0)
    (reset! <OBJNO>    0)
    (reset! <LASTOUT>  nil)
    (reset! <ASSOC-LAST> {})
