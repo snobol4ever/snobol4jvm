@@ -6365,3 +6365,43 @@
                    "END\n"))
       (is (= "1 ab\n2 ba\n3 258\n4 258\n5 258\n6 256\n7 yz\n8 258\n9 abc\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A replacement's subject is a name: a value there is 212, in a statement and in a string EVAL compiles; and EVAL compiles its string as a statement is compiled,
+;; its constants folded (an error there is its error), and the error is raised in EVAL's failure point, so a label SETEXIT armed takes control. The engine
+;; compiled EVAL's string with no check, and a value as the subject threw a ClassCastException. Expected output is sbl -bf's.
+(deftest eval-compiles-its-string-as-a-statement-is-compiled
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 100\n"
+                   "        X = 'abc'\n"
+                   "        Y = 'def'\n"
+                   "        S = \" 'abc' 'b' = 'x'\"\n"
+                   "        CODE(S)                                 :F(B1)\n"
+                   "        OUTPUT = 'compiled: ' S                 :(N1)\n"
+                   "B1      OUTPUT = &ERRTYPE ': ' S\n"
+                   "N1      S = \" X Y 'b' = 'x'\"\n"
+                   "        CODE(S)                                 :F(B2)\n"
+                   "        OUTPUT = 'compiled: ' S                 :(N2)\n"
+                   "B2      OUTPUT = &ERRTYPE ': ' S\n"
+                   "N2      V = EVAL(\"X Y ? 'b' = 'c'\")             :F(B3)\n"
+                   "        OUTPUT = 'eval ok ' V                   :(N3)\n"
+                   "B3      OUTPUT = 'eval ' &ERRTYPE\n"
+                   "N3      V = EVAL(\"X ? 'b' = 'c'\")               :F(B4)\n"
+                   "        OUTPUT = 'eval2 ok [' V '] ' X          :(N4)\n"
+                   "B4      OUTPUT = 'eval2 ' &ERRTYPE\n"
+                   "N4      V = EVAL(\"1 + 1 = 3\")                   :F(B5)\n"
+                   "        OUTPUT = 'eval3 ok ' V                  :(N5)\n"
+                   "B5      OUTPUT = 'eval3 ' &ERRTYPE\n"
+                   "N5      V = EVAL(\"(1 / 0)\")                     :F(B6)\n"
+                   "        OUTPUT = 'eval4 ok ' V                  :(N6)\n"
+                   "B6      OUTPUT = 'eval4 ' &ERRTYPE\n"
+                   "N6      V = EVAL(\"SIZE(ARB)\")                   :F(B7)\n"
+                   "        OUTPUT = 'eval5 ok ' V                  :(N7)\n"
+                   "B7      OUTPUT = 'eval5 ' &ERRTYPE\n"
+                   "N7      SETEXIT(.H)\n"
+                   "        V = EVAL('1 + 1 = 3')\n"
+                   "        OUTPUT = 'not here'                     :(END)\n"
+                   "H       OUTPUT = 'handler ' &ERRTYPE\n"
+                   "END\n"))
+      (is (= "212:  'abc' 'b' = 'x'\ncompiled:  X Y 'b' = 'x'\neval 212\neval2 ok [acc] acc\neval3 212\neval4 14\neval5 189\nhandler 212\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

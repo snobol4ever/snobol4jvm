@@ -1125,7 +1125,13 @@
 
 ;; A compile error in the text EVAL or CODE is given makes it fail, with &ERRTYPE and &ERRTEXT set and one of &ERRLIMIT spent when it is above 0; it is never fatal
 ;; (sbl -bf: EVAL('1.797693135E+308') under &ERRLIMIT = 0 fails with &ERRTYPE 231; CODE(' X = (') fails with 226, "syntax error: missing right paren").
+;; While EVAL compiles its string, a compile error is raised as an error is, in EVAL's failure point (evaluated-or-fail): under &ERRLIMIT the label SETEXIT armed
+;; takes control, as SPITBOL's error section takes it for an error while EVAL compiles (sbl.min err04; sbl -bf: SETEXIT('E') then EVAL("X Y ? 'b' = 'c'") goes to
+;; E with &ERRTYPE 212); with no label armed EVAL fails as before.
+(def ^:private ^:dynamic *raise-compile-errors* false)
+
 (defn- compile-failed! [n text]
+  (when *raise-compile-errors* (throw (ex-info text {:snobol/error n})))
   (reset! SNOBOL4clojure.env/&ERRTYPE n)
   (fire-keyword! "ERRTYPE" n)
   (reset! SNOBOL4clojure.env/&ERRTEXT text)
@@ -1134,11 +1140,15 @@
 
 ;; The IR of an expression in a string (folded to upper case while &CASE is not 0), or nil when the string is not a legal expression, which fails with the error
 ;; SPITBOL's scan names for it as the replacement of an assignment (syntax.clj), 220 when the scan finds none.
+;; The expression is compiled as a statement's is: a value where a name is wanted is 212, and an error folding its constants is its error (sbl -bf:
+;; EVAL("X Y ? 'b' = 'c'") and EVAL('1 + 1 = 3') are 212, EVAL('(1 / 0)') is 14, EVAL('SIZE(ARB)') 189; compiler.clj fold-error).
 (defn- compile-expression [^String s]
   (let [p (parse-expression (if (zero? (long @&CASE)) s (fold-case s)))]
     (if (instance? instaparse.gll.Failure p)
       (let [n (or (:error (syntax-error (str " X = " s))) 220)] (compile-failed! n (SNOBOL4clojure.env/error-message n)))
-      (first (emitter p)))))
+      (let [ir (first (emitter p))
+            n  ((requiring-resolve 'SNOBOL4clojure.compiler/fold-error) ir)]
+        (if n (compile-failed! n (SNOBOL4clojure.env/error-message n)) ir)))))
 
 (defn- compile-or-fail [^String s]
   (try (compile-expression s)
@@ -1177,7 +1187,7 @@
 (defn EVAL [X]
   (cond
     (deferred? X) (evaluated-or-fail (second X))
-    (string? X)   (let [ir (compile-or-fail X)] (when-not (nil? ir) (evaluated-or-fail #(EVAL! ir))))
+    (string? X)   (evaluated-or-fail #(when-some [ir (binding [*raise-compile-errors* true] (compile-or-fail X))] (EVAL! ir)))
     (number? X)   X
     (and (instance? NAME X) (symbol? (.n ^NAME X))) (EVAL (name (.n ^NAME X)))
     (or (textless? X) (and (list? X) (clojure.core/= "PATTERN" (SNOBOL4clojure.env/DATATYPE X))))

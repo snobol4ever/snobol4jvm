@@ -187,8 +187,8 @@
   '#{SIZE LEN ANY NOTANY SPAN BREAK BREAKX POS RPOS TAB RTAB ARBNO FENCE REMDR CHAR TRIM REPLACE LPAD RPAD REVERSE DIFFER IDENT INTEGER DATATYPE LGT})
 
 ;; -- Names ----------------------------------------------------------------------
-;; Where a name is wanted -- the operand of unary . @ and &, the right of binary . and $, the subject of an assignment, a goto's operand -- an expression that
-;; gives a value is "212 syntax error: value used where name is required" as the statement is compiled, found before an error folding what is inside it, and
+;; Where a name is wanted -- the operand of unary . @ and &, the right of binary . and $, the subject of an assignment or a replacement, a goto's operand -- an
+;; expression that gives a value is "212 syntax error: value used where name is required" as the statement is compiled, found before an error folding what is inside it, and
 ;; operands left to right (sbl -bf: A . (1 / 0) is 212 and (1 / 0) . A is 14; F(.('a' + 1), 1 / 0) is 212 and F(1 / 0, .('a' + 1)) 14; :(1 + 2), :('L'),
 ;; :(X ? 'L') and (1 / 0) = 5 are 212). A name is a variable, an element, a call, $X, *X, &K, or an operator SPITBOL leaves for OPSYN, which is called as a
 ;; function is (unary ! % / # = |, binary # % & ~ @: :(!X) and :(X @ Y) compile); the operators SPITBOL defines give values, and so do a literal, a
@@ -218,6 +218,7 @@
     (cond (and (= 1 n) ('#{. at &} op)) #{0}
           (and (= 2 n) ('#{. $} op))    #{1}
           (and (= 2 n) (= '= op))       #{0}
+          (and (= 3 n) (= '?= op))      #{0}
           :else                          #{})))
 
 ;; The constants beyond literals and keywords, as sbl -bf's compiler takes them (sbl.min svkvc; CODE refuses each): the seven protected pattern variables
@@ -276,7 +277,7 @@
               [false nil]))))
       :else [false nil])))
 
-(defn- fold-error
+(defn fold-error
   "The number of the error folding the statement body raises, then its goto's operands, or nil."
   ([body] (fold-error body nil))
   ([body goto]
