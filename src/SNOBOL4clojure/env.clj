@@ -492,12 +492,15 @@
       (if at (read-line-counted rdr at) (.readLine rdr)))))
 
 ;; What a name calls: the program's own variable or, failing that, the engine's built-in of that name (a function among them). INVOKE resolves a call with it.
+;; The engine's own names that are no SPITBOL function are not built-ins here, so a call of one is "22 undefined function" (sbl -bf, APPLY of each: the pattern
+;; variables ARB BAL FAIL REM SUCCEED; BOL EOL NAME NSPAN REAL; FULLMATCH GLOBALS INVOKE MATCH RUN SEARCH).
+(def ^:private no-function '#{ARB BAL FAIL REM SUCCEED BOL EOL NAME NSPAN REAL FULLMATCH GLOBALS INVOKE MATCH RUN SEARCH})
 (declare $$)
 (defn $$fn [N]
   (let [sym (symbol (name N))]
     (if-let [v (find @<VARS> sym)]
       (val v)
-      (let [resolved (ns-resolve (find-ns 'SNOBOL4clojure.core) sym)]
+      (let [resolved (when-not (no-function sym) (ns-resolve (find-ns 'SNOBOL4clojure.core) sym))]
         (if (instance? clojure.lang.Var resolved) (var-get resolved) ($$ N))))))
 
 (defn $$ [N]

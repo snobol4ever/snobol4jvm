@@ -6779,3 +6779,33 @@
                    "END\n"))
       (is (= "D failed 314\nin L1 19\nERROR 7\nold L2\nold L3\nE 20\nERROR 38\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A call of a name SPITBOL has no function for is 22 undefined function: REAL, the pattern variables ARB BAL FAIL REM SUCCEED, and the engine's own names (MATCH,
+;; SEARCH, NAME, ...); FAIL stays a pattern, and a DATA field may be named REAL. The engine called its own functions of those names. Expected output is sbl -bf's.
+(deftest a-name-spitbol-has-no-function-for-is-no-function
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 100\n"
+                   "        X = REAL(1)                  :S(A1)\n"
+                   "        OUTPUT = 'REAL ' &ERRTYPE\n"
+                   "A1      X = FAIL()                   :S(A2)\n"
+                   "        OUTPUT = 'FAIL ' &ERRTYPE\n"
+                   "A2      X = BAL()                    :S(A3)\n"
+                   "        OUTPUT = 'BAL ' &ERRTYPE\n"
+                   "A3      NAMES = 'REAL ARB BAL REM SUCCEED BOL EOL '\n"
+                   "        NAMES = NAMES 'NAME NSPAN MATCH SEARCH FULLMATCH INVOKE '\n"
+                   "NEXT    NAMES ? BREAK(' ') . F ' ' =   :F(A5)\n"
+                   "        X = APPLY(F, 'a')                :S(NEXT)\n"
+                   "        R = R F '=' &ERRTYPE ' '         :(NEXT)\n"
+                   "A5      OUTPUT = R\n"
+                   "        'abc' ? FAIL                 :S(A6)\n"
+                   "        OUTPUT = 'FAIL pattern fails'\n"
+                   "A6      DATA('PT(REAL,IMAG)')\n"
+                   "        P = PT(3.2, 2.)\n"
+                   "        OUTPUT = 'field ' REAL(P) ' ' IMAG(P)\n"
+                   "END\n"))
+      (is (= (str "REAL 22\nFAIL 22\nBAL 22\n"
+                  "REAL=22 ARB=22 BAL=22 REM=22 SUCCEED=22 BOL=22 EOL=22 NAME=22 NSPAN=22 MATCH=22 SEARCH=22 FULLMATCH=22 INVOKE=22 \n"
+                  "FAIL pattern fails\nfield 3.2 2.\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

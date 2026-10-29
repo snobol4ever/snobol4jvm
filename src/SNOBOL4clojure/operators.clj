@@ -284,7 +284,6 @@
     FENCE   (FENCE (if (seq args) (first args) ε))
     ARBNO   (ARBNO  (first args))
     ABORT   ABORT
-    BAL     BAL
     CONJ    (CONJ   (first args) (second args))
     EQ      (EQ     (first args) (second args))
     NE      (NE     (first args) (second args))
@@ -292,7 +291,6 @@
     LT      (LT     (first args) (second args))
     GE      (GE     (first args) (second args))
     GT      (GT     (first args) (second args))
-    FAIL    FAIL
     ;; Arithmetic — coerce to SNOBOL numeric type (integer if both integer, else real)
     ;; unary + is affirmation (error 4), unary - negation (error 10)
     +       (if (clojure.core/= 1 (count args))
@@ -599,7 +597,8 @@
     SQRT    (SQRT   (first args))
     TAN     (TAN    (first args))
     INTEGER (integer-predicate (first args))
-    REAL    (REAL    (first args))
+    ;; SPITBOL has no function REAL (the data type is spelled in DATATYPE and CONVERT), and BAL and FAIL are pattern variables only: a call of one is "22 undefined
+    ;; function" (sbl -bf, and env/$$fn for the names core defines; a DATA field may be named REAL). ABORT(), ASCII, STRING and CONJ, which sbl lacks too, stay.
     STRING  (STRING  (first args))
     SIZE    (SIZE   (first args))
     TRIM    (TRIM   (first args))
