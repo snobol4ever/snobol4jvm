@@ -6859,3 +6859,33 @@
                    "END\n"))
       (is (= "unequal 171\nnull 171\nunequal before first 171\nfirst 170\nsecond 169\nthird 168\nxycyx\nabc\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; CONVERT of an EXPRESSION to PATTERN is a pattern that evaluates the expression each time it is matched, as *X is in a pattern. The engine failed the conversion.
+;; Expected output is sbl -bf's.
+(deftest an-expression-converts-to-a-pattern
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        S = 'i'\n"
+                   "        E = CONVERT(S, 'EXPRESSION')                :S(A)\n"
+                   "        OUTPUT = '1 fail'                           :(B)\n"
+                   "A       OUTPUT = '1 ' DATATYPE(E)\n"
+                   "B       P = CONVERT(E, 'PATTERN')                   :S(C)\n"
+                   "        OUTPUT = '2 fail'                           :(D)\n"
+                   "C       OUTPUT = '2 ' DATATYPE(P)\n"
+                   "D       P = CONVERT(*X, 'PATTERN')                  :S(F)\n"
+                   "        OUTPUT = '3 fail'                           :(G)\n"
+                   "F       OUTPUT = '3 ' DATATYPE(P)\n"
+                   "G       X = 'q'\n"
+                   "        'aqb' ? P . R                               :S(H)\n"
+                   "        OUTPUT = '4 fail'                           :(I)\n"
+                   "H       OUTPUT = '4 ' R\n"
+                   "I       X = 'b'\n"
+                   "        'aqb' ? P . R                               :S(J)\n"
+                   "        OUTPUT = '5 fail'                           :(END)\n"
+                   "J       OUTPUT = '5 ' R\n"
+                   "        I = 'zz'\n"
+                   "        'xyzzy' ? CONVERT(CONVERT('I', 'EXPRESSION'), 'PATTERN') . R  :F(END)\n"
+                   "        OUTPUT = '6 ' R\n"
+                   "END\n"))
+      (is (= "1 EXPRESSION\n2 PATTERN\n3 PATTERN\n4 q\n5 b\n6 zz\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

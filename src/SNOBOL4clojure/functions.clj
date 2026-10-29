@@ -235,6 +235,10 @@
       ;; EXPRESSION stays EXPRESSION
       (and (clojure.core/= from "EXPRESSION") (clojure.core/= to "EXPRESSION")) x
 
+      ;; an EXPRESSION to PATTERN is a pattern that evaluates it when matched, as *X is in a pattern (sbl -bf: CONVERT(*X, 'PATTERN') is a PATTERN, and
+      ;; 'aqb' ? CONVERT(*X, 'PATTERN') . R matches X's value at the match)
+      (and (clojure.core/= from "EXPRESSION") (clojure.core/= to "PATTERN")) (list 'SEQ x)
+
       ;; CODE stays CODE
       (and (clojure.core/= from "CODE") (clojure.core/= to "CODE")) x
 
