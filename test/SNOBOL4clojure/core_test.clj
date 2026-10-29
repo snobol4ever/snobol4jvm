@@ -6537,3 +6537,57 @@
                    "not a statement\n"))
       (is (= "a 12\nb 14 6\nmain 7\nc 15\nd 15\nmain 10\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; SPITBOL's compiler evaluates a call of a function whose svblk carries svpre, its arguments constants, the mathematical functions among them: an error there
+;; is the statement's compile error. The engine raised these only when the statement ran. Expected output is sbl -bf's.
+(deftest the-mathematical-functions-are-evaluated-as-the-statement-is-compiled
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 100\n"
+                   "        C = CODE(\" X = SQRT(-0.5)\")    :S(N0)\n"
+                   "        OUTPUT = 'SQRT ' &ERRTYPE   :(M0)\n"
+                   "N0      OUTPUT = 'SQRT compiled'\n"
+                   "M0\n"
+                   "        C = CODE(\" X = EXP(1000000)\")    :S(N1)\n"
+                   "        OUTPUT = 'EXP ' &ERRTYPE   :(M1)\n"
+                   "N1      OUTPUT = 'EXP compiled'\n"
+                   "M1\n"
+                   "        C = CODE(\" X = LN(0)\")    :S(N2)\n"
+                   "        OUTPUT = 'LN ' &ERRTYPE   :(M2)\n"
+                   "N2      OUTPUT = 'LN compiled'\n"
+                   "M2\n"
+                   "        C = CODE(\" X = LN(-1)\")    :S(N3)\n"
+                   "        OUTPUT = 'LN-neg ' &ERRTYPE   :(M3)\n"
+                   "N3      OUTPUT = 'LN-neg compiled'\n"
+                   "M3\n"
+                   "        C = CODE(\" X = SIN('a')\")    :S(N4)\n"
+                   "        OUTPUT = 'SIN ' &ERRTYPE   :(M4)\n"
+                   "N4      OUTPUT = 'SIN compiled'\n"
+                   "M4\n"
+                   "        C = CODE(\" X = COS('a')\")    :S(N5)\n"
+                   "        OUTPUT = 'COS ' &ERRTYPE   :(M5)\n"
+                   "N5      OUTPUT = 'COS compiled'\n"
+                   "M5\n"
+                   "        C = CODE(\" X = TAN('a')\")    :S(N6)\n"
+                   "        OUTPUT = 'TAN ' &ERRTYPE   :(M6)\n"
+                   "N6      OUTPUT = 'TAN compiled'\n"
+                   "M6\n"
+                   "        C = CODE(\" X = ATAN('a')\")    :S(N7)\n"
+                   "        OUTPUT = 'ATAN ' &ERRTYPE   :(M7)\n"
+                   "N7      OUTPUT = 'ATAN compiled'\n"
+                   "M7\n"
+                   "        C = CODE(\" X = CHOP('a')\")    :S(N8)\n"
+                   "        OUTPUT = 'CHOP ' &ERRTYPE   :(M8)\n"
+                   "N8      OUTPUT = 'CHOP compiled'\n"
+                   "M8\n"
+                   "        C = CODE(\" X = SQRT(4)\")    :S(N9)\n"
+                   "        OUTPUT = 'SQRT-4 ' &ERRTYPE   :(M9)\n"
+                   "N9      OUTPUT = 'SQRT-4 compiled'\n"
+                   "M9\n"
+                   "        C = CODE(\" X = SQRT(N)\")    :S(N10)\n"
+                   "        OUTPUT = 'SQRT-N ' &ERRTYPE   :(M10)\n"
+                   "N10      OUTPUT = 'SQRT-N compiled'\n"
+                   "M10\n"
+                   "END\n"))
+      (is (= "SQRT 314\nEXP 305\nLN 307\nLN-neg 315\nSIN 308\nCOS 303\nTAN 309\nATAN 301\nCHOP 302\nSQRT-4 compiled\nSQRT-N compiled\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

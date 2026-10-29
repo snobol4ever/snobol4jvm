@@ -199,8 +199,13 @@
 ;; SUBSTR, ARRAY and CONVERT were seen not to; within a deferred *X the constants fold, and *X itself is no constant: *(1 / 0) is 14).
 (def ^:private constant-keywords '#{ABORT ALPHABET ARB BAL FAIL FENCE LCASE REM SUCCEED UCASE})
 (def ^:private folded-operators '#{+ - * / **})
+;; The functions are those whose svblk carries svpre, "the compiler [may] preevaluate a call to the associated system function if all the arguments are themselves
+;; constants. functions in this category must have no side effects and must never cause failure. the call may generate an error condition" (sbl.min svpre): the
+;; mathematical ones among them too (sbl -bf, CODE: SQRT(-0.5) is 314, EXP(1000000) 305, LN(0) 307, LN(-1) 315, SIN('a') 308, COS('a') 303, TAN('a') 309,
+;; ATAN('a') 301, CHOP('a') 302).
 (def ^:private folded-functions
-  '#{SIZE LEN ANY NOTANY SPAN BREAK BREAKX POS RPOS TAB RTAB ARBNO FENCE REMDR CHAR TRIM REPLACE LPAD RPAD REVERSE DIFFER IDENT INTEGER DATATYPE LGT})
+  '#{SIZE LEN ANY NOTANY SPAN BREAK BREAKX POS RPOS TAB RTAB ARBNO FENCE REMDR CHAR TRIM REPLACE LPAD RPAD REVERSE DIFFER IDENT INTEGER DATATYPE LGT
+     SQRT EXP LN SIN COS TAN ATAN CHOP})
 
 ;; -- Names ----------------------------------------------------------------------
 ;; Where a name is wanted -- the operand of unary . @ and &, the right of binary . and $, the subject of an assignment or a replacement, a goto's operand -- an
