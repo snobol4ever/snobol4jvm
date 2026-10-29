@@ -60,8 +60,13 @@
 
 (defn SIZE    [s]         (count (str-arg s 189)))
 (defn REPLACE [s1 s2 s3]
-  ;; Replace chars in s1: each char of s2 mapped to corresponding char of s3
-  (let [s3 (str-arg s3 168) s2 (str-arg s2 169) s1 (str-arg s1 170)]
+  ;; Replace chars in s1: each char of s2 mapped to corresponding char of s3. The third and second arguments convert first, then a second argument that is null or
+  ;; not as long as the third is "171 null or unequally long 2nd, 3rd args to replace", before the first converts (sbl.min s_rpl: srpl6; sbl -bf: REPLACE('abc',
+  ;; 'ab', 'x'), REPLACE('abc', '', '') and REPLACE(ARRAY(1), 'a', 'bc') are 171, REPLACE(ARRAY(1), 'a', 'b') is 170)
+  (let [s3 (str-arg s3 168) s2 (str-arg s2 169)
+        _  (when (or (zero? (count s2)) (not= (count s2) (count s3)))
+             (throw (ex-info "null or unequally long 2nd, 3rd args to replace" {:snobol/error 171})))
+        s1 (str-arg s1 170)]
     (apply str (map #(let [i (.indexOf ^String s2 (str %))]
                        (if (>= i 0) (.charAt ^String s3 i) %))
                     s1))))

@@ -6834,3 +6834,28 @@
                    "END\n"))
       (is (= "E1 [ok] 0\nE2 [ok] 0\nC1 EXPRESSION []\nC2 EXPRESSION []\nP [b]\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; REPLACE converts its third and second arguments, then a second argument that is null or not as long as the third is 171, before the first converts. The engine
+;; had no 171, and a second argument longer than the third threw StringIndexOutOfBoundsException. Expected output is sbl -bf's.
+(deftest replace-needs-a-second-argument-as-long-as-its-third
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 10\n"
+                   "        AB = 'ab'; X = 'x'; N = ''; A = ARRAY(1); BC = 'bc'; B = 'b'; L = 'a'\n"
+                   "        V = REPLACE('abc', AB, X)    :S(R1)\n"
+                   "        OUTPUT = 'unequal ' &ERRTYPE\n"
+                   "R1      V = REPLACE('abc', N, N)     :S(R2)\n"
+                   "        OUTPUT = 'null ' &ERRTYPE\n"
+                   "R2      V = REPLACE(A, L, BC)        :S(R3)\n"
+                   "        OUTPUT = 'unequal before first ' &ERRTYPE\n"
+                   "R3      V = REPLACE(A, L, B)         :S(R4)\n"
+                   "        OUTPUT = 'first ' &ERRTYPE\n"
+                   "R4      V = REPLACE('abc', A, BC)    :S(R5)\n"
+                   "        OUTPUT = 'second ' &ERRTYPE\n"
+                   "R5      V = REPLACE('abc', AB, A)    :S(R6)\n"
+                   "        OUTPUT = 'third ' &ERRTYPE\n"
+                   "R6      OUTPUT = REPLACE('abcba', AB, 'xy')\n"
+                   "        OUTPUT = REPLACE('abc', &ALPHABET, &ALPHABET)\n"
+                   "END\n"))
+      (is (= "unequal 171\nnull 171\nunequal before first 171\nfirst 170\nsecond 169\nthird 168\nxycyx\nabc\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
