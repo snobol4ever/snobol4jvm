@@ -151,7 +151,9 @@
 ;; Π       — pattern node
 ;; start-Δ — the anchor position for the returned span start
 (defn engine [Σ Δ Π start-Δ full-subject]
-  (loop [action :proceed, ζ [Σ Δ ε ε Π 1 []], Ω []]
+  ;; the root frame stands at the start position, so a zero-width node as the whole pattern (@X, a bare FENCE) reads its cursor there (sbl -bf: A B ? @X
+  ;; sets X to 0)
+  (loop [action :proceed, ζ [Σ Δ Σ Δ Π 1 []], Ω []]
     (let [λ (ζλ ζ)]
       (animate action full-subject ζ)
       (case λ

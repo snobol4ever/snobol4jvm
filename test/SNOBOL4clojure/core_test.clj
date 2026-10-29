@@ -6303,3 +6303,24 @@
                    "END\n"))
       (is (= "zero PATTERN\nzero-match []\nnegative STRING str\ndeferred-match [aa]\nstring abab []\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A cursor assignment as the whole pattern sets its variable to the position the match starts at. The root frame held no position, so A B ? @X threw a
+;; ClassCastException. Expected output is sbl -bf's.
+(deftest a-cursor-assignment-alone-reads-the-start
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        A = 'xyz'\n"
+                   "        B = 'abc'\n"
+                   "        A B ? @X                       :S(S1)F(F1)\n"
+                   "S1      OUTPUT = '1 succ X=' X         :(N2)\n"
+                   "F1      OUTPUT = '1 fail'\n"
+                   "N2      'abc' @Y                       :F(END)\n"
+                   "        OUTPUT = '2 [' Y ']'\n"
+                   "        &ANCHOR = 0\n"
+                   "        'abc' ? (@Z 'c')\n"
+                   "        OUTPUT = '3 [' Z ']'\n"
+                   "        'abc' ? @Z . V\n"
+                   "        OUTPUT = '4 [' Z '] [' V ']'\n"
+                   "END\n"))
+      (is (= "1 succ X=0\n2 [0]\n3 [2]\n4 [0] []\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
