@@ -22,7 +22,7 @@
             [SNOBOL4clojure.emitter   :refer [emitter]]
             [SNOBOL4clojure.dump      :refer [dump-text]]
             [SNOBOL4clojure.grammar   :refer [parse-expression]]
-            [SNOBOL4clojure.syntax    :refer [syntax-error]]
+            [SNOBOL4clojure.syntax    :refer [expression-end ends-in-mark?]]
             [SNOBOL4clojure.trace     :refer [fire-value! fire-access! fire-call! fire-return! fire-keyword! trace! stoptr!]])
   (:refer-clojure :exclude [= + - * / num]))
 
@@ -612,7 +612,7 @@
     CONVERT   (let [[x t] args]
                 (if (clojure.core/= "EXPRESSION" (clojure.string/upper-case (str t)))
                   (cond (deferred? x) x
-                        (string? x)   (when-some [ir (compile-expression x)] (expression-of ir))
+                        (string? x)   (when-not (ends-in-mark? x) (when-some [ir (compile-expression x)] (expression-of ir)))
                         (number? x)   (expression-of x)
                         :else         (CONVERT x t))
                   (CONVERT x t)))
@@ -839,7 +839,8 @@
         (cond
           ;; a variable deferred, *X, is X; any other expression was compiled to give a value (sbl -bf: .EVAL(*X) is .X, .EVAL(*$'X') is 249)
           (deferred? x)  (if (symbol? (:defer-var (meta x))) (:defer-var (meta x)) (when-not (nil? (evaluated-or-fail (second x))) (returned-value!)))
-          (string? x)    (let [ir (compile-or-fail x)] (when-not (nil? ir) (evaluated-or-fail #(name-of ir))))
+          (string? x)    (do (when (ends-in-mark? x) (throw (ex-info "eval argument is not expression" {:snobol/error 103})))
+                             (let [ir (compile-or-fail x)] (when-not (nil? ir) (evaluated-or-fail #(name-of ir)))))
           :else          (returned-value!)))
       :else
       (let [r (apply INVOKE fsym args)]
@@ -1138,20 +1139,29 @@
   (when (pos? (long @SNOBOL4clojure.env/&ERRLIMIT)) (swap! SNOBOL4clojure.env/&ERRLIMIT dec))
   nil)
 
-;; The IR of an expression in a string (folded to upper case while &CASE is not 0), or nil when the string is not a legal expression, which fails with the error
-;; SPITBOL's scan names for it as the replacement of an assignment (syntax.clj), 220 when the scan finds none.
+;; The IR of an expression in a string (folded to upper case while &CASE is not 0), or nil when the string is not a legal expression. A string the parser refuses
+;; is scanned as SPITBOL's scan reads it (syntax.clj expression-end): the syntax error the scan meets first is its error; an expression that ends before the string
+;; does, at a colon or a semicolon outside every bracket, is the error early, which EVAL gives as "103 eval argument is not expression", and CONVERT, giving none,
+;; fails with &ERRTYPE and &ERRLIMIT as they were (sbl.min gtexp: "error if not end of image"; sbl -bf: EVAL('4 :(L)'), EVAL('4; 5') and EVAL(' B = 4 :S(OK)')
+;; fail with 103, EVAL('4 + ; ') with 221, EVAL('(4 :(L))') with 226; CONVERT('4 :(L)', 'EXPRESSION') and CONVERT('0:35', 'EXPRESSION') fail with nothing set);
+;; 220 when the scan finds neither.
 ;; The expression is compiled as a statement's is: a value where a name is wanted is 212, and an error folding its constants is its error (sbl -bf:
 ;; EVAL("X Y ? 'b' = 'c'") and EVAL('1 + 1 = 3') are 212, EVAL('(1 / 0)') is 14, EVAL('SIZE(ARB)') 189; compiler.clj fold-error).
-(defn- compile-expression [^String s]
-  (let [p (parse-expression (if (zero? (long @&CASE)) s (fold-case s)))]
-    (if (instance? instaparse.gll.Failure p)
-      (let [n (or (:error (syntax-error (str " X = " s))) 220)] (compile-failed! n (SNOBOL4clojure.env/error-message n)))
-      (let [ir (first (emitter p))
-            n  ((requiring-resolve 'SNOBOL4clojure.compiler/fold-error) ir)]
-        (if n (compile-failed! n (SNOBOL4clojure.env/error-message n)) ir)))))
+(defn- compile-expression
+  ([s] (compile-expression s nil))
+  ([^String s early]
+   (let [p (parse-expression (if (zero? (long @&CASE)) s (fold-case s)))]
+     (if (instance? instaparse.gll.Failure p)
+       (let [{n :error i :end} (expression-end s)
+             n (cond n n (< (long i) (count s)) early :else 220)]
+         (when n (compile-failed! n (SNOBOL4clojure.env/error-message n))))
+       (let [ir (first (emitter p))
+             n  ((requiring-resolve 'SNOBOL4clojure.compiler/fold-error) ir)]
+         (if n (compile-failed! n (SNOBOL4clojure.env/error-message n)) ir))))))
 
+;; EVAL's compilation: an expression that ends early is 103 (sbl.min s_evl: "err 103,eval argument is not expression" on gtexp's error exit).
 (defn- compile-or-fail [^String s]
-  (try (compile-expression s)
+  (try (compile-expression s 103)
        (catch clojure.lang.ExceptionInfo e
          (let [{n :snobol/error c :snobol/compile} (ex-data e)]
            (when-not c (throw e))
@@ -1187,7 +1197,11 @@
 (defn EVAL [X]
   (cond
     (deferred? X) (evaluated-or-fail (second X))
-    (string? X)   (evaluated-or-fail #(when-some [ir (binding [*raise-compile-errors* true] (compile-or-fail X))] (EVAL! ir)))
+    ;; a string ending in a colon or a semicolon is refused before it is compiled, so 103 is an error at run time, fatal at &ERRLIMIT 0 (sbl -bf: EVAL('4 ;')
+    ;; and .EVAL('X ;') end the program with 103; under &ERRLIMIT the label SETEXIT armed takes it)
+    (string? X)   (if (ends-in-mark? X)
+                    (throw (ex-info "eval argument is not expression" {:snobol/error 103}))
+                    (evaluated-or-fail #(when-some [ir (binding [*raise-compile-errors* true] (compile-or-fail X))] (EVAL! ir))))
     (number? X)   X
     (and (instance? NAME X) (symbol? (.n ^NAME X))) (EVAL (name (.n ^NAME X)))
     (or (textless? X) (and (list? X) (clojure.core/= "PATTERN" (SNOBOL4clojure.env/DATATYPE X))))

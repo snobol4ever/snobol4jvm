@@ -6405,3 +6405,46 @@
                    "END\n"))
       (is (= "212:  'abc' 'b' = 'x'\ncompiled:  X Y 'b' = 'x'\neval 212\neval2 ok [acc] acc\neval3 212\neval4 14\neval5 189\nhandler 212\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A string EVAL or CONVERT compiles is one expression to its end: one whose last character is a colon or a semicolon is refused before it is compiled, so
+;; EVAL raises 103 at run time and CONVERT fails; one whose expression ends earlier, at a colon or a semicolon outside every bracket, fails EVAL with 103 as
+;; it compiles and fails CONVERT with nothing set; a syntax error the scan meets first is its error. The engine read such text as a statement, 220 or a
+;; goto's error. Expected output is sbl -bf's (sbl.min gtexp).
+(deftest eval-and-convert-take-one-expression-to-its-end
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        R = EVAL('4 :(L)') 'succ'                       :S(A)\n"
+                   "        R = 'fail ' &ERRTYPE\n"
+                   "A       S = EVAL(' B = 4 :S(OK)') 'succ'                :S(B)\n"
+                   "        S = 'fail ' &ERRTYPE\n"
+                   "B       T = EVAL('4; 5') 'succ'                         :S(C)\n"
+                   "        T = 'fail ' &ERRTYPE\n"
+                   "C       U = EVAL('4 + ; ') 'succ'                       :S(D)\n"
+                   "        U = 'fail ' &ERRTYPE\n"
+                   "D       V = EVAL('(4 :(L))') 'succ'                     :S(E)\n"
+                   "        V = 'fail ' &ERRTYPE\n"
+                   "E       W = EVAL(\"'a:b;c'\")\n"
+                   "        OUTPUT = R '|' S '|' T '|' U '|' V '|' W\n"
+                   "        &ERRLIMIT = 10\n"
+                   "        X = EVAL('4 ;') 'succ'                          :S(F)\n"
+                   "        X = 'error ' &ERRTYPE ' ' &ERRLIMIT\n"
+                   "F       Y = EVAL(':') 'succ'                            :S(G)\n"
+                   "        Y = 'error ' &ERRTYPE ' ' &ERRLIMIT\n"
+                   "G       OUTPUT = X '|' Y\n"
+                   "        SETEXIT(.H)\n"
+                   "        Z = EVAL('X ;')\n"
+                   "        OUTPUT = 'not here'                             :(END)\n"
+                   "H       OUTPUT = 'handler ' &ERRTYPE ' ' &ERRLIMIT\n"
+                   "        V = CONVERT('4 +', 'EXPRESSION')                :S(END)\n"
+                   "        OUTPUT = '1 ' &ERRTYPE ' ' &ERRLIMIT\n"
+                   "        V = CONVERT('4 :(L)', 'EXPRESSION')             :S(END)\n"
+                   "        OUTPUT = '2 ' &ERRTYPE ' ' &ERRLIMIT\n"
+                   "        V = CONVERT('4 + ;', 'EXPRESSION')              :S(END)\n"
+                   "        OUTPUT = '3 ' &ERRTYPE ' ' &ERRLIMIT\n"
+                   "        V = CONVERT('(4 :(L))', 'EXPRESSION')           :S(END)\n"
+                   "        OUTPUT = '4 ' &ERRTYPE ' ' &ERRLIMIT\n"
+                   "        V = CONVERT('0:35', 'EXPRESSION')               :S(END)\n"
+                   "        OUTPUT = '5 ' &ERRTYPE ' ' &ERRLIMIT\n"
+                   "END\n"))
+      (is (= "fail 103|fail 103|fail 103|fail 221|fail 226|a:b;c\nerror 103 9|error 103 8\nhandler 103 7\n1 221 6\n2 221 6\n3 221 6\n4 226 5\n5 226 5\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

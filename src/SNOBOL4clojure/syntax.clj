@@ -188,3 +188,15 @@
                 :else            (fail! 220 m)))))))
     (catch clojure.lang.ExceptionInfo e
       (when-let [n (::error (ex-data e))] {:error n :column (inc (or (::at (ex-data e)) 0))}))))
+
+;; The text EVAL or CONVERT compiles is one expression, scanned to its end (sbl.min gtexp: expan builds the expression, then "error if not end of image").
+;; {:error n} for the syntax error the scan meets first, else {:end i}, the index where the expression ends: the end of s, or a colon or a semicolon outside every
+;; bracket before it.
+(defn expression-end [^String s]
+  (try {:end (expression s 0 {:top true})}
+       (catch clojure.lang.ExceptionInfo e (when-let [n (::error (ex-data e))] {:error n}))))
+
+;; A colon or a semicolon can end an expression in a statement, but "they are invalid as terminators for a string that is being converted to expression form", so
+;; a string whose last character is one is refused before it is compiled (sbl.min gtexp).
+(defn ends-in-mark? [^String s]
+  (let [n (.length s)] (and (pos? n) (contains? #{\: \;} (.charAt s (dec n))))))
