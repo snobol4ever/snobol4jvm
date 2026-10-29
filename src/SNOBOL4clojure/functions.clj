@@ -869,6 +869,9 @@
 ;; descending for RSORT, so entries that tie keep the order they had. The result is a new array.
 
 
+;; The column of a two-dimensional array is an integer within the second dimension's bounds, its lower bound when omitted, else "258 sort/rsort 2nd arg out of
+;; range or non-integer"; a one-dimensional array takes no column; anything but a table or such an array is "256 sort/rsort 1st arg not suitable array or table"
+;; (sbl.min sorta; sbl -bf: RSORT(T, 3) of a table, whose array has two columns, is 258).
 (defn- sort-array
   "A new array with the rows of arr stably sorted on column col."
   [arr col descending?]
@@ -876,10 +879,15 @@
         lo1    (first (first dims))
         hi1    (second (first dims))
         two-d? (clojure.core/= 2 (count dims))
-        cols   (when two-d? (let [[lo hi] (second dims)] (range lo (inc hi))))
+        _      (when (clojure.core/< 2 (count dims)) (throw (ex-info (env/error-message 256) {:snobol/error 256})))
+        [lo2 hi2] (second dims)
+        k      (when two-d?
+                 (let [k (if (or (nil? col) (clojure.core/= "" col)) lo2 (integer-of col))]
+                   (if (and k (clojure.core/<= lo2 k hi2)) (clojure.core/- k lo2) (throw (ex-info (env/error-message 258) {:snobol/error 258})))))
+        cols   (when two-d? (range lo2 (inc hi2)))
         rows   (for [i (range lo1 (inc hi1))]
                  (if two-d? (vec (for [j cols] (array-get arr [i j]))) [(array-get arr [i])]))
-        pick   (fn [row] (nth row (min (dec (long col)) (dec (count row)))))
+        pick   (fn [row] (if two-d? (nth row k) (first row)))
         cmp    (if descending? #(sort-key-compare %2 %1) sort-key-compare)
         sorted (sort-by pick cmp rows)
         out    (ARRAY (:proto arr))]
@@ -893,12 +901,12 @@
   (cond
     (table? A) (when-some [arr (table->array A)] (sort-array arr col descending?))
     (array? A) (sort-array A col descending?)
-    :else nil))
+    :else (throw (ex-info (env/error-message 256) {:snobol/error 256}))))
 
 (defn SORT
-  ([A]     (SORT A 1))
-  ([A col] (sort-any A (long (env/num col)) false)))
+  ([A]     (SORT A nil))
+  ([A col] (sort-any A col false)))
 
 (defn RSORT
-  ([A]     (RSORT A 1))
-  ([A col] (sort-any A (long (env/num col)) true)))
+  ([A]     (RSORT A nil))
+  ([A col] (sort-any A col true)))

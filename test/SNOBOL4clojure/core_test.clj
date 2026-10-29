@@ -6324,3 +6324,44 @@
                    "END\n"))
       (is (= "1 succ X=0\n2 [0]\n3 [2]\n4 [0] []\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; SORT's column of a two-dimensional array (a table's too) is an integer within the second dimension's bounds, its lower bound when omitted, else "258 sort/rsort
+;; 2nd arg out of range or non-integer"; a first argument that is no table or array is 256. The engine took column 1 for 0 and the last column for one past it,
+;; and failed on a string. Expected output is sbl -bf's.
+(deftest sort-takes-a-column-within-the-bounds
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 20\n"
+                   "        T = TABLE()\n"
+                   "        T['b'] = 2\n"
+                   "        T['a'] = 1\n"
+                   "        A = SORT(T)\n"
+                   "        OUTPUT = '1 ' A[1, 1] A[2, 1]\n"
+                   "        A = RSORT(T, 2)\n"
+                   "        OUTPUT = '2 ' A[1, 1] A[2, 1]\n"
+                   "        A = SORT(T, 3)                      :S(E3)\n"
+                   "        OUTPUT = '3 ' &ERRTYPE\n"
+                   "E3      A = SORT(T, 0)                      :S(E4)\n"
+                   "        OUTPUT = '4 ' &ERRTYPE\n"
+                   "E4      A = SORT(T, 'x')                    :S(E5)\n"
+                   "        OUTPUT = '5 ' &ERRTYPE\n"
+                   "E5      A = SORT('abc')                     :S(E6)\n"
+                   "        OUTPUT = '6 ' &ERRTYPE\n"
+                   "E6      B = ARRAY('0:1,3:4')\n"
+                   "        B[0, 3] = 'z'\n"
+                   "        B[0, 4] = 1\n"
+                   "        B[1, 3] = 'y'\n"
+                   "        B[1, 4] = 2\n"
+                   "        C = SORT(B, 3)\n"
+                   "        OUTPUT = '7 ' C[0, 3] C[1, 3]\n"
+                   "        C = SORT(B, 1)                      :S(E8)\n"
+                   "        OUTPUT = '8 ' &ERRTYPE\n"
+                   "E8      V = ARRAY(3)\n"
+                   "        V[1] = 'c'\n"
+                   "        V[2] = 'a'\n"
+                   "        V[3] = 'b'\n"
+                   "        W = SORT(V)\n"
+                   "        OUTPUT = '9 ' W[1] W[2] W[3]\n"
+                   "END\n"))
+      (is (= "1 ab\n2 ba\n3 258\n4 258\n5 258\n6 256\n7 yz\n8 258\n9 abc\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
