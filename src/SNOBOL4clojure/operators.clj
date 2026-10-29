@@ -904,7 +904,7 @@
 ;; was called in, so EVAL fails as a whole, unless a function's body is as deep as that or deeper (sbl -bf: (EVAL('1 / N'), 'f') is f, EVAL('~(1 / N)') fails,
 ;; and in a function's statement T = EVAL('~(1 / N)') gives the null string).
 ;; e, an error a failure point at depth d catches first: e marked :snobol/to, the depth of the failure point that fails, or :snobol/label, the label it goes to,
-;; or e itself when it is fatal or no error.
+;; with :snobol/fp d and :snobol/resume, the depth a CONTINUE fails (sbl.min err07 keeps it, stxof, for either), or e itself when it is fatal or no error.
 (defn error-decided [^clojure.lang.ExceptionInfo e d]
   (let [{n :snobol/error abort :snobol/abort :as data} (ex-data e)]
     (if (or (nil? n) abort (contains? data :snobol/to) (contains? data :snobol/label))
@@ -914,15 +914,34 @@
             lim    (long @SNOBOL4clojure.env/&ERRLIMIT)]
         (if (and (zero? lim) (not ee?) (not SNOBOL4clojure.env/*matching*))
           e
-          (let [h (when (pos? lim) @SNOBOL4clojure.env/<SETEXIT>)
-                k (swap! SNOBOL4clojure.env/<ERRSERIAL> inc)]
+          (let [h  (when (pos? lim) @SNOBOL4clojure.env/<SETEXIT>)
+                k  (swap! SNOBOL4clojure.env/<ERRSERIAL> inc)
+                to (if gtcef? @SNOBOL4clojure.env/<GTCEF> d)]
             (when gtcef? (reset! SNOBOL4clojure.env/<STAGE> :xt))
             (when (pos? lim) (swap! SNOBOL4clojure.env/&ERRLIMIT dec))
             (reset! SNOBOL4clojure.env/&ERRTYPE n)
             (fire-keyword! "ERRTYPE" n)
             (reset! SNOBOL4clojure.env/&ERRTEXT (ex-message e))
             (when h (reset! SNOBOL4clojure.env/<SETEXIT> nil))
-            (ex-info (ex-message e) (if h (assoc data :snobol/label h :snobol/serial k) (assoc data :snobol/to (if gtcef? @SNOBOL4clojure.env/<GTCEF> d))) e)))))))
+            (ex-info (ex-message e) (if h (assoc data :snobol/label h :snobol/serial k :snobol/fp d :snobol/resume to) (assoc data :snobol/to to)) e)))))))
+
+;; The handler of an error raised in a failure point inside a statement (a negation's operand, a selection's alternative but its last, the expression EVAL
+;; evaluates) runs at the error, on top of the statement, as SPITBOL runs the first trap statement where the error is and resumes at its failure offset with
+;; the stack reset to it (sbl.min err07, lcnt2). The handler goes on through its own gotos; CONTINUE fails the failure point the error fails with no handler
+;; armed: a negation's operand, so the negation succeeds, a selection's alternative, so the next is tried, an evaluation, so EVAL fails (sbl -bf: Y = ~$H(),
+;; $H() error 239, is the null string after the handler's CONTINUE, and after the handler goes to another statement of its own and continues there). Any other
+;; way the handler leaves goes on up (runtime.clj RUN-AT-ERROR). An error decided in a statement, or past 100 handlers running one inside another, goes on up
+;; to the statement, whose failure exit a CONTINUE takes, and the handlers below, which a later error has given up, unwind: a handler that goes back to its
+;; statement and never continues holds no more than 100 statements' frames (each about 3 KB; the main thread's 1 MB stack overflowed past 300 under lein).
+;; sbl -bf continues at the innermost failure point at any depth, so a handler that continues at the 101st error in a row diverges.
+;; e, an error the failure point at depth d caught: e marked :snobol/to after the handler continued, or e itself.
+(defn- at-error [^clojure.lang.ExceptionInfo e d]
+  (let [{h :snobol/label k :snobol/serial fp :snobol/fp to :snobol/resume :as data} (ex-data e)]
+    (if (and h (clojure.core/= d fp) (< (long SNOBOL4clojure.env/*handlers*) 100))
+      (do (binding [SNOBOL4clojure.env/*handlers* (inc (long SNOBOL4clojure.env/*handlers*))]
+            ((var-get (ns-resolve 'SNOBOL4clojure.runtime 'RUN-AT-ERROR)) h k e))
+          (ex-info (ex-message e) (-> data (dissoc :snobol/label :snobol/serial :snobol/fp :snobol/resume) (assoc :snobol/to to)) e))
+      e)))
 
 ;; f evaluated one failure point deeper: nil, failure, when an error in it fails this failure point
 (defn- failure-point [f]
@@ -930,7 +949,7 @@
     (binding [SNOBOL4clojure.env/*fp* d]
       (try (f)
            (catch clojure.lang.ExceptionInfo e
-             (let [e (error-decided e d) to (:snobol/to (ex-data e))]
+             (let [e (at-error (error-decided e d) d) to (:snobol/to (ex-data e))]
                (if (and to (>= (long to) d)) nil (throw e))))))))
 
 (defn EVAL! [E]
@@ -1192,7 +1211,7 @@
     (let [v (binding [SNOBOL4clojure.env/*fp* (inc d0)]
               (try (f)
                    (catch clojure.lang.ExceptionInfo e
-                     (let [e (error-decided e (inc d0)) to (:snobol/to (ex-data e))]
+                     (let [e (at-error (error-decided e (inc d0)) (inc d0)) to (:snobol/to (ex-data e))]
                        (if (and to (>= (long to) d0)) nil (throw e))))))]
       (reset! SNOBOL4clojure.env/<STAGE> :xt)
       v)))

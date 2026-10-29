@@ -115,6 +115,7 @@
 ;; and the depth the last EVAL was called at
 (def ^:dynamic *fp* 0)
 (def ^:dynamic *flprt* -1)
+(def ^:dynamic *handlers* 0)   ; the SETEXIT handlers running one inside another, each at its error in a failure point inside a statement (runtime.clj RUN-AT-ERROR)
 (def <STAGE> (atom :xt))
 (def <GTCEF> (atom 0))
 (def <ERRFT> (atom 0))   ; the fatal errors so far (sbl.min errft): at the third the program ends whatever &ERRLIMIT is

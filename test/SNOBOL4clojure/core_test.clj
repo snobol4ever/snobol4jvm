@@ -6987,3 +6987,89 @@
                    "END\n"))
       (is (= "ERROR 24\nERROR 332\nERROR 332\nERRB 38\nat L2\nERRC 24\nafter S<Z>\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; SETEXIT's handler runs at the error, on top of the statement, and CONTINUE fails the innermost failure point the error was raised in: a negation's operand,
+;; so ~$H() succeeds, a selection's alternative, so the next is tried, the expression EVAL evaluates, so EVAL fails and a selection around it goes on, and so
+;; inside a function's body; a handler that goes to statements of its own first still continues there. A handler that never continues goes on where it goes,
+;; and a later error uses the continuation up (37). The engine unwound the statement before the handler ran, so CONTINUE took the statement's failure exit
+;; (fail2, fail3, fail4, fail6, fail7). Expected output is sbl -bf's.
+(deftest continue-resumes-at-the-innermost-failure-point
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 30\n"
+                   "        ZERO = 0\n"
+                   "        DEFINE('H()')                       :(HE)\n"
+                   "H       H = .E\n"
+                   "        DIFFER(H)                           :S(NRETURN)F(FRETURN)\n"
+                   "HE      DEFINE('G()')                       :(GE)\n"
+                   "G       G = ~$H() 'g'                       :S(RETURN)F(FRETURN)\n"
+                   "GE      SETEXIT('ERR')\n"
+                   "        X = $H()                            :S(S1)F(F1)\n"
+                   "S1      OUTPUT = 'succ1 [' X ']'            :(N2)\n"
+                   "F1      OUTPUT = 'fail1'                    :(N2)\n"
+                   "ERR     OUTPUT = 'ERROR ' &ERRTYPE ' ' &FNCLEVEL\n"
+                   "        SETEXIT('ERR')                      :(CONTINUE)\n"
+                   "N2      Y = ~$H()                           :S(S2)F(F2)\n"
+                   "S2      OUTPUT = 'succ2 [' Y ']'            :(N3)\n"
+                   "F2      OUTPUT = 'fail2'\n"
+                   "N3      Y = ($H(), 'b')                     :S(S3)F(F3)\n"
+                   "S3      OUTPUT = 'succ3 [' Y ']'            :(N4)\n"
+                   "F3      OUTPUT = 'fail3'\n"
+                   "N4      SETEXIT('VIA')\n"
+                   "        Y = ~$H()                           :S(S4)F(F4)\n"
+                   "S4      OUTPUT = 'succ4 [' Y ']'            :(N5)\n"
+                   "F4      OUTPUT = 'fail4'                    :(N5)\n"
+                   "VIA     OUTPUT = 'VIA ' &ERRTYPE            :(VIA2)\n"
+                   "VIA2    OUTPUT = 'VIA2'\n"
+                   "        SETEXIT('ERR')                      :(CONTINUE)\n"
+                   "N5      SETEXIT('ERR')\n"
+                   "        Y = EVAL('~$H()')                   :S(S5)F(F5)\n"
+                   "S5      OUTPUT = 'succ5 [' Y ']'            :(N6)\n"
+                   "F5      OUTPUT = 'fail5'\n"
+                   "N6      Y = (EVAL('$H()'), 'e')             :S(S6)F(F6)\n"
+                   "S6      OUTPUT = 'succ6 [' Y ']'            :(N7)\n"
+                   "F6      OUTPUT = 'fail6'\n"
+                   "N7      Y = G()                             :S(S7)F(F7)\n"
+                   "S7      OUTPUT = 'succ7 [' Y ']'            :(N8)\n"
+                   "F7      OUTPUT = 'fail7'\n"
+                   "N8      SETEXIT('AWAY')\n"
+                   "        Y = ~$H()                           :S(S8)F(F8)\n"
+                   "S8      OUTPUT = 'succ8 [' Y ']'            :(N9)\n"
+                   "F8      OUTPUT = 'fail8'                    :(N9)\n"
+                   "AWAY    OUTPUT = 'AWAY ' &ERRTYPE\n"
+                   "N9      OUTPUT = 'at N9'\n"
+                   "        SETEXIT('USED')\n"
+                   "        Y = ~$H()                           :S(S10)F(F10)\n"
+                   "S10     OUTPUT = 'succ10 [' Y ']'           :(N11)\n"
+                   "F10     OUTPUT = 'fail10'                   :(N11)\n"
+                   "USED    OUTPUT = 'USED ' &ERRTYPE\n"
+                   "        Z = 1 / ZERO\n"
+                   "        OUTPUT = 'after untrapped ' &ERRTYPE\n"
+                   "        SETEXIT('E37')                      :(CONTINUE)\n"
+                   "E37     OUTPUT = 'E37 ' &ERRTYPE\n"
+                   "N11     OUTPUT = 'end ' &ERRLIMIT\n"
+                   "END\n"))
+      (is (= (str "ERROR 239 0\nfail1\nERROR 239 0\nsucc2 []\nERROR 239 0\nsucc3 [b]\nVIA 239\nVIA2\nsucc4 []\nERROR 239 0\nfail5\nERROR 239 0\nsucc6 [e]\n"
+                  "ERROR 239 1\nsucc7 [g]\nAWAY 239\nat N9\nUSED 239\nafter untrapped 14\nE37 37\nend 19\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
+;; A handler that goes back to the statement in error 3,000 times before it continues still continues at the innermost failure point, the handlers below it
+;; given up as each later error takes the continuation over (sbl -bf: succ [] 3000). Past 100 handlers running one inside another the runs below unwind.
+(deftest a-handler-looping-back-to-its-statement-continues-at-the-innermost-failure-point
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 100000\n"
+                   "        DEFINE('H()')                       :(HE)\n"
+                   "H       H = .E\n"
+                   "        DIFFER(H)                           :S(NRETURN)F(FRETURN)\n"
+                   "HE      SETEXIT('ERR')\n"
+                   "L       Y = ~$H()                          :S(S1)F(F1)\n"
+                   "S1      OUTPUT = 'succ [' Y '] ' N          :(END)\n"
+                   "F1      OUTPUT = 'fail ' N                  :(END)\n"
+                   "ERR     N = N + 1\n"
+                   "        SETEXIT('ERR')\n"
+                   "        LT(N, 3000)                          :S(L)F(CONTINUE)\n"
+                   "END\n"))
+      (is (= "succ [] 3000\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

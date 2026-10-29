@@ -40,16 +40,22 @@
 ;; With &ERRLIMIT at 0 the error goes on up and ends the program.
 (defrecord Trapped [label ex])
 
+;; A handler running at its error (RUN-AT-ERROR) that can no longer continue it -- a later error took the continuation over or used it up, or control fell past
+;; the last statement -- hands the statement it goes on at, and the error a CONTINUE there refers to, to the run of the statement in error, at that statement's end.
+(defrecord Transfer [at err])
+
 ;; e, an error raised in a statement's body or its Goto field: trapped under &ERRLIMIT not 0, it gives a Trapped (a handler was armed) or false (the statement fails).
 ;; An error with &ERRLIMIT at 0, one that ABORT passes on, and every other signal go on up -- but in a function a pattern match called, while the match is in
 ;; progress, an error with &ERRLIMIT at 0 fails the statement, SETEXIT not consulted (sbl -bf, measured: a division by zero in a function called from
 ;; 'x' ? ('x' . *G()) takes the statement's :F branch with &ERRTYPE 14, and the program goes on; at &ERRLIMIT 5 it goes to the label SETEXIT armed).
-;; The statement is the innermost failure point when no other in it caught the error (operators.clj error-decided).
+;; The statement is the innermost failure point when no other in it caught the error (operators.clj error-decided). A handler's transfer gives a Transfer.
 (defn- trap [^clojure.lang.ExceptionInfo e]
-  (let [e (error-decided e SNOBOL4clojure.env/*fp*) {to :snobol/to h :snobol/label} (ex-data e)]
-    (cond h    (->Trapped h e)
-          to   false
-          :else (throw e))))
+  (if (clojure.core/= :transfer (:snobol/signal (ex-data e)))
+    (->Transfer (:snobol/at (ex-data e)) (:snobol/err (ex-data e)))
+    (let [e (error-decided e SNOBOL4clojure.env/*fp*) {to :snobol/to h :snobol/label} (ex-data e)]
+      (cond h    (->Trapped h e)
+            to   false
+            :else (throw e)))))
 
 ;; "if stlimit is exceeded, up to 10 more statements are obeyed so that a setexit trap can regain control" (sbl.min stcov): under &ERRLIMIT the overrun is
 ;; error 244, trapped as an error in the statement is, after &STLIMIT is raised by 10; it is a fatal error, and at the third the program ends whatever &ERRLIMIT
@@ -86,7 +92,8 @@
       (let [[f l] (get @<POS> n ["" 0])] (reset! &FILE f) (reset! &LINE l))
       (when (and counted (pos? (long @&TRACE))) (fire-keyword! "STCOUNT" counted)))))
 
-(defn RUN [at]
+;; The statements from the one at names on, err0 the error a CONTINUE refers to; k, for a handler running at its error, that error's serial (RUN-AT-ERROR), else nil.
+(defn- run* [at err0 k]
   (letfn
     [(skey  [address] (let [[no label] address] (if label label no)))
      ;; Resolve a goto target to a [stmt-no label] address pair.
@@ -145,6 +152,9 @@
              tgt (computed-target (if r (or (:G g) (:S g)) (or (:G g) (:F g))))
              nm  (label-name tgt)]
          (cond
+           ;; a handler running at its error continues it: the failure point it was raised in fails (operators.clj at-error)
+           (and (clojure.core/= nm "CONTINUE") (:resume err) (clojure.core/= (:resume err) @SNOBOL4clojure.env/<ERRSERIAL>))
+           [::resume nil]
            (clojure.core/= nm "CONTINUE")
            (if (and err (clojure.core/= (:snobol/serial (ex-data (:ex err))) @SNOBOL4clojure.env/<ERRSERIAL>))
              (let [g2 (:goto err)
@@ -166,10 +176,15 @@
            (do (goto! tgt) (let [a (label-addr tgt)] (when (pos? (long @&TRACE)) (fire-label! (or (second a) tgt))) [a err]))
            :else
            [(saddr (inc (current 0))) err])))]
-    ;; a program's run starts &STCOUNT at 0; the run of a function body, one level down, goes on counting
-    (when (zero? (long @&FNCLEVEL)) (reset! &STCOUNT 0))
+    ;; a program's run starts &STCOUNT at 0; the run of a function body, one level down, or of a handler at its error goes on counting
+    (when (and (nil? k) (zero? (long @&FNCLEVEL))) (reset! &STCOUNT 0))
     (try
-      (loop [current (saddr at) err nil]
+      (loop [current (saddr at) err err0]
+        (cond
+          (identical? ::resume current) ::resume
+          (and k (or (nil? current) (not (clojure.core/= k @SNOBOL4clojure.env/<ERRSERIAL>))))
+          (throw (ex-info "transfer" {:snobol/signal :transfer :snobol/at current :snobol/err err}))
+          :else
         (when-let [key (skey current)]
           ;; Special-label check (e.g. labelled RETURN/END)
           (when (special-targets key)
@@ -206,26 +221,39 @@
                             ;; the statement in error of a block CODE failed to compile is error 7 when control reaches it
                             (identical? stmt compile-error)  (trap (ex-info (SNOBOL4clojure.env/error-message 7) {:snobol/error 7}))
                             :else                            (exec-body body))]
-                (if (instance? Trapped r)
+                (cond
+                  (instance? Transfer r) (recur (:at r) (:err r))
+                  (instance? Trapped r)
                   ;; control goes to the handler; CONTINUE and ABORT there refer back to the statement in error
                   (recur (saddr (:label r)) {:at current :goto goto :ex (:ex r)})
+                  :else
                   ;; an error in the Goto field is trapped like one in the body: to the handler, or the statement fails and its failure exit is taken,
                   ;; which may be the same Goto again until &ERRLIMIT runs out (manual ch. 16, &ERRLIMIT)
                   (let [[nxt err'] (loop [r r]
                                      (let [res (try (step r goto err current)
                                                     (catch clojure.lang.ExceptionInfo e (let [t (trap e)] (if t t ::fail))))]
                                        (cond
+                                         (instance? Transfer res) [(:at res) (:err res)]
                                          (instance? Trapped res) [(saddr (:label res)) (if-let [e0 (::continued (ex-data (:ex res)))]
                                                                                          (assoc e0 :ex (:ex res))
                                                                                          {:at current :goto goto :ex (:ex res) :in-goto true})]
                                          (clojure.core/= ::fail res) (recur false)
                                          :else res)))]
-                    (recur nxt err')))))))))
+                    (recur nxt err'))))))))))
       (catch clojure.lang.ExceptionInfo e
-        (case (get (ex-data e) :snobol/signal)
-          :end        (if (pos? (long @&FNCLEVEL)) (throw e) (do (when-not (:snobol/closing (ex-data e)) (end-statement!)) nil))   ; program end, from any level
-          :return     nil          ; bubble up to DEFINE wrapper
-          :step-limit (throw e)    ; propagate — caught by test-helpers/harness
-          :freturn    (throw e)    ; bubble up to DEFINE wrapper
-          :nreturn    (throw e)    ; bubble up to DEFINE wrapper
-          (throw e))))))
+        ;; a handler at its error leaves every signal to the run of the statement in error
+        (if k
+          (throw e)
+          (case (get (ex-data e) :snobol/signal)
+            :end        (if (pos? (long @&FNCLEVEL)) (throw e) (do (when-not (:snobol/closing (ex-data e)) (end-statement!)) nil))   ; program end, from any level
+            :return     nil          ; bubble up to DEFINE wrapper
+            :step-limit (throw e)    ; propagate — caught by test-helpers/harness
+            :freturn    (throw e)    ; bubble up to DEFINE wrapper
+            :nreturn    (throw e)    ; bubble up to DEFINE wrapper
+            (throw e)))))))
+
+(defn RUN [at] (run* at nil nil))
+
+;; The handler h of the error e, serial k, running at the error (operators.clj at-error): ::resume when it continues; it leaves any other way by a signal, a
+;; Transfer among them.
+(defn RUN-AT-ERROR [h k e] (run* h {:resume k :ex e} k))
