@@ -7104,3 +7104,39 @@
                       "execution time msec  -\nREGENERATIONS        -\nmemory used (bytes)  -\nmemory left (bytes)  -\n\n")
                  (fatal-figures out))))
         (finally (.delete f))))))
+
+;; A SETEXIT handler that is a system label acts at once, as the handler's own goto to it would: CONTINUE continues the error, ABORT ends the program with
+;; it, RETURN returns from the function the error is in (manual ch. 19, SETEXIT: "Your program can transfer to the special labels ABORT and CONTINUE after
+;; processing the error"). The engine looked for a statement with that label, found none, and ended the program in silence. Expected output is sbl -bf's.
+(deftest a-system-label-as-the-handler-acts-at-once
+  (let [f (java.io.File/createTempFile "gen" ".sno") p (.getPath f)]
+    (try
+      (spit f (str "        &ERRLIMIT = 10\n"
+                   "        ZERO = 0\n"
+                   "        SETEXIT(.CONTINUE)\n"
+                   "        X = 1 / ZERO                        :S(S1)F(F1)\n"
+                   "S1      OUTPUT = 'succ1'                    :(N2)\n"
+                   "F1      OUTPUT = 'fail1 ' &ERRTYPE\n"
+                   "N2      SETEXIT(.CONTINUE)\n"
+                   "        Y = ~(1 / ZERO)                     :S(S2)F(F2)\n"
+                   "S2      OUTPUT = 'succ2 [' Y ']'            :(N3)\n"
+                   "F2      OUTPUT = 'fail2'\n"
+                   "N3      DEFINE('F()')                       :(FE)\n"
+                   "F       SETEXIT('RETURN')\n"
+                   "        F = 'f'\n"
+                   "        F = 1 / ZERO\n"
+                   "        OUTPUT = 'in F after'               :(RETURN)\n"
+                   "FE      Y = F()                             :S(S3)F(F3)\n"
+                   "S3      OUTPUT = 'succ3 [' Y ']'            :(N4)\n"
+                   "F3      OUTPUT = 'fail3'\n"
+                   "N4      OUTPUT = 'at N4 ' &ERRLIMIT\n"
+                   "        SETEXIT('ABORT')\n"
+                   "        X = 1 / ZERO\n"
+                   "        OUTPUT = 'not here'\n"
+                   "END\n"))
+      (let [out (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p)))]
+        (is (= (str "fail1 14\nsucc2 []\nsucc3 [f]\nat N4 7\n\n\n\n" p "(21) : ERROR 014 -- division caused integer overflow\n\n\n\n\n\n"
+                    "in file              " p "\nin line              21\nin statement         21\nstmts executed       17\n"
+                    "execution time msec  -\nREGENERATIONS        -\nmemory used (bytes)  -\nmemory left (bytes)  -\n\n")
+               (fatal-figures out))))
+      (finally (.delete f)))))

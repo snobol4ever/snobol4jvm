@@ -28,6 +28,9 @@
   #{"RETURN" "FRETURN" "NRETURN" "END" "end"
     :RETURN :FRETURN :NRETURN :END :end})
 
+;; The system labels a SETEXIT handler may be, which act at once (run* enter); SCONTINUE is not yet one a Goto takes
+(def ^:private system-labels #{"CONTINUE" "ABORT" "RETURN" "FRETURN" "NRETURN" "END" "end"})
+
 (defn- dispatch-special! [target]
   (case (clojure.string/upper-case (name target))
     "RETURN"  (snobol-return!)
@@ -178,11 +181,35 @@
            tgt
            (do (goto! tgt) (let [a (label-addr tgt)] (when (pos? (long @&TRACE)) (fire-label! (or (second a) tgt))) [a err]))
            :else
-           [(saddr (inc (current 0))) err])))]
+           [(saddr (inc (current 0))) err])))
+     ;; Where control goes after the statement at current succeeded (r) or failed, by its Goto field goto: [address err]. An error in the Goto field is trapped
+     ;; like one in the body: to the handler, or the statement fails and its failure exit is taken, which may be the same Goto again until &ERRLIMIT runs out
+     ;; (manual ch. 16, &ERRLIMIT).
+     (follow [r goto err current]
+       (loop [r r]
+         (let [res (try (step r goto err current)
+                        (catch clojure.lang.ExceptionInfo e (let [t (trap e)] (if t t ::fail))))]
+           (cond
+             (instance? Transfer res) [(:at res) (:err res)]
+             (instance? Trapped res) (enter (:label res) (if-let [e0 (::continued (ex-data (:ex res)))]
+                                                           (assoc e0 :ex (:ex res))
+                                                           {:at current :goto goto :ex (:ex res) :in-goto true})
+                                            current)
+             (clojure.core/= ::fail res) (recur false)
+             :else res))))
+     ;; The handler SETEXIT armed takes control: [address err], err the error a CONTINUE there refers to. A system label acts at once, as the handler's own
+     ;; goto to it would: CONTINUE continues the error, ABORT ends the program with it, RETURN, FRETURN and NRETURN return from the function the error is in,
+     ;; END ends the program (sbl.min err07 executes the label's code, r_sxc; sbl -bf: under SETEXIT(.CONTINUE), X = 1 / Z takes F and Y = ~(1 / Z) succeeds;
+     ;; SETEXIT('RETURN') in F returns F's value; SETEXIT('ABORT') ends with the error's report). The engine looked for a statement with that label, found
+     ;; none, and ended the program in silence.
+     (enter [label err current]
+       (if (system-labels (name label))
+         (follow true {:G label} err current)
+         [(saddr label) err]))]
     ;; a program's run starts &STCOUNT at 0; the run of a function body, one level down, or of a handler at its error goes on counting
     (when (and (nil? k) (zero? (long @&FNCLEVEL))) (reset! &STCOUNT 0))
     (try
-      (loop [current (saddr at) err err0]
+      (loop [[current err] (if k (enter at err0 nil) [(saddr at) err0])]
         (cond
           (identical? ::resume current) ::resume
           (and k (or (nil? current) (not (clojure.core/= k @SNOBOL4clojure.env/<ERRSERIAL>))))
@@ -225,24 +252,12 @@
                             (identical? stmt compile-error)  (trap (ex-info (SNOBOL4clojure.env/error-message 7) {:snobol/error 7}))
                             :else                            (exec-body body))]
                 (cond
-                  (instance? Transfer r) (recur (:at r) (:err r))
+                  (instance? Transfer r) (recur [(:at r) (:err r)])
                   (instance? Trapped r)
                   ;; control goes to the handler; CONTINUE and ABORT there refer back to the statement in error
-                  (recur (saddr (:label r)) {:at current :goto goto :ex (:ex r)})
+                  (recur (enter (:label r) {:at current :goto goto :ex (:ex r)} current))
                   :else
-                  ;; an error in the Goto field is trapped like one in the body: to the handler, or the statement fails and its failure exit is taken,
-                  ;; which may be the same Goto again until &ERRLIMIT runs out (manual ch. 16, &ERRLIMIT)
-                  (let [[nxt err'] (loop [r r]
-                                     (let [res (try (step r goto err current)
-                                                    (catch clojure.lang.ExceptionInfo e (let [t (trap e)] (if t t ::fail))))]
-                                       (cond
-                                         (instance? Transfer res) [(:at res) (:err res)]
-                                         (instance? Trapped res) [(saddr (:label res)) (if-let [e0 (::continued (ex-data (:ex res)))]
-                                                                                         (assoc e0 :ex (:ex res))
-                                                                                         {:at current :goto goto :ex (:ex res) :in-goto true})]
-                                         (clojure.core/= ::fail res) (recur false)
-                                         :else res)))]
-                    (recur nxt err'))))))))))
+                  (recur (follow r goto err current))))))))))
       (catch clojure.lang.ExceptionInfo e
         ;; a handler at its error leaves every signal to the run of the statement in error
         (if k
