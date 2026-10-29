@@ -6889,3 +6889,44 @@
                    "END\n"))
       (is (= "1 EXPRESSION\n2 PATTERN\n3 PATTERN\n4 q\n5 b\n6 zz\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; An = whose target is a concatenation outside every bracket, at the top of a statement's replacement or of EVAL's text, is a replacement of its own: the first
+;; element the subject, the rest the pattern, its value the subject's new value; inside brackets it is an assignment, 212. The engine refused it (212, so the
+;; program was not run). Expected output is sbl -bf's.
+(deftest a-replacement-inside-the-replacement
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 100\n"
+                   "        A = 'xyz'\n"
+                   "        X = EVAL(\"A 'y' = 1\")                 :S(E1)\n"
+                   "        OUTPUT = 'eval fail ' &ERRTYPE        :(E2)\n"
+                   "E1      OUTPUT = 'eval X=[' X '] A=[' A ']'\n"
+                   "E2      A = 'xyz'\n"
+                   "        X = Y = A 'y' = 2\n"
+                   "        OUTPUT = 'chain X=[' X '] Y=[' Y '] A=[' A ']'\n"
+                   "        A = 'xyzz'\n"
+                   "        X = A 'y' 'z' = 1\n"
+                   "        OUTPUT = 'three X=[' X '] A=[' A ']'\n"
+                   "        A = 'xyz'\n"
+                   "        X = A 'y' = 1 'w'\n"
+                   "        OUTPUT = 'cat-rhs X=[' X '] A=[' A ']'\n"
+                   "        A = 'xyz'\n"
+                   "        X = A ('y' | 'z') = 5\n"
+                   "        OUTPUT = 'alt X=[' X '] A=[' A ']'\n"
+                   "        A = 'xyz'\n"
+                   "        A 'x' = A 'y' = 7\n"
+                   "        OUTPUT = 'stmt A=[' A ']'\n"
+                   "        A = 'xyz'\n"
+                   "        C = 'abc'\n"
+                   "        X = A 'y' = C 'b' = 3\n"
+                   "        OUTPUT = 'nested X=[' X '] A=[' A '] C=[' C ']'\n"
+                   "        A = 'xyz'\n"
+                   "        X = A 'q' = 1                       :S(S1)\n"
+                   "        OUTPUT = 'fail X=[' X '] A=[' A ']'\n"
+                   "S1      CODE(\" X = (A 'y' = 1)\")            :S(END)\n"
+                   "        OUTPUT = 'paren ' &ERRTYPE\n"
+                   "END\n"))
+      (is (= (str "eval X=[x1z] A=[x1z]\nchain X=[x2z] Y=[x2z] A=[x2z]\nthree X=[x1z] A=[x1z]\ncat-rhs X=[x1wz] A=[x1wz]\n"
+                  "alt X=[x5z] A=[x5z]\nstmt A=[x7zyz]\nnested X=[xa3cz] A=[xa3cz] C=[a3c]\nfail X=[xa3cz] A=[xyz]\nparen 212\n")
+             (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

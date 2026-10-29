@@ -54,7 +54,7 @@
                      | '%' uop | '/' uop | '#' uop | '=' uop | '|' uop
   ndx       ::=  itm | ndx <'<'> (lst | nul) <'>'> | ndx <'['> (lst | nul) <']'>
   <itm>     ::=  I | R | S | N | grp | cnd | inv
-  <grp>     ::=  <'('> expr <')'>
+  grp       ::=  <'('> expr <')'>
   cnd       ::=  <'('> expr <','> lst <')'>
   inv       ::=  N <'()'>  |  N <'('> lst <')'>
   <lst>     ::=  expr | arg (<','> arg)+

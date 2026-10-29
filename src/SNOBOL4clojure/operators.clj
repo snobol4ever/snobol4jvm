@@ -19,7 +19,7 @@
              [ANY BREAK BREAKX NOTANY SPAN ARBNO FENCE
               ABORT BAL CONJ
               LEN POS RPOS RTAB TAB FAIL]]
-            [SNOBOL4clojure.emitter   :refer [emitter]]
+            [SNOBOL4clojure.emitter   :refer [emitter top-replacement]]
             [SNOBOL4clojure.dump      :refer [dump-text]]
             [SNOBOL4clojure.grammar   :refer [parse-expression]]
             [SNOBOL4clojure.syntax    :refer [expression-end ends-in-mark?]]
@@ -1160,7 +1160,7 @@
              n (cond n n (< (long i) (count s)) early :else 220)]
          (when n (compile-failed! n (SNOBOL4clojure.env/error-message n))))
        :else
-       (let [ir (first (emitter p))
+       (let [ir (top-replacement (first (emitter p)))
              n  ((requiring-resolve 'SNOBOL4clojure.compiler/fold-error) ir)]
          (if n (compile-failed! n (SNOBOL4clojure.env/error-message n)) ir))))))
 

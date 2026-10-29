@@ -6,6 +6,19 @@
             [SNOBOL4clojure.grammar  :refer [parse-expression]]
             [instaparse.core         :as insta]))
 
+;; An = whose target is a concatenation outside every bracket, at the top of a statement's replacement or of the text EVAL compiles, is a replacement of its own:
+;; the first element is the subject and the rest the pattern, and its value is the subject's new value; inside brackets it is an assignment, whose target must be
+;; a name (sbl -bf: X = A 'y' = 1 of A = 'xyz' makes X and A x1z; X = A 'y' = C 'b' = 3 replaces in C first; X = Y = A 'y' = 2 makes all three x2z; X = A 'y' 'z'
+;; = 1 matches 'y' 'z'; EVAL("A 'y' = 1") replaces; X = (A 'y' = 1) is 212). A parenthesized value carries :paren in its metadata (the grammar's grp).
+(defn top-replacement [r]
+  (if (and (seq? r) (= '= (first r)) (= 3 (count r)) (not (:paren (meta r))))
+    (let [[_ t v] r
+          v       (top-replacement v)]
+      (if (and (vector? t) (not (:paren (meta t))))
+        (list '?= (first t) (if (= 2 (count t)) (second t) (vec (rest t))) v)
+        (list '= t v)))
+    r))
+
 (defn emitter [ast]
   (insta/transform
     {:comment   (fn [cmt]    [:comment cmt])
@@ -21,10 +34,11 @@
      :qmatch    (fn [P]      P)
      :replacing (fn
                   ([S P]     (list '?= S P 'epsilon))
-                  ([S P R]   (list '?= S P R)))
+                  ([S P R]   (list '?= S P (top-replacement R))))
      :assigning (fn
                   ([S]       (list '= S 'epsilon))
-                  ([S R]     (list '= S R)))
+                  ([S R]     (list '= S (top-replacement R))))
+     :grp       (fn [x]      (if (instance? clojure.lang.IObj x) (vary-meta x assoc :paren true) x))
      :goto      (fn [& gs]   {:goto (reduce
                                       (fn [bs b]
                                         (let [key (first b) tgt (second b)]
