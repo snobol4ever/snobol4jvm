@@ -169,7 +169,15 @@
    [" X = (4 + :(L))" 221]
    [" X = 1 :(L:X)" 227]
    [" X = 1 :S(L :F(L))" 227]
-   [" X = 1 :<L :>" 228]])
+   [" X = 1 :<L :>" 228]
+   ;; a label begins with a letter or a digit (generated 2026-10-29)
+   ["#L X = 1" 214]
+   ["(L X = 1" 214]
+   ["_L X = 1" 214]
+   ["'L' X = 1" 214]
+   ["$L X = 1" 214]
+   ["\u000b X = 1" 214]
+   ["\f X = 1" 214]])
 
 (deftest the-scan-names-the-error-sbl-names
   (doseq [[stmt n] sbl-errors]

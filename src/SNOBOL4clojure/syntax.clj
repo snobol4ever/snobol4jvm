@@ -160,6 +160,9 @@
   "The error SPITBOL reports for statement s, a line of source without its line end, as {:error n :column c} (c counted from 1), or nil when the scan finds none."
   [^String s]
   (try
+    ;; a label begins with a letter or a digit and runs to a blank; anything else in the first column is "214 bad label or misplaced continuation line" (sbl -bf,
+    ;; CODE: #L X = 1, (L X = 1, _L X = 1 and 'L' X = 1 are 214, and so is a line end or a form feed there)
+    (when (and (at s 0) (not (blank? (at s 0))) (not (letter? (at s 0))) (not (digit? (at s 0)))) (fail! 214 0))
     (let [i (if (and (seq s) (not (blank? (at s 0)))) (loop [i 0] (if (and (at s i) (not (blank? (at s i)))) (recur (inc i)) i)) 0)
           i (skip-blanks s i)
           ;; the replacement after an =, then the goto field
