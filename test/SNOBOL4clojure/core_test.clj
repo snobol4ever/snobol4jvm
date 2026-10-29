@@ -6958,3 +6958,32 @@
                    "END\n"))
       (is (= "E0 37 9\nERR 14\nafter untrapped 14\nE37 37 6\nH3 14\nfail3 14\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; CONTINUE after an error in the Goto field of a statement whose failure goto is computed or direct is 332, a fatal error, and a CONTINUE after that is 332
+;; again; with a simple failure goto, or none, CONTINUE goes on at the failure exit. The engine evaluated the goto again (24). Expected output is sbl -bf's.
+(deftest continue-after-an-error-in-a-computed-failure-goto-is-332
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 20\n"
+                   "        V = 'UNDEF2'\n"
+                   "        SETEXIT('ERR')\n"
+                   "        X = 1                :<Z>\n"
+                   "        OUTPUT = 'after'     :(END)\n"
+                   "ERR     N = N + 1\n"
+                   "        OUTPUT = 'ERROR ' &ERRTYPE\n"
+                   "        GE(N, 3)             :S(B)\n"
+                   "        SETEXIT('ERR')       :(CONTINUE)\n"
+                   "B       SETEXIT('ERRB')\n"
+                   "        Y = 1                :S($V)F(L2)\n"
+                   "        OUTPUT = 'not here'  :(END)\n"
+                   "L2      OUTPUT = 'at L2'\n"
+                   "        SETEXIT('ERRC')\n"
+                   "        Y = 1                :S<Z>\n"
+                   "        OUTPUT = 'after S<Z>'  :(END)\n"
+                   "ERRB    OUTPUT = 'ERRB ' &ERRTYPE\n"
+                   "        SETEXIT('ERRB')      :(CONTINUE)\n"
+                   "ERRC    OUTPUT = 'ERRC ' &ERRTYPE\n"
+                   "        SETEXIT('ERRC')      :(CONTINUE)\n"
+                   "END\n"))
+      (is (= "ERROR 24\nERROR 332\nERROR 332\nERRB 38\nat L2\nERRC 24\nafter S<Z>\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

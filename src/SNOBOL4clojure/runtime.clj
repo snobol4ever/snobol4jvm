@@ -147,11 +147,18 @@
          (cond
            (clojure.core/= nm "CONTINUE")
            (if (and err (clojure.core/= (:snobol/serial (ex-data (:ex err))) @SNOBOL4clojure.env/<ERRSERIAL>))
-             (let [g2   (:goto err)
-                   etgt (computed-target (when (map? g2) (or (:G g2) (:F g2))))]
-               (if etgt
-                 (do (goto! etgt) [(label-addr etgt) nil])
-                 [(saddr (inc ((:at err) 0))) nil]))
+             (let [g2 (:goto err)
+                   f2 (when (map? g2) (or (:G g2) (:F g2)))]
+               ;; an error in the Goto field of a statement whose failure goto is computed or direct cannot go on there: "332 goto continue with error in
+               ;; failure goto", a fatal error, and the statement in error stays the one a CONTINUE goes on from (sbl.min lcnt4; sbl -bf: X = 1 :<Z> of a Z
+               ;; holding no CODE is 24, then 332 at each CONTINUE; :($V), :F($V) and :S(UNDEF)F($V) likewise after 38; :S($V)F(L2) goes on to L2, :S<Z>
+               ;; and :S($V) to the next statement, and :(UNDEF) is 38 again)
+               (if (and (:in-goto err) f2 (not (keyword? f2)))
+                 (throw (let [e (fatal-error 332)] (ex-info (ex-message e) (assoc (ex-data e) ::continued err))))
+                 (let [etgt (computed-target f2)]
+                   (if etgt
+                     (do (goto! etgt) [(label-addr etgt) nil])
+                     [(saddr (inc ((:at err) 0))) nil]))))
              (throw (fatal-error 37)))
            (and err (clojure.core/= nm "ABORT"))
            (let [e ^clojure.lang.ExceptionInfo (:ex err)] (throw (ex-info (ex-message e) (assoc (ex-data e) :snobol/abort true))))
@@ -208,7 +215,9 @@
                                      (let [res (try (step r goto err current)
                                                     (catch clojure.lang.ExceptionInfo e (let [t (trap e)] (if t t ::fail))))]
                                        (cond
-                                         (instance? Trapped res) [(saddr (:label res)) {:at current :goto goto :ex (:ex res)}]
+                                         (instance? Trapped res) [(saddr (:label res)) (if-let [e0 (::continued (ex-data (:ex res)))]
+                                                                                         (assoc e0 :ex (:ex res))
+                                                                                         {:at current :goto goto :ex (:ex res) :in-goto true})]
                                          (clojure.core/= ::fail res) (recur false)
                                          :else res)))]
                     (recur nxt err')))))))))
