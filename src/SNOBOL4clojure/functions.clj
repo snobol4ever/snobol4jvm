@@ -271,8 +271,9 @@
   (let [a (env/num x)
         b (env/num y)
         nan? #(and (double? %) (Double/isNaN ^double %))]
-    (when (nan? a) (throw (ex-info "remdr first argument is not numeric" {:snobol/error 166})))
+    ;; the second argument converts first, as an arithmetic operator's right operand (sbl -bf: REMDR('a', ARB) is 165)
     (when (nan? b) (throw (ex-info "remdr second argument is not numeric" {:snobol/error 165})))
+    (when (nan? a) (throw (ex-info "remdr first argument is not numeric" {:snobol/error 166})))
     (if (and (integer? a) (integer? b))
       (if (zero? b) (throw (ex-info "remdr caused integer overflow" {:snobol/error 167})) (clojure.core/rem (long a) (long b)))
       (let [a (double a)

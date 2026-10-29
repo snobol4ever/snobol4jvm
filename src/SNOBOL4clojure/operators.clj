@@ -100,6 +100,8 @@
             ([_x _y]    η))
 ;; An arithmetic operand as a number. A string converts when it has the form of a number, blanks around it ignored, and a null or blank string is 0 (manual ch. 17,
 ;; String to integer and String to real); anything else is the operator's error, "1 Addition left operand is not numeric" and its kin (manual, Appendix D).
+;; The right operand converts first, as the arguments come off SPITBOL's stack (sbl.min arith: "get right operand type word ... jsr gtnum"), so of two operands
+;; neither numeric the error is the right one's (sbl -bf: 'a' + ARB, ARB + 'a' and 'a' + 'a' are 2, and so for - * / ** with 33 27 13 15; EQ('a', ARB) is 102).
 (defn- operand [x code msg]
   (let [n (num x)]
     (if (and (double? n) (Double/isNaN n) (not (double? x)))
@@ -124,8 +126,8 @@
 (defmacro ^:private numeric-predicate [f cmp first-code second-code]
   (let [nm (clojure.string/lower-case (name f))]
     `(defn ~f [& args#]
-       (let [a# (operand (first args#) ~first-code ~(str nm " first argument is not numeric"))
-             b# (operand (second args#) ~second-code ~(str nm " second argument is not numeric"))]
+       (let [b# (operand (second args#) ~second-code ~(str nm " second argument is not numeric"))
+             a# (operand (first args#) ~first-code ~(str nm " first argument is not numeric"))]
          (when (~cmp a# b#) ε)))))
 (numeric-predicate EQ clojure.core/== 101 102)
 (numeric-predicate NE (fn [a b] (not (clojure.core/== a b))) 149 150)
@@ -140,8 +142,8 @@
    A real exponent, or a negative integer one, gives e ** (exponent * ln(base)) (glibc's exp and log, which Math/exp and Math/log follow): a zero base gives
    0.0, or error 18 to the power 0.0; a negative base is allowed only to an integral power, whose parity is the sign, else error 311."
   [x y]
-  (let [x   (operand x 16 "exponentiation left operand is not numeric")
-        y   (operand y 15 "exponentiation right operand is not numeric")
+  (let [y   (operand y 15 "exponentiation right operand is not numeric")
+        x   (operand x 16 "exponentiation left operand is not numeric")
         ovf "exponentiation caused real overflow"
         undefined #(throw (ex-info "exponentiation result is undefined" {:snobol/error 18}))]
     (cond
@@ -295,29 +297,29 @@
     ;; unary + is affirmation (error 4), unary - negation (error 10)
     +       (if (clojure.core/= 1 (count args))
               (operand (first args) 4 "affirmation operand is not numeric")
-              (let [a (operand (first args) 1 "addition left operand is not numeric")
-                    b (operand (second args) 2 "addition right operand is not numeric")]
+              (let [b (operand (second args) 2 "addition right operand is not numeric")
+                    a (operand (first args) 1 "addition left operand is not numeric")]
                 (if (and (integer? a) (integer? b))
                   (exact #(Math/addExact ^long %1 ^long %2) a b 3 "addition caused integer overflow")
                   (finite (clojure.core/+ a b) 261 "addition caused real overflow"))))
     -       (if (clojure.core/= 1 (count args))
               (let [a (operand (first args) 10 "negation operand is not numeric")]
                 (if (integer? a) (exact #(Math/subtractExact ^long %1 ^long %2) 0 a 11 "negation caused integer overflow") (clojure.core/- a)))
-              (let [a (operand (first args) 32 "subtraction left operand is not numeric")
-                    b (operand (second args) 33 "subtraction right operand is not numeric")]
+              (let [b (operand (second args) 33 "subtraction right operand is not numeric")
+                    a (operand (first args) 32 "subtraction left operand is not numeric")]
                 (if (and (integer? a) (integer? b))
                   (exact #(Math/subtractExact ^long %1 ^long %2) a b 34 "subtraction caused integer overflow")
                   (finite (clojure.core/- a b) 264 "subtraction caused real overflow"))))
-    *       (let [a (operand (first args) 26 "multiplication left operand is not numeric")
-                  b (operand (second args) 27 "multiplication right operand is not numeric")]
+    *       (let [b (operand (second args) 27 "multiplication right operand is not numeric")
+                  a (operand (first args) 26 "multiplication left operand is not numeric")]
               (if (and (integer? a) (integer? b))
                 (exact #(Math/multiplyExact ^long %1 ^long %2) a b 28 "multiplication caused integer overflow")
                 (finite (clojure.core/* a b) 263 "multiplication caused real overflow")))
     tilde   (let [v (first args)]       ; ~ negates success/failure
               (if (nil? v) ε nil))
     ;; a zero divisor is "14 Division caused integer overflow" between integers and "262 Division caused real overflow" otherwise, as sbl -bf reports them
-    /       (let [a (operand (first args) 12 "division left operand is not numeric")
-                  b (operand (second args) 13 "division right operand is not numeric")]
+    /       (let [b (operand (second args) 13 "division right operand is not numeric")
+                  a (operand (first args) 12 "division left operand is not numeric")]
               (cond
                 (and (integer? a) (integer? b))
                 (if (or (zero? b) (and (clojure.core/= b -1) (clojure.core/= a Long/MIN_VALUE)))
