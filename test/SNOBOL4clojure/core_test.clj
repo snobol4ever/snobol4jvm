@@ -6809,3 +6809,28 @@
                   "FAIL pattern fails\nfield 3.2 2.\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; The null string, or blanks, given EVAL or CONVERT to EXPRESSION is the null expression: EVAL gives the null string, CONVERT an EXPRESSION that does. The engine
+;; refused it with 220. Expected output is sbl -bf's.
+(deftest null-text-is-the-null-expression
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 10\n"
+                   "        V = EVAL('') 'ok'                         :F(F1)\n"
+                   "        OUTPUT = 'E1 [' V '] ' &ERRTYPE           :(N1)\n"
+                   "F1      OUTPUT = 'E1 fail ' &ERRTYPE\n"
+                   "N1      V = EVAL('   ') 'ok'                      :F(F2)\n"
+                   "        OUTPUT = 'E2 [' V '] ' &ERRTYPE           :(N2)\n"
+                   "F2      OUTPUT = 'E2 fail ' &ERRTYPE\n"
+                   "N2      V = CONVERT('', 'EXPRESSION')             :F(F3)\n"
+                   "        OUTPUT = 'C1 ' DATATYPE(V) ' [' EVAL(V) ']'      :(N3)\n"
+                   "F3      OUTPUT = 'C1 fail ' &ERRTYPE\n"
+                   "N3      V = CONVERT('  ', 'EXPRESSION')           :F(F4)\n"
+                   "        OUTPUT = 'C2 ' DATATYPE(V) ' [' EVAL(V) ']'      :(N4)\n"
+                   "F4      OUTPUT = 'C2 fail ' &ERRTYPE\n"
+                   "N4      'abc' ? *EVAL('') 'b' . R                 :F(F5)\n"
+                   "        OUTPUT = 'P [' R ']'                      :(END)\n"
+                   "F5      OUTPUT = 'P fail'\n"
+                   "END\n"))
+      (is (= "E1 [ok] 0\nE2 [ok] 0\nC1 EXPRESSION []\nC2 EXPRESSION []\nP [b]\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

@@ -1152,10 +1152,14 @@
   ([s] (compile-expression s nil))
   ([^String s early]
    (let [p (parse-expression (if (zero? (long @&CASE)) s (fold-case s)))]
-     (if (instance? instaparse.gll.Failure p)
+     (cond
+       ;; the null string, or blanks, is the null expression (sbl -bf: EVAL('') and EVAL('   ') are the null string, CONVERT('', 'EXPRESSION') an EXPRESSION)
+       (re-matches #"[ \t]*" s) ""
+       (instance? instaparse.gll.Failure p)
        (let [{n :error i :end} (expression-end s)
              n (cond n n (< (long i) (count s)) early :else 220)]
          (when n (compile-failed! n (SNOBOL4clojure.env/error-message n))))
+       :else
        (let [ir (first (emitter p))
              n  ((requiring-resolve 'SNOBOL4clojure.compiler/fold-error) ir)]
          (if n (compile-failed! n (SNOBOL4clojure.env/error-message n)) ir))))))
