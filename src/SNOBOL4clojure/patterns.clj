@@ -13,11 +13,12 @@
 ;; the pattern (and re-builds the charset) at match time from the live value.
 (defn- deferred? [S] (and (list? S) (clojure.core/= (first S) 'DEFER!)))
 
-;; The argument is a string: an integer converts to its digits, a real as SPITBOL writes it and a NAME to its name; a null one, or any other value, is the
-;; function's "argument is not a string or expression" (59 ANY, 151 NOTANY, 188 SPAN, 69 BREAK, 70 BREAKX), and when it came deferred, read as the match reaches
-;; it, its "evaluated argument is not a string" (43, 49, 56, 44, 45; Appendix D), as sbl -bf raises them. A deferred expression that fails fails the element.
+;; The argument is a string: an integer converts to its digits, a real as SPITBOL writes it and the name of a natural variable to its name; a null one, or any
+;; other value, the name of a keyword or an element among them, is the function's "argument is not a string or expression" (59 ANY, 151 NOTANY, 188 SPAN, 69
+;; BREAK, 70 BREAKX), and when it came deferred, read as the match reaches it, its "evaluated argument is not a string" (43, 49, 56, 44, 45; Appendix D), as
+;; sbl -bf raises them (ANY(.&ERRTEXT) is 59). A deferred expression that fails fails the element.
 (defn- set-of [S err]
-  (let [s (if (or (string? S) (number? S) (instance? SNOBOL4clojure.env.NAME S)) (env/sstr S) "")]
+  (let [s (if (or (string? S) (number? S) (and (instance? SNOBOL4clojure.env.NAME S) (symbol? (.n ^SNOBOL4clojure.env.NAME S)))) (env/sstr S) "")]
     (if (seq s) (charset s) (throw (ex-info (env/error-message err) {:snobol/error err})))))
 
 (defn- set-pattern-of [op S bad ebad]

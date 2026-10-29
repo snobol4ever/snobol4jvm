@@ -6258,3 +6258,26 @@
                    "END\n"))
       (is (= (str "1:  Y = *X + 1\n189:  Y = SIZE(ARB)\n1:  Y = ('a' | 'b') + 1\n1:  Y = .X + 1\n10:  Y = -.X\n8:  Y = .&ERRTEXT 'z'\n120:  Y = LEN(.X)\n1:  Y = .*X + 1\n1:  Y = @X + 1\n239:  Y = .$ARB\n239:  Y = .$*X\n239:  Y = .$&FENCE\n239:  Y = @$ARB\ncompiled:  Y = .$1\ncompiled:  Y = .$'X'\n239:  Y = LEN(1) . $ARB\ncompiled:  Y = LEN(1) . *$ARB\n1:  Y = LEN(1) . X + 1\ncompiled:  Y = Q . $ARB\ncompiled:  Y = .X 'l'\ncompiled:  Y = .A[1] + 1\ncompiled:  Y = .F() + 1\ncompiled:  Y = LEN(1) . A[1] + 1\ncompiled:  $ARB = 1\n") (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; ANY, NOTANY, SPAN, BREAK and BREAKX take a string: the name of a natural variable is its name, and the name of a keyword or an element has no text, so it is
+;; the function's "argument is not a string or expression" (59, 188 ...), or deferred its "evaluated argument is not a string" (44 ...). The engine took the
+;; printed form of the name. Expected output is sbl -bf's.
+(deftest a-charset-function-takes-a-name-with-text
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 20\n"
+                   "        A = ARRAY(2)\n"
+                   "        N = .&ERRTEXT\n"
+                   "        M = .A[1]\n"
+                   "        K = .X\n"
+                   "        P = ANY(N)                              :S(E1)\n"
+                   "        OUTPUT = '1 ' &ERRTYPE\n"
+                   "E1      P = SPAN(M)                             :S(E2)\n"
+                   "        OUTPUT = '2 ' &ERRTYPE\n"
+                   "E2      'abc' ? BREAK(*N)                       :S(E3)\n"
+                   "        OUTPUT = '3 ' &ERRTYPE\n"
+                   "E3      'xX' ? ANY(K) . V\n"
+                   "        OUTPUT = '4 ' V\n"
+                   "END\n"))
+      (is (= "1 59\n2 188\n3 44\n4 X\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
