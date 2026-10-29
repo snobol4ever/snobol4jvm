@@ -170,8 +170,11 @@
                      (do (goto! etgt) [(label-addr etgt) nil])
                      [(saddr (inc ((:at err) 0))) nil]))))
              (throw (fatal-error 37)))
+           ;; "ABORT causes error processing to resume as though no error intercept had been set" (manual ch. 19, SETEXIT): the error goes on up without the
+           ;; handler it was trapped to, which took it again and again (sbl -bf: a handler's :(ABORT) after 1 / Z prints ERROR 014 and the program ends)
            (and err (clojure.core/= nm "ABORT"))
-           (let [e ^clojure.lang.ExceptionInfo (:ex err)] (throw (ex-info (ex-message e) (assoc (ex-data e) :snobol/abort true))))
+           (let [e ^clojure.lang.ExceptionInfo (:ex err)]
+             (throw (ex-info (ex-message e) (-> (ex-data e) (dissoc :snobol/label :snobol/serial :snobol/fp :snobol/resume) (assoc :snobol/abort true)))))
            tgt
            (do (goto! tgt) (let [a (label-addr tgt)] (when (pos? (long @&TRACE)) (fire-label! (or (second a) tgt))) [a err]))
            :else

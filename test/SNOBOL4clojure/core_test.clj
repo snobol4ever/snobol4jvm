@@ -7073,3 +7073,34 @@
                    "END\n"))
       (is (= "succ [] 3000\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; "ABORT causes error processing to resume as though no error intercept had been set" (manual ch. 19, SETEXIT): a handler's :(ABORT) ends the program with the
+;; error's report, at the statement that took ABORT, from a handler run at the statement's end or at a negation's operand. The error went on up still marked
+;; with its handler, which took it again, so the handler ran until &STLIMIT stopped it. Expected output is sbl -bf's.
+(deftest a-handlers-goto-to-abort-ends-the-program-with-the-error
+  (doseq [[src line stmts pre] [[(str "        &ERRLIMIT = 10\n"
+                                      "        &STLIMIT = 1000\n"
+                                      "        Z = 0\n"
+                                      "        SETEXIT('H')\n"
+                                      "        X = 1 / Z\n"
+                                      "        OUTPUT = 'not here'   :(END)\n"
+                                      "H       OUTPUT = 'H ' &ERRTYPE  :(ABORT)\n"
+                                      "END\n") 7 6 "H 14\n"]
+                                [(str "        &ERRLIMIT = 10\n"
+                                      "        &STLIMIT = 1000\n"
+                                      "        Z = 0\n"
+                                      "        SETEXIT('H')\n"
+                                      "        X = ~(1 / Z)\n"
+                                      "        OUTPUT = 'not here'   :(END)\n"
+                                      "H       OUTPUT = 'H ' &ERRTYPE  :(H2)\n"
+                                      "H2      OUTPUT = 'H2'           :(ABORT)\n"
+                                      "END\n") 8 7 "H 14\nH2\n"]]]
+    (let [f (java.io.File/createTempFile "gen" ".sno") p (.getPath f)]
+      (try
+        (spit f src)
+        (let [out (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p)))]
+          (is (= (str pre "\n\n\n" p "(" line ") : ERROR 014 -- division caused integer overflow\n\n\n\n\n\n"
+                      "in file              " p "\nin line              " line "\nin statement         " line "\nstmts executed       " stmts "\n"
+                      "execution time msec  -\nREGENERATIONS        -\nmemory used (bytes)  -\nmemory left (bytes)  -\n\n")
+                 (fatal-figures out))))
+        (finally (.delete f))))))
