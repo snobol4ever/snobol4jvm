@@ -28,7 +28,7 @@
      (edn->ir s)                  — EDN string -> [codes nos labels]"
   (:require [clojure.string          :as string]
             [clojure.edn             :as edn]
-            [SNOBOL4clojure.env      :refer [STNO <STNO> <LABL> <CODE> <DISPNO> <POS> <CODELINE> <DIAGNOSTICS> <SOURCE> BLANKS &CASE fold-case block-end]]
+            [SNOBOL4clojure.env      :refer [STNO <STNO> <LABL> <CODE> <DISPNO> <POS> <CODELINE> <DIAGNOSTICS> <SOURCE> BLANKS &CASE fold-case block-end compile-error]]
             [SNOBOL4clojure.grammar  :refer [parse-statement]]
             [SNOBOL4clojure.syntax   :refer [syntax-error]]
             [SNOBOL4clojure.emitter  :refer [emitter]]))
@@ -354,12 +354,12 @@
                  (let [{n :error col :column} (or (when-not (= :compile (:reason code)) (syntax-error stmt))
                                                   {:error (case (:reason code) :compile 231 :line-end 230 220)})]
                    (when-not (#{\+ \.} (first stmt))
-                     (swap! <DIAGNOSTICS> conj [pline n (when col (min (long col) (max 1 (count stmt))))]))
+                     (swap! <DIAGNOSTICS> conj [pline n (when col (min (long col) (max 1 (count stmt)))) NO]))
                    (recur (rest stmts) (inc NO) (assoc CODES NO (error-node code)) NOS LABELS blanks (conj before blanks) fold (conj poss here) pos''))
                  (let [label  (:label code)
                        body   (:body  code)
                        goto   (:goto  code)
-                       _      (when-let [n (fold-error body (when (map? goto) goto))] (swap! <DIAGNOSTICS> conj [pline n nil]))
+                       _      (when-let [n (fold-error body (when (map? goto) goto))] (swap! <DIAGNOSTICS> conj [pline n nil NO]))
                        key    (if label label NO)
                        code   (reduce #(conj %1 %2) [] [body goto])
                        nos    (if (keyword? key) (assoc NOS   key NO) NOS)
@@ -424,15 +424,28 @@
 ;; "The string s must contain valid SPITBOL program statements complete with labels and using semicolons to separate statements" (manual ch. 19, CODE): the text
 ;; is one record, split-source's record?.
 ;; "The call fails if syntactical errors are found. In this case, it is possible to inspect &ERRTEXT to find the error message" (manual ch. 19, CODE): a block with
-;; a statement that does not compile loads nothing, and answers its first error as {:error n}.
+;; a statement that does not compile answers its first error as {:error n}. What SPITBOL compiled before that statement stays: those statements are loaded, their
+;; labels defined, and the statement in error after them is error 7 when control reaches it; it takes no number of its own, so the next block numbers on from the
+;; last statement loaded (sbl -bf: CODE(' X = 1;L1 OUTPUT = "in L1 " &STNO;L2 Y = SQRT(-0.5);L3 OUTPUT = "L3"') fails with 314, and :(L1) prints in L1 10, the
+;; program having eight statements, then reaches error 7; L2 and L3 are undefined, or keep the statements an earlier block gave them; the next block's first is 11).
+;; Not followed: the next block's first statement takes the place of the one in error, so control falling from the last statement loaded reaches it.
 ;; Each text CODE compiles is one more line of the program's file, after the last line the compiler read, whether it compiles or not; &FILE there is the program's
 ;; (sbl -bf: an eleven-line program's CODE texts are lines 12, 13 and 14, a failed one among them, and a text of two statements is one line; EVAL takes none). A
 ;; statement an -INCLUDE in the text brings keeps its own file and line.
 (defn CODE-block [S]
   (let [[f l]          (swap! <CODELINE> (fn [[f l]] [f (inc (long l))]))
         [codes :as ir] (update-in (CODE! S ["."] nil true) [3 :pos] (fn [ps] (mapv #(if (= "" (first %)) [f l] %) ps)))]
-    (if-let [[_ n] (first @<DIAGNOSTICS>)]
-      {:error n}
+    (if-let [[_ n _ bad] (first @<DIAGNOSTICS>)]
+      (let [[codes nos labels disp] ir
+            k      (dec (long (or bad 1)))
+            before (fn [m] (into {} (filter (fn [[no _]] (<= (long no) k)) m)))]
+        (when (pos? k)
+          (load-code [(into {} (for [no (range 1 (inc k)) :let [key (or (labels no) no)]] [key (codes key)]))
+                      (into {} (filter (fn [[_ no]] (<= (long no) k)) nos))
+                      (before labels)
+                      (-> disp (update :before #(vec (take k %))) (update :pos #(vec (take k %))) (assoc :total (get (:before disp) k (:total disp))))]))
+        (swap! <CODE> assoc (inc (long @STNO)) compile-error)
+        {:error n})
       (let [entry (load-code ir)]
         (if (or (contains? codes :END) (contains? codes :end))
           entry

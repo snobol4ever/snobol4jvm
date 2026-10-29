@@ -13,7 +13,7 @@
   LABEL traces fire at every statement whose key has a registration.
   Statement-level trace (wildcard '*') prints each statement number + label.
   Pattern traces are handled in match.clj via *trace* dynamic var."
-  (:require [SNOBOL4clojure.env   :refer [<STNO> <LABL> <CODE> <DISPNO> block-end
+  (:require [SNOBOL4clojure.env   :refer [<STNO> <LABL> <CODE> <DISPNO> block-end compile-error
                                            &STCOUNT &STLIMIT &TRACE &STNO &LASTNO &ERRLIMIT &ERRTYPE &ERRTEXT <POS> &FILE &LASTFILE &LINE &LASTLINE &FNCLEVEL
                                            snobol-return! snobol-freturn!
                                            snobol-nreturn! snobol-end!
@@ -183,7 +183,10 @@
                   body   (if (map? ferst) seqond ferst)
                   goto   (if (map? ferst) ferst  seqond)]
               ;; a statement the limit stops is not executed: the overrun is trapped as an error in it is
-              (let [r (if over (trap over) (exec-body body))]
+              (let [r (cond over                           (trap over)
+                            ;; the statement in error of a block CODE failed to compile is error 7 when control reaches it
+                            (identical? stmt compile-error)  (trap (ex-info (SNOBOL4clojure.env/error-message 7) {:snobol/error 7}))
+                            :else                            (exec-body body))]
                 (if (instance? Trapped r)
                   ;; control goes to the handler; CONTINUE and ABORT there refer back to the statement in error
                   (recur (saddr (:label r)) {:at current :goto goto :ex (:ex r)})

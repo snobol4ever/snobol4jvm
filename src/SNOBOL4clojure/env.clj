@@ -136,6 +136,8 @@
 (def <CODE>  (atom {}))
 ;; the statement that closes a block CODE() compiles at run time: reached, it is counted and numbered as any statement is, and it ends the program
 (def block-end [::block-end])
+;; the statement in error that ends a block CODE() failed to compile: reached, it is "7 Compilation error encountered during execution"
+(def compile-error [::compile-error])
 
 ;; ── User-defined function registry ───────────────────────────────────────────
 ;; Stores DEFINE'd closures keyed by uppercased function name (string).

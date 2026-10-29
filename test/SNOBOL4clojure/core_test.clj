@@ -6756,3 +6756,26 @@
                   "GT 112,GE 110,REMDR 165,\n")
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A CODE that fails keeps what SPITBOL compiled before the statement in error: those statements are loaded and their labels defined, the statement in error is
+;; error 7 when control reaches it, and the labels on and after it are left as they were; the next block numbers on from the last statement loaded. The engine
+;; loaded nothing of a failed block. Expected output is sbl -bf's.
+(deftest a-failed-code-defines-the-labels-before-its-error
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 10\n"
+                   "        C = CODE('L2 OUTPUT = \"old L2\" :(B2);L3 OUTPUT = \"old L3\" :(B3)')\n"
+                   "        D = CODE(' X = 1;L1 OUTPUT = \"in L1 \" &STNO;L2 Y = SQRT(-0.5);L3 OUTPUT = \"new L3\"')    :S(D1)\n"
+                   "        OUTPUT = 'D failed ' &ERRTYPE\n"
+                   "D1      SETEXIT('ERR')\n"
+                   "        :(L1)\n"
+                   "ERR     OUTPUT = 'ERROR ' &ERRTYPE\n"
+                   "        :(L2)\n"
+                   "B2      :(L3)\n"
+                   "B3      E = CODE(' OUTPUT = \"E \" &STNO :(B4)')    :<E>\n"
+                   "B4      SETEXIT('ERR2')\n"
+                   "        :(L4)\n"
+                   "ERR2    OUTPUT = 'ERROR ' &ERRTYPE                :(END)\n"
+                   "END\n"))
+      (is (= "D failed 314\nin L1 19\nERROR 7\nold L2\nold L3\nE 20\nERROR 38\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
