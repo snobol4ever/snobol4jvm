@@ -6591,3 +6591,45 @@
                    "END\n"))
       (is (= "SQRT 314\nEXP 305\nLN 307\nLN-neg 315\nSIN 308\nCOS 303\nTAN 309\nATAN 301\nCHOP 302\nSQRT-4 compiled\nSQRT-N compiled\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; TRIM and the predicates IDENT, DIFFER, INTEGER and LGT carry no svpre, so SPITBOL's compiler leaves a call of one to run time, and it is no constant: TRIM(ARB)
+;; and IDENT(1, 1) + ARB compile, where SIZE('a') + ARB is 2. The engine folded them, and refused such statements. Expected output is sbl -bf's.
+(deftest trim-and-the-predicates-are-not-evaluated-as-the-statement-is-compiled
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        &ERRLIMIT = 100\n"
+                   "        C = CODE(\" X = SIZE('a') + ARB\")    :S(N0)\n"
+                   "        OUTPUT = 'SIZE+ARB ' &ERRTYPE   :(M0)\n"
+                   "N0      OUTPUT = 'SIZE+ARB compiled'\n"
+                   "M0\n"
+                   "        C = CODE(\" X = IDENT(1, 1) + ARB\")    :S(N1)\n"
+                   "        OUTPUT = 'IDENT+ARB ' &ERRTYPE   :(M1)\n"
+                   "N1      OUTPUT = 'IDENT+ARB compiled'\n"
+                   "M1\n"
+                   "        C = CODE(\" X = DIFFER(1, 2) + ARB\")    :S(N2)\n"
+                   "        OUTPUT = 'DIFFER+ARB ' &ERRTYPE   :(M2)\n"
+                   "N2      OUTPUT = 'DIFFER+ARB compiled'\n"
+                   "M2\n"
+                   "        C = CODE(\" X = INTEGER(1) + ARB\")    :S(N3)\n"
+                   "        OUTPUT = 'INTEGER+ARB ' &ERRTYPE   :(M3)\n"
+                   "N3      OUTPUT = 'INTEGER+ARB compiled'\n"
+                   "M3\n"
+                   "        C = CODE(\" X = LGT(2, 1) + ARB\")    :S(N4)\n"
+                   "        OUTPUT = 'LGT+ARB ' &ERRTYPE   :(M4)\n"
+                   "N4      OUTPUT = 'LGT+ARB compiled'\n"
+                   "M4\n"
+                   "        C = CODE(\" X = TRIM(ARB)\")    :S(N5)\n"
+                   "        OUTPUT = 'TRIM-ARB ' &ERRTYPE   :(M5)\n"
+                   "N5      OUTPUT = 'TRIM-ARB compiled'\n"
+                   "M5\n"
+                   "        C = CODE(\" X = LGT(ARB, 1)\")    :S(N6)\n"
+                   "        OUTPUT = 'LGT-ARB ' &ERRTYPE   :(M6)\n"
+                   "N6      OUTPUT = 'LGT-ARB compiled'\n"
+                   "M6\n"
+                   "        C = CODE(\" X = TRIM('a ') + ARB\")    :S(N7)\n"
+                   "        OUTPUT = 'TRIM+ARB ' &ERRTYPE   :(M7)\n"
+                   "N7      OUTPUT = 'TRIM+ARB compiled'\n"
+                   "M7\n"
+                   "END\n"))
+      (is (= "SIZE+ARB 2\nIDENT+ARB compiled\nDIFFER+ARB compiled\nINTEGER+ARB compiled\nLGT+ARB compiled\nTRIM-ARB compiled\nLGT-ARB compiled\nTRIM+ARB compiled\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

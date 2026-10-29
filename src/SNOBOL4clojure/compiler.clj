@@ -202,10 +202,10 @@
 ;; The functions are those whose svblk carries svpre, "the compiler [may] preevaluate a call to the associated system function if all the arguments are themselves
 ;; constants. functions in this category must have no side effects and must never cause failure. the call may generate an error condition" (sbl.min svpre): the
 ;; mathematical ones among them too (sbl -bf, CODE: SQRT(-0.5) is 314, EXP(1000000) 305, LN(0) 307, LN(-1) 315, SIN('a') 308, COS('a') 303, TAN('a') 309,
-;; ATAN('a') 301, CHOP('a') 302).
+;; ATAN('a') 301, CHOP('a') 302). TRIM and the predicates carry none, so a call of one is no constant (sbl -bf, CODE: TRIM(ARB) and LGT(ARB, 1) compile, and so
+;; do IDENT(1, 1) + ARB, DIFFER(1, 2) + ARB, INTEGER(1) + ARB, LGT(2, 1) + ARB and TRIM('a ') + ARB, where SIZE('a') + ARB is 2).
 (def ^:private folded-functions
-  '#{SIZE LEN ANY NOTANY SPAN BREAK BREAKX POS RPOS TAB RTAB ARBNO FENCE REMDR CHAR TRIM REPLACE LPAD RPAD REVERSE DIFFER IDENT INTEGER DATATYPE LGT
-     SQRT EXP LN SIN COS TAN ATAN CHOP})
+  '#{SIZE LEN ANY NOTANY SPAN BREAK BREAKX POS RPOS TAB RTAB ARBNO FENCE REMDR CHAR REPLACE LPAD RPAD REVERSE DATATYPE SQRT EXP LN SIN COS TAN ATAN CHOP})
 
 ;; -- Names ----------------------------------------------------------------------
 ;; Where a name is wanted -- the operand of unary . @ and &, the right of binary . and $, the subject of an assignment or a replacement, a goto's operand -- an
