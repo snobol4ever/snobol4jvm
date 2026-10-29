@@ -409,18 +409,24 @@
 
 ;; "If we had not done this, SPITBOL would terminate when execution 'fell out of the bottom' of the new code block" (manual ch. 9, The CODE function): the block
 ;; CODE() compiles at run time ends in a statement of its own, numbered after its last, which ends the program when control reaches it (env/block-end). A block
-;; with no statements, CODE('') or a comment alone, is that statement, and starts there.
+;; with no statements, CODE('') or a comment alone, is that statement, and starts there. A block that ends in its own END has none: its END is its last statement,
+;; and the next block numbers on from it (sbl -bf: after a seven-statement program CODE('END') is statement 8 and the next block's first 9; CODE(' OUTPUT = 1;END')
+;; is 11 and 12, the next block's first 13).
+;; "The string s must contain valid SPITBOL program statements complete with labels and using semicolons to separate statements" (manual ch. 19, CODE): the text
+;; is one record, split-source's record?.
 ;; "The call fails if syntactical errors are found. In this case, it is possible to inspect &ERRTEXT to find the error message" (manual ch. 19, CODE): a block with
 ;; a statement that does not compile loads nothing, and answers its first error as {:error n}.
 (defn CODE-block [S]
-  (let [ir (CODE! S ["."] nil true)]
+  (let [[codes :as ir] (CODE! S ["."] nil true)]
     (if-let [[_ n] (first @<DIAGNOSTICS>)]
       {:error n}
       (let [entry (load-code ir)]
-        (swap! STNO inc)
-        (swap! <DISPNO> assoc @STNO (+ @STNO @BLANKS))
-        (swap! <CODE> assoc @STNO block-end)
-        (or entry @STNO)))))
+        (if (or (contains? codes :END) (contains? codes :end))
+          entry
+          (do (swap! STNO inc)
+              (swap! <DISPNO> assoc @STNO (+ @STNO @BLANKS))
+              (swap! <CODE> assoc @STNO block-end)
+              (or entry @STNO)))))))
 
 ;; -- Stage 23A: EDN serialisation --------------------------------------------
 

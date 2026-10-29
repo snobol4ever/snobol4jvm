@@ -6500,3 +6500,20 @@
                    "END\n"))
       (is (= "LF 230\nCR 230\nfirst 214\ntail 214\nblank-tail 230\nparen 230\ngoto 230\nbefore 230\nliteral compiled\nran 3\nEVAL 230\nEVAL literal 4\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; A CODE block ends in a statement of its own that takes a number, unless it ends in its own END: that END is its last statement, ends the program when control
+;; reaches it, and the next block numbers on from it. The engine gave every block the closing statement. Expected output is sbl -bf's.
+(deftest a-code-block-ending-in-end-has-no-closing-statement
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        C = CODE('END')\n"
+                   "        D = CODE(' X = &STNO :(BACK)')   :<D>\n"
+                   "BACK    OUTPUT = X\n"
+                   "        E = CODE(' OUTPUT = 1;END')\n"
+                   "        F = CODE(' Y = &STNO :(LAST)')   :<F>\n"
+                   "LAST    OUTPUT = Y\n"
+                   "        G = CODE(' OUTPUT = \"in G\";END')                :<G>\n"
+                   "        OUTPUT = 'not here'\n"
+                   "END\n"))
+      (is (= "11\n15\nin G\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
