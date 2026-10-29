@@ -28,7 +28,7 @@
      (edn->ir s)                  — EDN string -> [codes nos labels]"
   (:require [clojure.string          :as string]
             [clojure.edn             :as edn]
-            [SNOBOL4clojure.env      :refer [STNO <STNO> <LABL> <CODE> <DISPNO> <POS> <DIAGNOSTICS> <SOURCE> BLANKS &CASE fold-case block-end]]
+            [SNOBOL4clojure.env      :refer [STNO <STNO> <LABL> <CODE> <DISPNO> <POS> <CODELINE> <DIAGNOSTICS> <SOURCE> BLANKS &CASE fold-case block-end]]
             [SNOBOL4clojure.grammar  :refer [parse-statement]]
             [SNOBOL4clojure.syntax   :refer [syntax-error]]
             [SNOBOL4clojure.emitter  :refer [emitter]]))
@@ -380,7 +380,11 @@
    Optional include-path is a seq of directory strings (default [\".\"])."
   ([S] (CODE S ["."]))
   ([S include-path] (CODE S include-path nil))
-  ([S include-path file] (load-code (CODE! S include-path file))))
+  ([S include-path file]
+   (let [[_ _ _ disp :as ir] (CODE! S include-path file)]
+     ;; the program's last line read, its END's (sbl -bf reads no further: data after END is no line), is where CODE's texts number on from
+     (reset! <CODELINE> (or (last (:pos disp)) ["" 0]))
+     (load-code ir))))
 
 (defn- load-code
   "Load a CODE! result into the global statement store; returns the entry, as CODE does."
@@ -416,8 +420,12 @@
 ;; is one record, split-source's record?.
 ;; "The call fails if syntactical errors are found. In this case, it is possible to inspect &ERRTEXT to find the error message" (manual ch. 19, CODE): a block with
 ;; a statement that does not compile loads nothing, and answers its first error as {:error n}.
+;; Each text CODE compiles is one more line of the program's file, after the last line the compiler read, whether it compiles or not; &FILE there is the program's
+;; (sbl -bf: an eleven-line program's CODE texts are lines 12, 13 and 14, a failed one among them, and a text of two statements is one line; EVAL takes none). A
+;; statement an -INCLUDE in the text brings keeps its own file and line.
 (defn CODE-block [S]
-  (let [[codes :as ir] (CODE! S ["."] nil true)]
+  (let [[f l]          (swap! <CODELINE> (fn [[f l]] [f (inc (long l))]))
+        [codes :as ir] (update-in (CODE! S ["."] nil true) [3 :pos] (fn [ps] (mapv #(if (= "" (first %)) [f l] %) ps)))]
     (if-let [[_ n] (first @<DIAGNOSTICS>)]
       {:error n}
       (let [entry (load-code ir)]

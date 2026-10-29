@@ -6517,3 +6517,23 @@
                    "END\n"))
       (is (= "11\n15\nin G\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; The text of each CODE call is one more line of the program's file, after the last line the compiler read (END's; what follows END is no line), whether it
+;; compiles or not; a text of two statements is one line, and EVAL takes none. The engine gave a CODE block's statements line 1. Expected output is sbl -bf's.
+(deftest code-text-is-a-line-after-the-program
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "* CODE texts are lines after the program's END\n"
+                   "        &ERRLIMIT = 10\n"
+                   "        X = EVAL('1 + 1')\n"
+                   "        C = CODE(' OUTPUT = \"a \" &LINE :(R1)')                  :<C>\n"
+                   "R1      Y = CODE(' Z = (')\n"
+                   "        D = CODE(' OUTPUT = \"b \" &LINE \" \" &LASTLINE :(R2)')     :<D>\n"
+                   "R2      OUTPUT = 'main ' &LINE\n"
+                   "        E = CODE(' OUTPUT = \"c \" &LINE;'\n"
+                   "+                ' OUTPUT = \"d \" &LINE :(R3)')                  :<E>\n"
+                   "R3      OUTPUT = 'main ' &LINE\n"
+                   "END\n"
+                   "not a statement\n"))
+      (is (= "a 12\nb 14 6\nmain 7\nc 15\nd 15\nmain 10\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))

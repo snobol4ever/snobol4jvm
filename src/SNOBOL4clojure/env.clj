@@ -101,6 +101,7 @@
 ;;   :arity 1 = unary operator redefinition
 ;;   :arity 2 = binary operator redefinition
 (def <POS> (atom {}))   ; statement number -> [file line]: where the statement stands in the source, which &FILE and &LINE read
+(def <CODELINE> (atom ["" 0]))   ; [file line] of the last line the compiler read, the program's END: each CODE text is the next line
 (def <OBJNO> (atom 0))   ; how many arrays, tables and DATA objects the program has made: the number a dump gives each, #n
 (defn next-serial! [] (swap! <OBJNO> inc))
 (def <PRIMS-READ> (atom #{}))   ; the primitive pattern variables (BAL, ARB, ...) the program has read, which a dump lists as SPITBOL lists them
@@ -332,6 +333,7 @@
    (reset! &ERRTYPE   0)
    (reset! &ERRTEXT   ε)
    (reset! <POS>      {})
+   (reset! <CODELINE> ["" 0])
    (reset! &FILE ε)
    (reset! &LASTFILE ε)
    (reset! &LINE 0)
