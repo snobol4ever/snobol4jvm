@@ -33,7 +33,8 @@
                  j)]
     (if (or (name-char? (at s j)) (= \- (at s j))) (fail! 231 j) j)))
 
-;; The list inside ( ) or < > or [ ], its elements separated by commas, any of them empty. Returns the index after the closer.
+;; The list inside ( ) or < > or [ ], its elements separated by commas, any of them empty. Returns the index after the closer. A colon or a semicolon ends the
+;; scan inside it as the end does (sbl -bf: (4 :(L)) and F(4 :(L)) are "226 missing right paren", A<4 :(L)> and A[4 :(L)] "229 missing right array bracket").
 (defn- element-list [s i closer]
   (loop [i i]
     (let [i (expression s i {:closer closer})
@@ -41,7 +42,7 @@
       (cond
         (= c \,)                              (recur (inc i))
         (= c closer)                          (inc i)
-        (nil? c)                              (fail! (if (= closer \)) 226 229) i)
+        (or (nil? c) (#{\: \;} c))            (fail! (if (= closer \)) 226 229) i)
         (= c \))                              (fail! 224 i)
         (#{\] \>} c)                          (fail! 225 i)
         :else                                 (fail! 220 i)))))
@@ -52,7 +53,7 @@
   (let [c (at s i)]
     (cond
       (nil? c)                         (fail! 221 i)
-      (and (operator-char? c) (let [d (at s (inc i))] (or (nil? d) (blank? d) (#{\) \] \> \, \:} d))))
+      (and (operator-char? c) (let [d (at s (inc i))] (or (nil? d) (blank? d) (#{\) \] \> \, \: \;} d))))
       (fail! 221 (inc i))
       ;; .X names X and &K a keyword: what follows is a name, never a literal or another name (sbl -bf: .5, ..X and &1 are "212 value used where name is required")
       (#{\. \&} c)
@@ -73,7 +74,7 @@
               (= c \))      (fail! 224 i)
               (#{\] \>} c)  (fail! 225 i)
               (= c \,)      (fail! 223 i)
-              (= c \:)      (fail! 221 i)
+              (#{\: \;} c)  (fail! 221 i)
               :else         (fail! 230 i))]
         ;; subscripts follow, with or without blanks before them (sbl -bf: A [1] is A<1>)
         (loop [j j kind kind]
@@ -83,11 +84,11 @@
               \[ (recur (element-list s (inc k) \]) :name)
               [j kind])))))))
 
-;; An expression, up to the end of the statement, a closer, a comma, a goto's colon, or (at the top of the body) the = of an assignment or a replacement. Elements
-;; are concatenated by blanks; a binary operator has a blank on each side. ctx is {:closer c} inside brackets and {:top true :stop-at-equals b} in the body.
-;; Returns the index where it stopped.
+;; An expression, up to the end of the statement, a closer, a comma, a colon or a semicolon (at any depth: SPITBOL's scan ends there), or (at the top of the body)
+;; the = of an assignment or a replacement. Elements are concatenated by blanks; a binary operator has a blank on each side. ctx is {:closer c} inside brackets
+;; and {:top true :stop-at-equals b} in the body. Returns the index where it stopped.
 (defn- expression [s i ctx]
-  (let [stop? (fn [c] (or (nil? c) (if (:top ctx) (= c \:) (#{\) \] \> \,} c))))
+  (let [stop? (fn [c] (or (nil? c) (#{\: \;} c) (and (not (:top ctx)) (#{\) \] \> \,} c))))
         i     (skip-blanks s i)
         c     (at s i)]
     (cond
@@ -121,7 +122,7 @@
                         :else                            (let [m (skip-blanks s (inc k))] (if (at s m) (expression s m (dissoc ctx :stop-at-equals)) m)))
                   (let [m (skip-blanks s (inc k))]
                     (cond
-                      (or (nil? (at s m)) (#{\) \] \> \,} (at s m)) (= \: (at s m))) (fail! 221 m)
+                      (or (nil? (at s m)) (#{\) \] \> \, \: \;} (at s m)))      (fail! 221 m)
                       ;; a goto's target is a name: an expression of more than one element is "212 value used where name is required"
                       (:goto ctx)                                                 (fail! 212 m)
                       :else                                                       (recur (operand s m) (inc n)))))
@@ -151,7 +152,8 @@
                 (= (at s k) closer) (let [n (inc k) d (at s n)]
                                       (when-not (or (nil? d) (blank? d) (#{\S \s \F \f \( \<} d)) (fail! 234 n))
                                       (recur n (conj seen kind)))
-                (nil? (at s k))     (fail! (if (= closer \)) 227 228) k)
+                ;; a colon or a semicolon ends the scan inside the goto too (sbl -bf: :(L:X) and :S(L :F(L)) are 227, :<L :> 228)
+                (or (nil? (at s k)) (#{\: \;} (at s k))) (fail! (if (= closer \)) 227 228) k)
                 :else               (fail! 212 k)))))))))
 
 (defn syntax-error

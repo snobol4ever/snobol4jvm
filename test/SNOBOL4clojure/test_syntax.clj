@@ -158,7 +158,18 @@
    [" X = 1* 2" 233]
    [" X = 1*2" 233]
    [" X = A+B" 233]
-   [" X = A +B" nil]])
+   [" X = A +B" nil]
+   ;; a colon ends the scan inside brackets too, and the bracket lacks its closer (generated 2026-10-29)
+   [" X = (4 :(L))" 226]
+   [" X = (4 :" 226]
+   [" X = F(4 :(L))" 226]
+   [" X = A<4 :(L)>" 229]
+   [" X = A[4 :(L)]" 229]
+   [" X = (4, 5 :(L))" 226]
+   [" X = (4 + :(L))" 221]
+   [" X = 1 :(L:X)" 227]
+   [" X = 1 :S(L :F(L))" 227]
+   [" X = 1 :<L :>" 228]])
 
 (deftest the-scan-names-the-error-sbl-names
   (doseq [[stmt n] sbl-errors]
