@@ -65,13 +65,15 @@
     (apply str (map #(let [i (.indexOf ^String s2 (str %))]
                        (if (>= i 0) (.charAt ^String s3 i) %))
                     s1))))
-;; DUPL's first argument is a string or a pattern, "091 dupl first argument is not a string or pattern": a pattern repeated is the pattern of its copies in turn
-;; (sbl -bf: 'abcd' ? DUPL(LEN(1), 3) . V assigns abc; DUPL(P, 0) is a PATTERN)
+;; DUPL's first argument is a string or a pattern, "091 dupl first argument is not a string or pattern": a pattern, or an expression, repeated is the pattern of
+;; its copies in turn, and repeated no times the null pattern; a negative count fails (sbl -bf: 'abcd' ? DUPL(LEN(1), 3) . V assigns abc; DUPL(LEN(1), 0) is a
+;; PATTERN; 'aab' ? DUPL(*X, 2) . V of X = 'a' assigns aa; DUPL('ab', -1) fails)
 (defn DUPL    [x i]
   (let [n (int-arg i 90)]
-    (if (clojure.core/= "PATTERN" (env/DATATYPE x))
-      (apply list 'SEQ (repeat n x))
-      (let [s (str-arg x 91)] (apply str (repeat n s))))))
+    (when-not (neg? n)
+      (if (#{"PATTERN" "EXPRESSION"} (env/DATATYPE x))
+        (if (zero? n) (list 'LEN# 0) (apply list 'SEQ (repeat n x)))
+        (let [s (str-arg x 91)] (apply str (repeat n s)))))))
 (defn TRIM    [s]     (clojure.string/trimr (str-arg s 200)))
 (defn REVERSE [s]     (apply str (clojure.string/reverse (str-arg s 177))))
 (defn LPAD

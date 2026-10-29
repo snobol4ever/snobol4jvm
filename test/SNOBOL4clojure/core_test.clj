@@ -6281,3 +6281,25 @@
                    "END\n"))
       (is (= "1 59\n2 188\n3 44\n4 X\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
+
+;; DUPL of a pattern or an expression is the pattern of its copies in turn, and repeated no times the null pattern; a negative count fails. The engine made the
+;; null string of DUPL(P, 0), the null string of a negative count, and refused an expression. Expected output is sbl -bf's.
+(deftest dupl-repeats-a-pattern-or-an-expression
+  (let [f (java.io.File/createTempFile "gen" ".sno")]
+    (try
+      (spit f (str "        P = 'str'\n"
+                   "        P = DUPL(LEN(1), 0)\n"
+                   "        OUTPUT = 'zero ' DATATYPE(P)\n"
+                   "        'abc' ? P . Q\n"
+                   "        OUTPUT = 'zero-match [' Q ']'\n"
+                   "        P = 'str'\n"
+                   "        P = DUPL(LEN(1), -1)\n"
+                   "        OUTPUT = 'negative ' DATATYPE(P) ' ' P\n"
+                   "        X = 'a'\n"
+                   "        P = DUPL(*X, 2)\n"
+                   "        'aab' ? P . Q\n"
+                   "        OUTPUT = 'deferred-match [' Q ']'\n"
+                   "        OUTPUT = 'string ' DUPL('ab', 2) ' [' DUPL('ab', 0) ']'\n"
+                   "END\n"))
+      (is (= "zero PATTERN\nzero-match []\nnegative STRING str\ndeferred-match [aa]\nstring abab []\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
