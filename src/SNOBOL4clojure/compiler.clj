@@ -214,9 +214,9 @@
 ;; :(X ? 'L') and (1 / 0) = 5 are 212). A name is a variable, an element, a call, $X, *X, &K, or an operator SPITBOL leaves for OPSYN, which is called as a
 ;; function is (unary ! % / # = |, binary # % & ~ @: :(!X) and :(X @ Y) compile); the operators SPITBOL defines give values, and so do a literal, a
 ;; concatenation and a selection (:(+X), :(.X), :(X ** Y), :((X, Y)) are 212).
-(def ^:private unary-names  '#{$ * & ! % / sharp = |})
-(def ^:private binary-names '#{sharp % & tilde at})
-(def ^:private operators    '#{+ - * / ** sharp % at & tilde | ? ?= = . $ !})
+(def ^:private unary-names  '#{$ * & ! % / sharp-op = |})
+(def ^:private binary-names '#{sharp-op % & tilde-op at-op})
+(def ^:private operators    '#{+ - * / ** sharp-op % at-op & tilde-op | ? ?= = . $ !})
 
 (defn- name-form? [x]
   (cond
@@ -236,7 +236,7 @@
 ;; the operands of op given args that are name positions, by their index
 (defn- name-positions [op args]
   (let [n (count args)]
-    (cond (and (= 1 n) ('#{. at &} op)) #{0}
+    (cond (and (= 1 n) ('#{. at-op &} op)) #{0}
           (and (= 2 n) ('#{. $} op))    #{1}
           (and (= 2 n) (= '= op))       #{0}
           (and (= 3 n) (= '?= op))      #{0}
@@ -279,7 +279,7 @@
                                                   (if (constant-keywords (first args)) [true (eval! n)] [false nil]))
           (and (= '* op) (= 1 (count args)))  (do (fold (first args)) [true (eval! n)])   ; folded within, and itself a constant expression
           ;; .X .&K .*E .$C and @X @$C, each checked for a name first
-          (and ('#{. at} op) (= 1 (count args)) (do (name-required! (first args)) true) (constant-name? (first args))
+          (and ('#{. at-op} op) (= 1 (count args)) (do (name-required! (first args)) true) (constant-name? (first args))
                (or (= '. op) (symbol? (first args)) (= '$ (first (first args)))))
           (do (fold (first args)) [true (eval! n)])
           ;; a constant pattern captured into a constant name

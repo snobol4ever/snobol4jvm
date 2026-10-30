@@ -818,10 +818,10 @@
     "end")
   (is (= 11 ($$ 'I))))
 
-(deftest band5-ascii-and-char
-  "ASCII('A') = 65; CHAR(65) = 'A'"
+(deftest band5-ord-and-char
+  "ORD('A') = 65; CHAR(65) = 'A'"
   (prog
-    "        N = ASCII('A')"
+    "        N = ORD('A')"
     "        C = CHAR(65)"
     "end")
   (is (= 65      ($$ 'N)))

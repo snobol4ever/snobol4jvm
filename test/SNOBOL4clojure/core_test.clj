@@ -7186,3 +7186,39 @@
                    "END\n"))
       (is (= "go\nhandler 36\nfailed to\n" (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p)))))
       (finally (.delete f)))))
+
+;; The engine's functions that come from no SNOBOL4 before it are gone (Lon, CEO-2027 and CEO-2028: "snobol4jvm uses only uppercase built-in functions just like
+;; SCRIP", "If they exist as SNOBOL4 in the past the stay, otherwise delete them"): ABORT(), ASCII, STRING and CONJ, the lower-case spellings of the built-ins
+;; and the engine's own lower-case names. Each called is "022 undefined function called", as under sbl -bf; the ABORT pattern and label stay. The operators
+;; @ # ~ are spelled at-op, sharp-op and tilde-op inside, so a program's own at or tilde is a function it calls, and ~ and @ stay operators beside them (sbl
+;; -bf: tilde('q') and at('r') run the program's functions, ~IDENT(1,2) succeeds, @N sets N, and sharp(1) is 22). Expected output is sbl -bf's.
+(deftest the-functions-from-no-snobol4-are-undefined
+  (let [names (clojure.string/split (str "ABORT ASCII CONJ STRING apply arg array at char code convert copy data datatype date define detach endfile equal field input"
+                                         " item leq lge lgt lle llt lne load local lpad num opsyn out output prototype reference rewind rpad rsort sharp sort substr"
+                                         " table tilde time transpile unload") #" ")
+        f     (java.io.File/createTempFile "gone" ".sno")
+        p     (.getPath f)]
+    (try
+      (spit f (str "       &ERRLIMIT = 1000\n       SETEXIT('H')\n"
+                   (apply str (map #(str "       N = '" % "'\n       X = " % "()\n") names))
+                   "       OUTPUT = 'end'                  :(END)\n"
+                   "H      OUTPUT = N ' ' &ERRTYPE\n"
+                   "       SETEXIT('H')                    :(CONTINUE)\n"
+                   "END\n"))
+      (is (= (str (apply str (map #(str % " 22\n") names)) "end\n") (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p)))))
+      (spit f (str "       DEFINE('tilde(X)')                     :(T_END)\n"
+                   "tilde  tilde = 'my tilde ' X                  :(RETURN)\n"
+                   "T_END  DEFINE('at(X)')                        :(A_END)\n"
+                   "at     at = 'my at ' X                        :(RETURN)\n"
+                   "A_END  OUTPUT = tilde('q')\n"
+                   "       OUTPUT = at('r')\n"
+                   "       OUTPUT = ~IDENT(1,2) 'negated'\n"
+                   "       'abc' ? LEN(2) @N\n"
+                   "       OUTPUT = 'cursor ' N\n"
+                   "       OUTPUT = DIFFER(sharp(1))              :S(END)\n"
+                   "END\n"))
+      (is (= (str "my tilde q\nmy at r\nnegated\ncursor 2\n\n\n\n" p "(10) : ERROR 022 -- undefined function called\n\n\n\n\n\n"
+                  "in file              " p "\nin line              10\nin statement         10\nstmts executed       10\n"
+                  "execution time msec  -\nREGENERATIONS        -\nmemory used (bytes)  -\nmemory left (bytes)  -\n\n")
+             (fatal-figures (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p))))))
+      (finally (.delete f)))))

@@ -1,11 +1,11 @@
 (ns SNOBOL4clojure.test-sprint8
-  "Sprint 8 — ABORT, bare FENCE(), REM, ASCII, CHAR, REMDR, INTEGER, REAL, STRING.
+  "Sprint 8 — ABORT, bare FENCE(), REM, ORD, CHAR, REMDR, INTEGER, REAL, CONVERT to STRING (ASCII and STRING, from no SNOBOL4, are gone: CEO-2028).
    Test cases derived from Snobol4.Net reference suite (jcooper0/Snobol4.Net)."
   (:require [clojure.test             :refer :all]
             [SNOBOL4clojure.match     :refer [SEARCH FULLMATCH MATCH]]
             [SNOBOL4clojure.patterns  :refer [SPAN BREAK FENCE LEN ARB ARBNO
                                               ABORT FAIL REM POS RPOS]]
-            [SNOBOL4clojure.functions :refer [ASCII CHAR REMDR INTEGER REAL STRING]]
+            [SNOBOL4clojure.functions :refer [ORD CHAR REMDR INTEGER REAL CONVERT]]
             [SNOBOL4clojure.operators :refer [INVOKE |]]
             [SNOBOL4clojure.env       :refer [GLOBALS ε]]))
 
@@ -102,14 +102,14 @@
                 (| (SEQ "a" (FENCE) "z")
                    (SEQ "a" "x")))))))
 
-;; ─── 8.4  ASCII / CHAR ────────────────────────────────────────────────────────
+;; ─── 8.4  ORD / CHAR ──────────────────────────────────────────────────────────
 
-(deftest ascii-returns-code
-  (testing "ASCII returns integer code of first character"
-    (is (= 65 (ASCII "A")))
-    (is (= 97 (ASCII "a")))
-    (is (= 48 (ASCII "0")))
-    (is (= 32 (ASCII " ")))))
+(deftest ord-returns-code
+  (testing "ORD returns the integer code of the first character"
+    (is (= 65 (ORD "A")))
+    (is (= 97 (ORD "a")))
+    (is (= 48 (ORD "0")))
+    (is (= 32 (ORD " ")))))
 
 (deftest char-returns-string
   (testing "CHAR converts integer to single-character string"
@@ -117,10 +117,10 @@
     (is (= "a" (CHAR 97)))
     (is (= " " (CHAR 32)))))
 
-(deftest ascii-char-roundtrip
-  (testing "ASCII and CHAR are mutual inverses for printable ASCII"
+(deftest ord-char-roundtrip
+  (testing "ORD and CHAR are mutual inverses for printable characters"
     (doseq [c "ABCDEFabcdef0123456789"]
-      (is (= (str c) (CHAR (ASCII (str c))))))))
+      (is (= (str c) (CHAR (ORD (str c))))))))
 
 ;; ─── 8.5  REMDR ───────────────────────────────────────────────────────────────
 
@@ -167,11 +167,11 @@
     (is (= ε (REAL "abc")))
     (is (= ε (REAL "")))))
 
-;; ─── 8.8  STRING ──────────────────────────────────────────────────────────────
+;; ─── 8.8  CONVERT to STRING ──────────────────────────────────────────────────────────────
 
 (deftest string-conversion
-  (testing "STRING converts any value to string"
-    (is (= "42"    (STRING 42)))
-    (is (= "3.14"  (STRING 3.14)))
-    (is (= "hello" (STRING "hello")))
-    (is (= ""      (STRING "")))))
+  (testing "CONVERT to STRING converts any value to string"
+    (is (= "42"    (CONVERT 42 "STRING")))
+    (is (= "3.14"  (CONVERT 3.14 "STRING")))
+    (is (= "hello" (CONVERT "hello" "STRING")))
+    (is (= ""      (CONVERT "" "STRING")))))

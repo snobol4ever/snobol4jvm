@@ -11,13 +11,13 @@
               snobol-return! snobol-freturn! snobol-nreturn!
               <FUNS> <FDEFS> <CHANNELS> <OPSYN> &STNO &FNCLEVEL &CASE &OUTPUT &FILE &LINE &RTNTYPE <LASTOUT> fold-case]]
             [SNOBOL4clojure.functions :refer
-             [ASCII CHAR ORD DATE TIME REMDR ATAN CHOP COS EXP LN SIN SQRT TAN INTEGER integer-predicate REAL SETEXIT HOST STRING SIZE TRIM DUPL REVERSE LPAD RPAD REPLACE SUBSTR
+             [CHAR ORD DATE TIME REMDR ATAN CHOP COS EXP LN SIN SQRT TAN INTEGER integer-predicate REAL SETEXIT HOST SIZE TRIM DUPL REVERSE LPAD RPAD REPLACE SUBSTR
               ITEM PROTOTYPE CONVERT COPY FIELD SORT RSORT DATA
               open-input-channel! open-output-channel! close-channel! write-to-channel! rewind-channel! channel-key]]
             [SNOBOL4clojure.match     :refer [MATCH SEARCH FULLMATCH]]
             [SNOBOL4clojure.patterns  :refer
              [ANY BREAK BREAKX NOTANY SPAN ARBNO FENCE
-              ABORT BAL CONJ
+              ABORT BAL
               LEN POS RPOS RTAB TAB FAIL]]
             [SNOBOL4clojure.emitter   :refer [emitter top-replacement]]
             [SNOBOL4clojure.dump      :refer [dump-text]]
@@ -202,7 +202,8 @@
 (defn- opsyn-key [spelling arity] (str spelling "/" arity))
 
 ;; The source spelling of an operator the emitter renames.
-(def ^:private op-spelling {'at "@", 'sharp "#", 'tilde "~"})
+;; Its names hold a hyphen, which no SNOBOL4 name does, so a call written in the program (tilde(X), at(X)) is never one of these operators (CEO-2028).
+(def ^:private op-spelling {'at-op "@", 'sharp-op "#", 'tilde-op "~"})
 
 ;; ── INVOKE ────────────────────────────────────────────────────────────────────
 (declare EVAL! compile-expression compile-failed! deferred? expression-of unused-unary-ops unused-binary-ops name-of)
@@ -283,8 +284,6 @@
     ;; FENCE holds (sbl -bf: 'ABC' FENCE() 'B' succeeds, 'ABC' FENCE 'B' fails)
     FENCE   (FENCE (if (seq args) (first args) ε))
     ARBNO   (ARBNO  (first args))
-    ABORT   ABORT
-    CONJ    (CONJ   (first args) (second args))
     EQ      (EQ     (first args) (second args))
     NE      (NE     (first args) (second args))
     LE      (LE     (first args) (second args))
@@ -313,7 +312,7 @@
               (if (and (integer? a) (integer? b))
                 (exact #(Math/multiplyExact ^long %1 ^long %2) a b 28 "multiplication caused integer overflow")
                 (finite (clojure.core/* a b) 263 "multiplication caused real overflow")))
-    tilde   (let [v (first args)]       ; ~ negates success/failure
+    tilde-op (let [v (first args)]      ; ~ negates success/failure
               (if (nil? v) ε nil))
     ;; a zero divisor is "14 Division caused integer overflow" between integers and "262 Division caused real overflow" otherwise, as sbl -bf reports them
     /       (let [b (operand (second args) 13 "division right operand is not numeric")
@@ -495,7 +494,6 @@
                 (swap! <FDEFS> assoc fname
                                {:params params :locals locals})
                 ε))
-    define  (apply INVOKE 'DEFINE args)
     ;; ── OPSYN(new, old, n) ── Sprint 25E ─────────────────────────────────────────────
     ;; Makes 'new' a synonym for 'old'.  n omitted/0=function, 1=unary op, 2=binary op.
     ;; Stores a wrapper fn in <FUNS> under new-name, as it is written, so the INVOKE fallthrough
@@ -536,11 +534,9 @@
                 (swap! <FUNS> assoc (opsyn-key (name-string new-arg) n) old-fn)
                 (swap! <FUNS> assoc new-name old-fn))
               ε)
-    opsyn   (apply INVOKE 'OPSYN args)
     ;; ── LOAD(fnname, externalname) — stub ─────────────────────────────────────
     ;; Dynamic library loading is out of scope; return nil (failure) gracefully.
     LOAD    nil
-    load    nil
     ;; UNLOAD(name) "undefines the user-defined function name ... In SPITBOL, only user-defined functions can be UNLOADed" (manual ch. 19, UNLOAD). As sbl -bf
     ;; has it: one of SPITBOL's own is "248 attempted redefinition of system function", the null string "201 UNLOAD argument is not natural variable name", and
     ;; any other name succeeds with the null string, its function (if it has one) gone, so a call is "022 undefined function called"; a variable of the name
@@ -550,15 +546,10 @@
                 (clojure.core/= "" nm)                          (throw (ex-info "UNLOAD argument is not natural variable name" {:snobol/error 201}))
                 (contains? SNOBOL4clojure.env/system-functions nm) (throw (ex-info "attempted redefinition of system function" {:snobol/error 248}))
                 :else (do (swap! <FUNS> dissoc nm) (swap! <FDEFS> dissoc nm) ε)))
-    unload  (apply INVOKE 'UNLOAD args)
     APPLY   (apply APPLY (first args) (rest args))
-    apply   (apply APPLY (first args) (rest args))
     REPLACE (let [[s1 s2 s3] args] (REPLACE s1 s2 s3))
     TABLE   (apply SNOBOL4clojure.env/TABLE args)
-    table   (apply SNOBOL4clojure.env/TABLE args)
     ARRAY   (apply SNOBOL4clojure.env/ARRAY args)
-    array   (apply SNOBOL4clojure.env/ARRAY args)
-    ASCII   (ASCII  (first args))
     REMDR   (REMDR  (first args) (second args))
     ;; TRACE / STOPTR register and remove traces in trace.clj.
     TRACE   (let [[nm ty lbl f] args] (trace! nm (or ty "VALUE") lbl f) ε)
@@ -598,16 +589,14 @@
     TAN     (TAN    (first args))
     INTEGER (integer-predicate (first args))
     ;; SPITBOL has no function REAL (the data type is spelled in DATATYPE and CONVERT), and BAL and FAIL are pattern variables only: a call of one is "22 undefined
-    ;; function" (sbl -bf, and env/$$fn for the names core defines; a DATA field may be named REAL). ABORT(), ASCII, STRING and CONJ, which sbl lacks too, stay.
-    STRING  (STRING  (first args))
+    ;; function" (sbl -bf, and env/$$fn for the names core defines; a DATA field may be named REAL). ABORT(), ASCII, STRING and CONJ, which no
+    ;; SNOBOL4 before defined, are gone, as are the lower-case spellings of the built-ins: each is 22 as under sbl -bf (Lon, CEO-2027 and CEO-2028).
     SIZE    (SIZE   (first args))
     TRIM    (TRIM   (first args))
     DUPL    (DUPL   (first args) (second args))
     REVERSE (REVERSE (first args))
     ITEM      (apply ITEM args)
-    item      (ITEM      (first args) (second args))
     PROTOTYPE (apply PROTOTYPE args)
-    prototype (PROTOTYPE (first args))
     ;; "String to expression: The string must represent a legal SPITBOL expression. The compiler is used to convert the string into its equivalent expression"; an integer
     ;; or a real becomes "an EXPRESSION which when evaluated yields the original" value (manual ch. 17)
     CONVERT   (let [[x t] args]
@@ -617,81 +606,55 @@
                         (number? x)   (expression-of x)
                         :else         (CONVERT x t))
                   (CONVERT x t)))
-    convert   (CONVERT   (first args) (second args))
     COPY      (COPY      (first args))
-    copy      (COPY      (first args))
     FIELD     (FIELD     (first args) (second args))
-    field     (FIELD     (first args) (second args))
     SORT      (apply SORT  args)
-    sort      (apply SORT  args)
     RSORT     (apply RSORT args)
-    rsort     (apply RSORT args)
     DATA      (DATA      (first args))
-    data      (DATA      (first args))
     DATATYPE  (SNOBOL4clojure.env/DATATYPE (first args))
-    datatype  (SNOBOL4clojure.env/DATATYPE (first args))
     ;; String functions missing from original dispatch
     CHAR      (CHAR      (first args))
     ORD       (when (seq args) (ORD (first args)))
-    char      (CHAR      (first args))
     ;; "If i2 is omitted or zero, the remaining characters of the argument string are extracted" (manual ch. 19, SUBSTR)
     SUBSTR    (SUBSTR    (first args) (second args) (nth args 2 ""))
-    substr    (SUBSTR    (first args) (second args) (nth args 2 ""))
     DATE      (apply DATE args)
-    date      (apply DATE args)
     TIME      (TIME)
-    time      (TIME)
     ;; LPAD/RPAD with optional 3rd fill-char arg (functions.clj handles both arities)
     LPAD      (LPAD (nth args 0 "") (nth args 1 "") (nth args 2 ""))   ; "If trailing arguments are omitted, SPITBOL will supply null strings" (manual ch. 4)
-    lpad      (LPAD (nth args 0 "") (nth args 1 "") (nth args 2 ""))   ; "If trailing arguments are omitted, SPITBOL will supply null strings" (manual ch. 4)
     RPAD      (RPAD (nth args 0 "") (nth args 1 "") (nth args 2 ""))   ; "If trailing arguments are omitted, SPITBOL will supply null strings" (manual ch. 4)
-    rpad      (RPAD (nth args 0 "") (nth args 1 "") (nth args 2 ""))   ; "If trailing arguments are omitted, SPITBOL will supply null strings" (manual ch. 4)
     ;; String comparisons (lexicographic) — were defined by primitive macro but missing here
     LEQ       (LEQ    (first args) (second args))
-    leq       (LEQ    (first args) (second args))
     LNE       (LNE    (first args) (second args))
-    lne       (LNE    (first args) (second args))
     LLE       (LLE    (first args) (second args))
-    lle       (LLE    (first args) (second args))
     LLT       (LLT    (first args) (second args))
-    llt       (LLT    (first args) (second args))
     LGE       (LGE    (first args) (second args))
-    lge       (LGE    (first args) (second args))
     LGT       (LGT    (first args) (second args))
-    lgt       (LGT    (first args) (second args))
     ;; ARG(fname, n) — nth parameter name of function fname (1-based), as a NAME
     ;; (CEO-1861: sbl -bf returns one; the manual's string is not followed)
     ARG       (let [[fname n] args
                     meta (get @<FDEFS> (name-string fname))]
                 (when-some [p (when meta (nth (:params meta) (dec (long n)) nil))]
                   (NAME. (symbol p))))
-    arg       (apply INVOKE 'ARG args)
     ;; LOCAL(fname, n) — nth local variable name of function fname (1-based), as a NAME
     LOCAL     (let [[fname n] args
                     meta (get @<FDEFS> (name-string fname))]
                 (when-some [p (when meta (nth (:locals meta) (dec (long n)) nil))]
                   (NAME. (symbol p))))
-    local     (apply INVOKE 'LOCAL args)
     ;; ── Named I/O channel registration ───────────────────────────────────────
     ;; INPUT(name, channel, file) and OUTPUT(name, channel, file) (manual ch. 19, INPUT): what the channel and the file argument name is functions/association.
     ;; sbl -bf reads three arguments; a fourth, CSNOBOL4's and Catspaw's file name (INPUT(.V, unit, len, 'file')), is not read.
     INPUT     (let [[name-arg unit filename] args]
                 (open-input-channel! (channel-variable name-arg) unit filename))
-    input     (apply INVOKE 'INPUT args)
     OUTPUT    (let [[name-arg unit filename] args]
                 (open-output-channel! (channel-variable name-arg) unit filename))
-    output    (apply INVOKE 'OUTPUT args)
     ENDFILE   (close-channel! (channel-key (first args)))
-    endfile   (apply INVOKE 'ENDFILE args)
     DETACH    (let [v (first args)
                     sym (cond
                           (symbol? v) v
                           (instance? SNOBOL4clojure.env.NAME v) (symbol (str (.n ^SNOBOL4clojure.env.NAME v)))
                           :else (symbol (str v)))]
                 (close-channel! sym))
-    detach    (apply INVOKE 'DETACH args)
     REWIND    (rewind-channel! (first args))
-    rewind    (apply INVOKE 'REWIND args)
     ;; CODE(src) — compile and execute a SNOBOL4 source fragment in the current env.
     ;; Returns nil on success; :F branch taken on compile/runtime error.
     ;; Uses resolve to avoid circular dependency (runtime → operators → compiler).
@@ -711,7 +674,6 @@
                       (when (some? entry) (SNOBOL4clojure.env/->CodeBlock entry))))
                   (catch Exception e
                     (throw (ex-info (.getMessage e) {:snobol/signal :error})))))
-    code      (apply INVOKE 'CODE args)
     quote   ($$ (second op))
             (let [raw-f (if (symbol? op) ($$fn op) op)   ; op is the container itself when it came from a subscript
                   ;; NAME indirect reference — dereference to actual array/table
@@ -748,14 +710,14 @@
 
 ;; ── EVAL! / EVAL ─────────────────────────────────────────────────────────────
 ;; Unary operators SPITBOL leaves unused, each with the name OPSYN files it
-;; under. The emitter spells unary # as sharp.
+;; under. The emitter spells unary # as sharp-op.
 (def ^:private unused-unary-ops
-  {'! "!", '% "%", '/ "/", 'sharp "#", '= "=", '| "|"})
+  {'! "!", '% "%", '/ "/", 'sharp-op "#", '= "=", '| "|"})
 
 ;; "The following binary operations are undefined and are available for user definition using OPSYN(): & @ # % ~" (manual ch. 15, Binary Operators), each with
-;; the name OPSYN files it under; the emitter spells them &, at, sharp, % and tilde.
+;; the name OPSYN files it under; the emitter spells them &, at-op, sharp-op, % and tilde-op.
 (def ^:private unused-binary-ops
-  {'& "&", 'at "@", 'sharp "#", '% "%", 'tilde "~"})
+  {'& "&", 'at-op "@", 'sharp-op "#", '% "%", 'tilde-op "~"})
 
 ;; What $v refers to: the element a NAME of an element names, as its subscript
 ;; form (A k ...) with k already evaluated, or else the variable v names.
@@ -817,7 +779,7 @@
 (defn- element-target [N] (with-meta (apply list (first N) (map EVAL! (rest N))) (meta N)))
 
 ;; The operators whose result is a value and never a name: an expression made with one of them cannot be the target of an assignment.
-(def ^:private value-operators '#{= ?= ? | at + - sharp / * % ** ^ ! . tilde & SEQ})
+(def ^:private value-operators '#{= ?= ? | at-op + - sharp-op / * % ** ^ ! . tilde-op & SEQ})
 
 (declare compile-or-fail evaluated-or-fail)
 
@@ -1037,7 +999,7 @@
               (let [[P N] parms] (when-some [t (capture-target N)] (INVOKE '. (EVAL! P) t)))))
           ;; Unary @V — cursor assignment. The matcher assigns the cursor to V by
           ;; name, so the operand is passed as written and not read as a value.
-          (and (equal op 'at) (clojure.core/= 1 (count parms)))
+          (and (equal op 'at-op) (clojure.core/= 1 (count parms)))
           (when-some [t (capture-target (first parms))] (list 'CURSOR-IMM! t))
           (equal op '$)     (if (clojure.core/= 1 (count parms))
                               ;; Unary $X — the variable X's value names (a string or a NAME)
@@ -1131,7 +1093,7 @@
           true (let [;; ~X negates success and failure, so it takes a failed operand
                      ;; as its input; any other operator or function fails with it, binary ~ among them, an operator "available for user definition
                      ;; using OPSYN()" (manual ch. 15)
-                     args     (if (and (equal op 'tilde) (clojure.core/= 1 (count parms)))
+                     args     (if (and (equal op 'tilde-op) (clojure.core/= 1 (count parms)))
                                 [(failure-point #(EVAL! (first parms)))]
                                 (eval-operands parms))
                      ;; OPSYN: an operator may be redefined, under its spelling

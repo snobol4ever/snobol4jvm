@@ -260,7 +260,6 @@
     :else x))
 
 ;; ── Type conversion & char functions ─────────────────────────────────────────
-(defn ASCII   [s]  (int (first (str s))))
 (defn CHAR
   "CHAR(n): the one-character string whose code is n, 0 to 255."
   [n]
@@ -361,10 +360,6 @@
     (number? x)  (double x)
     :else (try (Double/parseDouble (clojure.string/trim (str x)))
                (catch Exception _ ε))))
-
-(defn STRING  [x]
-  "Convert any value to its string representation (a real as SPITBOL prints it)."
-  (sstr x))
 
 ;; ── Program-defined datatype ──────────────────────────────────────────────────
 ;; PDD instances are represented as Clojure maps:

@@ -376,11 +376,11 @@
   (is (clojure.core/= "" ($$ 'I))))
 
 (deftest micro_t1_string_from_int
-  (prog "        S = STRING(42)" "end")
+  (prog "        S = CONVERT(42,'STRING')" "end")
   (is (clojure.core/= "42" ($$ 'S))))
 
 (deftest micro_t1_string_from_str
-  (prog "        S = STRING('hi')" "end")
+  (prog "        S = CONVERT('hi','STRING')" "end")
   (is (clojure.core/= "hi" ($$ 'S))))
 
 (deftest micro_t1_coerce_str_arith
@@ -393,13 +393,13 @@
   (prog "        I = SIZE(42)" "end")
   (is (clojure.core/= 2 ($$ 'I))))  ; "42" has 2 chars
 
-;; ASCII / CHAR
-(deftest micro_t1_ascii_a
-  (prog "        I = ASCII('a')" "end")
+;; ORD / CHAR
+(deftest micro_t1_ord_a
+  (prog "        I = ORD('a')" "end")
   (is (clojure.core/= 97 ($$ 'I))))
 
-(deftest micro_t1_ascii_A
-  (prog "        I = ASCII('A')" "end")
+(deftest micro_t1_ord_A
+  (prog "        I = ORD('A')" "end")
   (is (clojure.core/= 65 ($$ 'I))))
 
 (deftest micro_t1_char_65
@@ -410,9 +410,9 @@
   (prog "        S = CHAR(97)" "end")
   (is (clojure.core/= "a" ($$ 'S))))
 
-(deftest micro_t1_ascii_char_roundtrip
+(deftest micro_t1_ord_char_roundtrip
   (prog
-    "        I = ASCII('Z')"
+    "        I = ORD('Z')"
     "        S = CHAR(I)"
     "end")
   (is (clojure.core/= "Z" ($$ 'S))))

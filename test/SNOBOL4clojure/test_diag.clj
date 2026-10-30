@@ -20,16 +20,6 @@
   (println "R after ARBNO match:" ($$ 'R))
   (is true))
 
-(deftest diag-conj
-  (prog
-    "        S = 'hello'"
-    "        S CONJ(LEN(5), ANY('h')) . R  :S(HIT)F(MISS)"
-    "HIT     OK = 'hit'  :(END)"
-    "MISS    OK = 'miss'"
-    "END")
-  (println "CONJ result OK=" ($$ 'OK) "R=" ($$ 'R))
-  (is true))
-
 (deftest diag-bal
   (prog
     "        S = '(a+b) rest'"
@@ -56,17 +46,6 @@
     "MISS    OK = 'miss'"
     "END")
   (println "BAL unbalanced: OK=" ($$ 'OK) "R=" ($$ 'R))
-  (is true))
-
-(deftest diag-conj2
-  ;; CONJ: both P and Q must match SAME span — try same-span patterns
-  (prog
-    "        S = 'hello'"
-    "        S CONJ(LEN(5), SPAN('helo')) . R  :S(HIT)F(MISS)"
-    "HIT     OK = 'hit'  :(END)"
-    "MISS    OK = 'miss'"
-    "END")
-  (println "CONJ same-span: OK=" ($$ 'OK) "R=" ($$ 'R))
   (is true))
 
 (deftest diag-arbno-ir

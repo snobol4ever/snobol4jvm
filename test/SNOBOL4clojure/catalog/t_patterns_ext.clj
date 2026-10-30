@@ -1,6 +1,6 @@
 (ns SNOBOL4clojure.catalog.t-patterns-ext
   "Sprint 18A3 — Extended pattern catalog.
-   Covers: BREAKX, FENCE, ABORT, ARBNO, CURSOR(@), CONJ (MATCH &), BAL.
+   Covers: BREAKX, FENCE, ABORT, ARBNO, CURSOR(@), BAL.
    Shape A: atomic (single match/assign), budget 2000ms.
    Shape B: bounded iteration, budget 2000ms, documented bound.
    All tests use prog string-based runner for full pipeline coverage."
@@ -106,13 +106,13 @@
   (is (clojure.core/= "x" ($$ 'R))))
 
 ;; ── ABORT ─────────────────────────────────────────────────────────────────────
-;; ABORT: always fails and cuts the entire match (no backtrack retry).
+;; ABORT: always fails and cuts the entire match (no backtrack retry). It is the pattern variable; ABORT() is 22, as under sbl -bf (CEO-2028).
 
 (deftest abort-in-alt-cuts-match
   "ABORT in right branch of ALT causes entire match to fail."
   (prog
     "        S = 'hello'"
-    "        S ('he' | ABORT()) . R  :S(HIT)F(MISS)"
+    "        S ('he' | ABORT) . R  :S(HIT)F(MISS)"
     "HIT     OK = 'hit'  :(END)"
     "MISS    OK = 'miss'"
     "END")
@@ -124,7 +124,7 @@
   "ABORT as sole pattern fails immediately."
   (prog
     "        S = 'hello'"
-    "        S ABORT()  :S(HIT)F(MISS)"
+    "        S ABORT  :S(HIT)F(MISS)"
     "HIT     OK = 'hit'  :(END)"
     "MISS    OK = 'miss'"
     "END")
@@ -213,31 +213,6 @@
   ;; RPOS(2) means 'position such that 2 chars remain'; LEN(2) then gets them.
   ;; 'hello' len=5; RPOS(2) at pos 3; LEN(2) captures 'lo'.
   (is (clojure.core/= "lo" ($$ 'R))))
-
-;; ── CONJ (& — pattern conjunction / sequential anchor) ────────────────────────
-;; P & Q in SNOBOL4clojure uses the CONJ constructor.
-;; Semantics: P matches the WHOLE subject, Q matches the WHOLE subject.
-;; Both must succeed for the conjunction to succeed.
-
-(deftest conj-both-succeed
-  "CONJ(LEN(5), SPAN('helo')) — both match span [0,5] of 'hello' — succeeds."
-  (prog
-    "        S = 'hello'"
-    "        S CONJ(LEN(5), SPAN('helo')) . R  :S(HIT)F(MISS)"
-    "HIT     OK = 'hit'  :(END)"
-    "MISS    OK = 'miss'"
-    "END")
-  (is (clojure.core/= "hit" ($$ 'OK))))
-
-(deftest conj-second-fails
-  "CONJ(LEN(5), ANY('z')) — second fails — whole CONJ fails."
-  (prog
-    "        S = 'hello'"
-    "        S CONJ(LEN(5), ANY('z')) . R  :S(HIT)F(MISS)"
-    "HIT     OK = 'hit'  :(END)"
-    "MISS    OK = 'miss'"
-    "END")
-  (is (clojure.core/= "miss" ($$ 'OK))))
 
 ;; ── BAL ───────────────────────────────────────────────────────────────────────
 ;; BAL: matches a balanced-parentheses expression.

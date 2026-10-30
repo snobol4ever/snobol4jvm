@@ -31,7 +31,7 @@
 
 (deftest array-003-datatype
   (testing "DATATYPE of array variable via CODE/RUN"
-    (run-prog "        A = array(10)
+    (run-prog "        A = ARRAY(10)
 end")
     (is (= "ARRAY" (DATATYPE ($$ 'A))))))
 
@@ -39,7 +39,7 @@ end")
 
 (deftest array-004-write-read
   (testing "A<i> = val then A<i> round-trips"
-    (run-prog "        A = array(10)
+    (run-prog "        A = ARRAY(10)
         A<3> = 'hello'
         r1 = A<3>
 end")
@@ -47,14 +47,14 @@ end")
 
 (deftest array-005-unset-slot-returns-empty
   (testing "unset slot returns empty string (default)"
-    (run-prog "        A = array(10)
+    (run-prog "        A = ARRAY(10)
         r1 = A<5>
 end")
     (is (= "" ($$ 'r1)))))
 
 (deftest array-006-default-value
   (testing "array(N, default) initialises all slots to default value"
-    (run-prog "        A = array(10,999)
+    (run-prog "        A = ARRAY(10,999)
         r1 = A<3>
         r2 = A<7>
 end")
@@ -65,7 +65,7 @@ end")
 
 (deftest array-007-bounds-below-fail
   (testing "a<-1> on array(10) fails (index below 1)"
-    (run-prog "        a = array(10)
+    (run-prog "        a = ARRAY(10)
         b = a<-1>       :S(y)F(n)
 y       result = 'success' :(end)
 n       result = 'failure'
@@ -74,7 +74,7 @@ end")
 
 (deftest array-008-bounds-zero-fail
   (testing "a<0> on array(10) fails"
-    (run-prog "        a = array(10)
+    (run-prog "        a = ARRAY(10)
         b = a<0>       :S(y)F(n)
 y       result = 'success' :(end)
 n       result = 'failure'
@@ -83,7 +83,7 @@ end")
 
 (deftest array-009-bounds-lo-succeed
   (testing "a<1> on array(10) succeeds"
-    (run-prog "        a = array(10)
+    (run-prog "        a = ARRAY(10)
         b = a<1>       :S(y)F(n)
 y       result = 'success' :(end)
 n       result = 'failure'
@@ -92,7 +92,7 @@ end")
 
 (deftest array-010-bounds-hi-succeed
   (testing "a<10> on array(10) succeeds"
-    (run-prog "        a = array(10)
+    (run-prog "        a = ARRAY(10)
         b = a<10>       :S(y)F(n)
 y       result = 'success' :(end)
 n       result = 'failure'
@@ -101,7 +101,7 @@ end")
 
 (deftest array-011-bounds-above-fail
   (testing "a<11> on array(10) fails (index above 10)"
-    (run-prog "        a = array(10)
+    (run-prog "        a = ARRAY(10)
         b = a<11>       :S(y)F(n)
 y       result = 'success' :(end)
 n       result = 'failure'
@@ -112,15 +112,15 @@ end")
 
 (deftest array-012-prototype-simple
   (testing "PROTOTYPE of array(20) returns the integer 20 (sbl -bf: 20 INTEGER)"
-    (run-prog "        A = array(20)
-        r1 = prototype(A)
+    (run-prog "        A = ARRAY(20)
+        r1 = PROTOTYPE(A)
 end")
     (is (= 20 ($$ 'r1)))))
 
 (deftest array-013-prototype-multi-dim
   (testing "PROTOTYPE of array('-5:10,3:5,20') returns it as written (sbl -bf and CSNOBOL4)"
-    (run-prog "        A = array('-5:10,3:5,20')
-        r1 = prototype(A)
+    (run-prog "        A = ARRAY('-5:10,3:5,20')
+        r1 = PROTOTYPE(A)
 end")
     (is (= "-5:10,3:5,20" ($$ 'r1)))))
 
@@ -128,7 +128,7 @@ end")
 
 (deftest array-014-overwrite
   (testing "writing same slot twice gives second value"
-    (run-prog "        A = array(10)
+    (run-prog "        A = ARRAY(10)
         A<5> = 'first'
         A<5> = 'second'
         r1 = A<5>
@@ -139,7 +139,7 @@ end")
 
 (deftest array-015-multi-dim-write-read
   (testing "multi-dimensional array write/read"
-    (run-prog "        A = array('3,3')
+    (run-prog "        A = ARRAY('3,3')
         A<2,2> = 'center'
         r1 = A<2,2>
         r2 = A<1,1>

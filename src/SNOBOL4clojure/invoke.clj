@@ -6,7 +6,7 @@
   (:require [SNOBOL4clojure.env       :refer
              [ε η equal num $$ snobol-set!]]
             [SNOBOL4clojure.functions :refer
-             [ASCII REMDR INTEGER REAL STRING SIZE TRIM DUPL REVERSE LPAD RPAD REPLACE]]
+             [REMDR INTEGER REAL SIZE TRIM DUPL REVERSE LPAD RPAD REPLACE]]
             [SNOBOL4clojure.match-api :refer [SEARCH]]
             [SNOBOL4clojure.operators :refer
              [= ? ?= & at + - sharp / * % ! ** $ . tilde |
@@ -102,11 +102,9 @@
                 (snobol-set! f-sym the-fn)
                 ε))
     REPLACE (let [[s1 s2 s3] args] (REPLACE s1 s2 s3))
-    ASCII   (ASCII   (first args))
     REMDR   (REMDR   (first args) (second args))
     INTEGER (INTEGER (first args))
     REAL    (REAL    (first args))
-    STRING  (STRING  (first args))
     SIZE    (SIZE    (first args))
     TRIM    (TRIM    (first args))
     DUPL    (DUPL    (first args) (second args))

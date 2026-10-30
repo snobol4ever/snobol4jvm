@@ -522,40 +522,6 @@
           (:fail :recede)
           (recur :recede (🡡 Ω) (🡧 Ω)))
 
-        ;; -- CONJ! ---------------------------------------------------------------
-        ;; (CONJ! P Q): both P and Q must succeed from the same cursor position.
-        ;; P determines the span advanced; Q is a pure assertion (must succeed
-        ;; from the same start but its matched length is irrelevant).
-        ;; This is the most general "AND" for patterns.  Length-equality is NOT
-        ;; required — use an immediate-action node (e.g. CHECK!) after CONJ to
-        ;; enforce additional span constraints if needed.
-        ;;
-        ;; CONJ is NOT in SPITBOL, CSNOBOL4, or standard SNOBOL4 — it is a
-        ;; SNOBOL4clojure extension.  No reference source exists; semantics are
-        ;; defined here by design decision.
-        CONJ!
-        (case action
-          :proceed
-          (let [[_ P Q] (ζΠ ζ)
-                pos0    (ζΔ ζ)
-                chars0  (ζΣ ζ)
-                p-result (engine chars0 pos0 P pos0 full-subject)]
-            (cond
-              (clojure.core/= :abort p-result) :abort
-              p-result
-              (let [p-end    (second p-result)
-                    q-result (engine chars0 pos0 Q pos0 full-subject)]
-                (cond
-                  (clojure.core/= :abort q-result) :abort
-                  q-result                                  ; Q must succeed (assertion)
-                  (recur :succeed (ζ↑ ζ chars0 p-end) Ω)   ; span = P's span
-                  :else
-                  (recur :fail    (ζ↑ ζ (ζΣ ζ) pos0) Ω)))
-              :else
-              (recur :fail (ζ↑ ζ (ζΣ ζ) pos0) Ω)))
-          (:succeed :fail :recede)
-          (recur :recede (🡡 Ω) (🡧 Ω)))
-
         ;; -- DEFER! --------------------------------------------------------------
         ;; (*expr): deferred pattern — thunk is a (fn [] pattern) evaluated at
         ;; match time, not build time.  Fixes eager-evaluation of guards like

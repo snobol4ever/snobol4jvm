@@ -21,7 +21,7 @@
 
 (deftest table-002-datatype
   (testing "DATATYPE of table variable"
-    (run-prog "        A = table()
+    (run-prog "        A = TABLE()
 end")
     (is (= "TABLE" (DATATYPE ($$ 'A))))))
 
@@ -29,7 +29,7 @@ end")
 
 (deftest table-003-angle-write-read
   (testing "A<key> = val then A<key> round-trips"
-    (run-prog "        A = table()
+    (run-prog "        A = TABLE()
         A<'hello'> = 'world'
         r1 = A<'hello'>
 end")
@@ -39,7 +39,7 @@ end")
 
 (deftest table-004-square-write-read
   (testing "A[key] = val then A[key] round-trips"
-    (run-prog "        A = table()
+    (run-prog "        A = TABLE()
         A['foo'] = 'bar'
         r1 = A['foo']
 end")
@@ -49,7 +49,7 @@ end")
 
 (deftest table-005-missing-key
   (testing "A<missing> returns empty string"
-    (run-prog "        A = table()
+    (run-prog "        A = TABLE()
         r1 = A<'nosuchkey'>
 end")
     (is (= "" ($$ 'r1)))))
@@ -58,7 +58,7 @@ end")
 
 (deftest table-006-variable-key
   (testing "table subscript with variable key"
-    (run-prog "        A = table()
+    (run-prog "        A = TABLE()
         K = 'mykey'
         A<K> = 'myval'
         r1 = A<K>
@@ -69,7 +69,7 @@ end")
 
 (deftest table-007-reference-semantics
   (testing "B = A shares the same atom; writes via A visible through B"
-    (run-prog "        A = table()
+    (run-prog "        A = TABLE()
         B = A
         A<'k'> = 'v'
         r1 = B<'k'>
@@ -80,7 +80,7 @@ end")
 
 (deftest table-008-multiple-keys
   (testing "multiple keys in same table are independent"
-    (run-prog "        A = table()
+    (run-prog "        A = TABLE()
         A<'x'> = '1'
         A<'y'> = '2'
         A<'z'> = '3'
@@ -96,7 +96,7 @@ end")
 
 (deftest table-009-overwrite
   (testing "writing same key twice gives second value"
-    (run-prog "        A = table()
+    (run-prog "        A = TABLE()
         A<'k'> = 'first'
         A<'k'> = 'second'
         r1 = A<'k'>
@@ -107,11 +107,11 @@ end")
 
 (deftest table-010-item-read
   (testing "ITEM(table, key) reads same as A<key>"
-    (run-prog "        A = table()
+    (run-prog "        A = TABLE()
         A<'abc'> = 'ABC'
         A<'def'> = 'DEF'
-        r1 = item(A,'abc')
-        r2 = item(A,'def')
+        r1 = ITEM(A,'abc')
+        r2 = ITEM(A,'def')
 end")
     (is (= "ABC" ($$ 'r1)))
     (is (= "DEF" ($$ 'r2)))))
@@ -121,8 +121,8 @@ end")
 
 (deftest table-011-prototype
   (testing "PROTOTYPE of a TABLE is its number of hash headers, 11 for TABLE()"
-    (run-prog "        A = table()
-        r1 = prototype(A)
+    (run-prog "        A = TABLE()
+        r1 = PROTOTYPE(A)
 end")
     (is (= 11 ($$ 'r1)))))
 
@@ -130,7 +130,7 @@ end")
 
 (deftest table-012-integer-key
   (testing "integer keys work in tables"
-    (run-prog "        A = table()
+    (run-prog "        A = TABLE()
         A<42> = 'answer'
         r1 = A<42>
 end")

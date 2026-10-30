@@ -72,13 +72,13 @@
                   ([x & ys]  (apply vector x ys)))
      :at        (fn
                   ([x]       x)
-                  ([x y]     (list 'at x y)))
+                  ([x y]     (list 'at-op x y)))
      :sum       (fn
                   ([x]       x)
                   ([x op y]  (list (symbol op) x y)))
      :hsh       (fn
                   ([x]       x)
-                  ([x y]     (list 'sharp x y)))
+                  ([x y]     (list 'sharp-op x y)))
      :div       (fn
                   ([x]       x)
                   ([x y]     (list '/ x y)))
@@ -97,13 +97,13 @@
                   ([x op y]  (list (symbol op) x y)))
      :ttl       (fn
                   ([x]       x)
-                  ([x y]     (list 'tilde x y)))
+                  ([x y]     (list 'tilde-op x y)))
      :uop       (fn
                   ([x]       x)
                   ([op y]    (case op
-                               "@" (list 'at y)
-                               "#" (list 'sharp y)
-                               "~" (list 'tilde y)
+                               "@" (list 'at-op y)
+                               "#" (list 'sharp-op y)
+                               "~" (list 'tilde-op y)
                                    (list (symbol op) y))))
      ;; A<k> and A[k] are subscripts, F(k) a call (the inv node): the subscript form carries :subscript, so DATA[1] reads the array a variable DATA holds while
      ;; DATA('...') still calls the function, as sbl -bf tells them apart

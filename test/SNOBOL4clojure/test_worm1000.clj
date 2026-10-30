@@ -29,9 +29,9 @@
     24  DEFINE and RETURN
     25  FRETURN
     26  String functions: TRIM, REVERSE, DUPL
-    27  ASCII / CHAR
+    27  ORD / CHAR
     28  REPLACE function
-    29  INTEGER / REAL / STRING coercion
+    29  INTEGER / REAL / CONVERT to STRING coercion
     30  DATATYPE
     31  TABLE
     32  ARRAY
@@ -2066,64 +2066,64 @@
     (is (= "xyz" ($$ (quote R))))
 )
 
-(deftest worm_ascii_A
-  "ASCII('A') = 65"
+(deftest worm_ord_A
+  "ORD('A') = 65"
   (prog
-    "        I = ASCII('A')"
+    "        I = ORD('A')"
     "end"
   )
     (is (= 65 ($$ (quote I))))
 )
 
-(deftest worm_ascii_Z
-  "ASCII('Z') = 90"
+(deftest worm_ord_Z
+  "ORD('Z') = 90"
   (prog
-    "        I = ASCII('Z')"
+    "        I = ORD('Z')"
     "end"
   )
     (is (= 90 ($$ (quote I))))
 )
 
-(deftest worm_ascii_a
-  "ASCII('a') = 97"
+(deftest worm_ord_a
+  "ORD('a') = 97"
   (prog
-    "        I = ASCII('a')"
+    "        I = ORD('a')"
     "end"
   )
     (is (= 97 ($$ (quote I))))
 )
 
-(deftest worm_ascii_z
-  "ASCII('z') = 122"
+(deftest worm_ord_z
+  "ORD('z') = 122"
   (prog
-    "        I = ASCII('z')"
+    "        I = ORD('z')"
     "end"
   )
     (is (= 122 ($$ (quote I))))
 )
 
-(deftest worm_ascii_0
-  "ASCII('0') = 48"
+(deftest worm_ord_0
+  "ORD('0') = 48"
   (prog
-    "        I = ASCII('0')"
+    "        I = ORD('0')"
     "end"
   )
     (is (= 48 ($$ (quote I))))
 )
 
-(deftest worm_ascii_9
-  "ASCII('9') = 57"
+(deftest worm_ord_9
+  "ORD('9') = 57"
   (prog
-    "        I = ASCII('9')"
+    "        I = ORD('9')"
     "end"
   )
     (is (= 57 ($$ (quote I))))
 )
 
-(deftest worm_ascii_space
-  "ASCII(' ') = 32"
+(deftest worm_ord_space
+  "ORD(' ') = 32"
   (prog
-    "        I = ASCII(' ')"
+    "        I = ORD(' ')"
     "end"
   )
     (is (= 32 ($$ (quote I))))
@@ -2253,18 +2253,18 @@
 )
 
 (deftest worm_string_from_int
-  "STRING(42) => '42'"
+  "CONVERT(42,'STRING') => '42'"
   (prog
-    "        R = STRING(42)"
+    "        R = CONVERT(42,'STRING')"
     "end"
   )
     (is (= "42" ($$ (quote R))))
 )
 
 (deftest worm_string_from_real
-  "STRING(3.14) => '3.14'"
+  "CONVERT(3.14,'STRING') => '3.14'"
   (prog
-    "        R = STRING(3.14)"
+    "        R = CONVERT(3.14,'STRING')"
     "end"
   )
     (is (= "3.14" ($$ (quote R))))

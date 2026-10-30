@@ -1,10 +1,10 @@
 (ns SNOBOL4clojure.test-sprint10
-  "Sprint 10 — operator completeness: ~P optional, @N cursor, P&Q conjunction, *expr deferred.
+  "Sprint 10 — operator completeness: ~P optional, @N cursor, *expr deferred (CONJ, from no SNOBOL4, is gone: CEO-2028).
    Tests derived from Snobol4.Net reference suite and SNOBOL4 language spec."
   (:require [clojure.test             :refer :all]
             [SNOBOL4clojure.match     :refer [SEARCH FULLMATCH MATCH COLLECT!]]
             [SNOBOL4clojure.patterns  :refer [ANY SPAN LEN POS RPOS ARB ARBNO
-                                              CURSOR CONJ DEFER FAIL]]
+                                              CURSOR DEFER FAIL]]
             [SNOBOL4clojure.operators :refer [| tilde]]
             [SNOBOL4clojure.env       :refer [GLOBALS ε $$ snobol-set!]])
   (:refer-clojure :exclude [* num]))
@@ -54,28 +54,6 @@
     (MATCH "hello!" P)
     (is (= 2 ($$ 'A)))
     (is (= 5 ($$ 'B)))))
-
-;; ── CONJ P&Q conjunction ──────────────────────────────────────────────────────
-
-(deftest test-conj-basic
-  ;; CONJ(P,Q): P determines span, Q is pure assertion from same start.
-  ;; LEN(2) matches "ab", "ab" asserts "ab" is there → span [0 2]
-  (is (= [0 2] (SEARCH "abcd" (CONJ (LEN 2) "ab"))))
-  ;; Q fails → whole CONJ fails
-  (is (nil? (SEARCH "abcd" (CONJ (LEN 2) "xyz")))))
-
-(deftest test-conj-span-and-literal
-  ;; SPAN("helo") matches "hello" [0,5]; "hello" also asserts match → [0 5]
-  (is (= [0 5] (SEARCH "hello world" (CONJ (SPAN "helo") "hello"))))
-  ;; Q="world" fails at pos 0 → nil
-  (is (nil? (SEARCH "hello world" (CONJ (SPAN "helo") "world")))))
-
-(deftest test-conj-q-is-assertion-not-span
-  ;; P=LEN(3) determines span [0,3]; Q=LEN(2) succeeds (2 chars exist at pos 0)
-  ;; Q does NOT need to match same length — it is a pure assertion.
-  (is (= [0 3] (SEARCH "abc" (CONJ (LEN 3) (LEN 2)))))
-  ;; Q=LEN(5) fails on "abc" (only 3 chars) → CONJ fails
-  (is (nil? (SEARCH "abc" (CONJ (LEN 3) (LEN 5))))))
 
 ;; ── *expr deferred guard ──────────────────────────────────────────────────────
 
