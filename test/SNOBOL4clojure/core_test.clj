@@ -7222,3 +7222,37 @@
                   "execution time msec  -\nREGENERATIONS        -\nmemory used (bytes)  -\nmemory left (bytes)  -\n\n")
              (fatal-figures (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p))))))
       (finally (.delete f)))))
+
+;; Only a direct assignment to one of the seven pattern variables is "042 attempt to change value of protected variable": the compiled store goes through vrsto,
+;; which is b_vre for them, and every other write sets the value (sbl.min b_pfc sets and restores a function's name, arguments and locals in vrval; an indirect
+;; store and a pattern's capture go through asign; manual ch. 18: "The pattern valued variables ABORT, ARB, FAIL, REM and SUCCEED are write-protected so that
+;; attempts to assign to them will fail"). The engine refused every write, so a program's DEFINE of ABORT died with 042 at its call, and $N = 'y' with N = 'BAL'
+;; was 042. Expected output is sbl -bf's.
+(deftest only-a-direct-assignment-to-a-pattern-variable-is-042
+  (let [f (java.io.File/createTempFile "prot" ".sno") p (.getPath f)]
+    (try
+      (spit f (str "       DEFINE('ABORT(X)','AB_ENTRY')       :(AB_END)\n"
+                   "AB_ENTRY OUTPUT = 'inside [' $'ABORT' '] ' X   :(RETURN)\n"
+                   "AB_END\n"
+                   "       OUTPUT = 'returned [' ABORT('z') ']'\n"
+                   "       DEFINE('G(X)')                      :(G_END)\n"
+                   "G      OUTPUT = 'g ' X                     :(FRETURN)\n"
+                   "G_END  DEFINE('ABORT(X)','G')\n"
+                   "       ABORT('w')                          :S(END)\n"
+                   "       DEFINE('F(ARB)FENCE')               :(F_END)\n"
+                   "F      F = 'arg [' $'ARB' '] local [' $'FENCE' ']'   :(RETURN)\n"
+                   "F_END  OUTPUT = F('q')\n"
+                   "       OUTPUT = 'after ' DATATYPE($'ABORT') ' ' DATATYPE($'ARB') ' ' DATATYPE($'FENCE')\n"
+                   "       N = 'BAL'\n"
+                   "       $N = 'y'\n"
+                   "       $'REM' = 'r'\n"
+                   "       'x' ? LEN(1) . SUCCEED\n"
+                   "       OUTPUT = 'indirect ' $'BAL' ' ' $'REM' ' ' $'SUCCEED'\n"
+                   "       FAIL = 'z'\n"
+                   "END\n"))
+      (is (= (str "inside [] z\nreturned []\ng w\narg [q] local []\nafter PATTERN PATTERN PATTERN\nindirect y r x\n\n\n\n"
+                  p "(18) : ERROR 042 -- attempt to change value of protected variable\n\n\n\n\n\n"
+                  "in file              " p "\nin line              18\nin statement         18\nstmts executed       18\n"
+                  "execution time msec  -\nREGENERATIONS        -\nmemory used (bytes)  -\nmemory left (bytes)  -\n\n")
+             (fatal-figures (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p))))))
+      (finally (.delete f)))))

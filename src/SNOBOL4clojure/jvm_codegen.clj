@@ -113,7 +113,7 @@
   "Bind all inline IFn references. Called once when jvm_codegen loads."
   []
   (alter-var-root #'$$_FN   (constantly env/$$))
-  (alter-var-root #'SET_FN  (constantly env/snobol-set!))
+  (alter-var-root #'SET_FN  (constantly env/protected-store!))
   (alter-var-root #'PRINT_FN (constantly (fn [v] (println (if (nil? v) "" (str v))) v)))
   (alter-var-root #'ADD_FN  (constantly env/Σ+))
   (alter-var-root #'SUB_FN  (constantly env/subtract))

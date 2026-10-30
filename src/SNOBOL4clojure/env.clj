@@ -412,17 +412,24 @@
           (throw (ex-info "keyword in assignment is protected" {:snobol/error 209}))))))))
 
 ;; ── Variable write / read ─────────────────────────────────────────────────────
-;; "These variables contain the primitive patterns of the same name" (manual ch. 18), and SPITBOL protects them: an assignment to one is "042 attempt to change
-;; value of protected variable" (sbl -bf: ARB = 'Q', BAL = P and FENCE = 'f' are 42), so the compiler may take their values as constants.
+;; "These variables contain the primitive patterns of the same name" (manual ch. 18), and SPITBOL protects them from a direct assignment: the compiled store of
+;; X = V goes through vrsto, b_vre for these seven, "042 attempt to change value of protected variable" (sbl -bf: ARB = 'Q', BAL = P and FENCE = 'f' are 42),
+;; so the compiler may take their values as constants. Every other write sets the value: a call sets and restores the function's name, arguments and locals
+;; in vrval (sbl.min b_pfc), an indirect store and a pattern's capture go through asign (sbl -bf: a DEFINEd ABORT runs and returns the null string, an
+;; argument ARB takes its argument, $'FENCE' = 'q' and 'x' ? LEN(1) . ARB assign).
 (def protected-variables '#{ABORT ARB BAL FAIL FENCE REM SUCCEED})
 
 (defn snobol-set!
   "Assign val to the SNOBOL4 user variable named by sym."
   [sym val]
-  (let [s (symbol (name sym))]
-    (when (protected-variables s) (throw (ex-info (error-message 42) {:snobol/error 42})))
-    (swap! <VARS> assoc s val))
+  (swap! <VARS> assoc (symbol (name sym)) val)
   val)
+
+(defn protected-store!
+  "A direct assignment's store, X = V: 042 for a protected variable, else snobol-set!."
+  [sym val]
+  (when (protected-variables (symbol (name sym))) (throw (ex-info (error-message 42) {:snobol/error 42})))
+  (snobol-set! sym val))
 
 (defn reference
   "Return the current value of SNOBOL4 user variable N, or nil if unbound."
@@ -499,6 +506,14 @@
 ;; variables ARB BAL FAIL REM SUCCEED; BOL EOL NAME NSPAN REAL; FULLMATCH GLOBALS INVOKE MATCH RUN SEARCH). A built-in's name is upper case only, so a lower-case
 ;; name (table, equal, transpile) reaches none and is the program's own or 22, as under sbl -bf (Lon: "snobol4jvm uses only uppercase built-in functions", CEO-2028).
 (def ^:private no-function '#{ARB BAL FAIL REM SUCCEED BOL EOL NAME NSPAN REAL FULLMATCH GLOBALS INVOKE MATCH RUN SEARCH})
+;; The pattern a pattern variable holds from the start, read as the program reads it: a dump then lists the variable (dump.clj).
+(defn primitive-pattern [sym]
+  (let [resolved (ns-resolve (find-ns 'SNOBOL4clojure.core) sym)
+        v        (when (instance? clojure.lang.Var resolved) (var-get resolved))]
+    (if (nil? v)
+      ε
+      (do (when-not (clojure.core/= sym 'FENCE) (swap! <PRIMS-READ> conj sym)) v))))
+
 (declare $$)
 (defn $$fn [N]
   (let [sym (symbol (name N))]
@@ -543,13 +558,7 @@
         ;; a built-in function's name is no variable: an unset TRIM is the null string. The variables that hold a value of their own are the primitive patterns
         ;; ("These variables contain the primitive patterns of the same name", manual ch. 18: ABORT, ARB, BAL, FAIL, FENCE, REM, SUCCEED). No other unset name
         ;; reads the engine's own definitions: $('&ANCHOR') is the variable of that name, null until assigned, and not the keyword (sbl -bf)
-        (if (#{'ABORT 'ARB 'BAL 'FAIL 'FENCE 'REM 'SUCCEED} sym)
-          (let [resolved (ns-resolve (find-ns 'SNOBOL4clojure.core) sym)
-                v        (when (instance? clojure.lang.Var resolved) (var-get resolved))]
-            (if (nil? v)
-              ε
-              (do (when-not (clojure.core/= sym 'FENCE) (swap! <PRIMS-READ> conj sym)) v)))
-          ε)))))
+        (if (protected-variables sym) (primitive-pattern sym) ε)))))
 
 ;; ── Variable snapshot ────────────────────────────────────────────────────────
 (defn snapshot!

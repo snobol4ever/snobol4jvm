@@ -937,6 +937,8 @@
       (list? E)
       (let [[op & parms] E]
         (cond
+          ;; a pattern variable an expression of constants reads: the pattern itself, as SPITBOL's compiler takes it (compiler.clj freeze)
+          (equal op 'pattern-constant) (let [v (SNOBOL4clojure.env/primitive-pattern (first parms))] (if (identical? v FENCE) bare-fence v))
           ;; A<k> or A[k]: an element of the table or array the name holds; a name that holds neither is "235 Subscripted operand is not table or array" (manual,
           ;; Appendix D), whatever function has that name
           (:subscript (meta E))
@@ -1053,7 +1055,10 @@
                               (let [c      (when (list? N') (if (symbol? (first N')) ($$ (first N')) (first N')))
                                     field? (and (list? N') (symbol? (first N')) (not (:subscript (meta N'))) (:data (meta (get @<FUNS> (name (first N'))))))]
                                 (when (and N' (not (and (array? c) (not field?) (not (SNOBOL4clojure.env/array-in-bounds? c (vec (rest N')))))))
-                                  (INVOKE '= N' (EVAL! R)))))
+                                  ;; a direct store into a pattern variable is 042 once the value is in hand (vrsto, b_vre; env/protected-variables)
+                                  (let [r (EVAL! R)]
+                                    (when (and (some? r) (symbol? N') (SNOBOL4clojure.env/protected-variables N')) (SNOBOL4clojure.env/protected-store! N' r))
+                                    (INVOKE '= N' r)))))
           ;; "Replacement occurs only if evaluation of the subject, pattern, and replacement succeeded" (manual ch. 14): a pattern that fails to evaluate fails the statement
           ;; an element or field subject takes its subscripts before the pattern is evaluated and matched (sbl -bf: A<I> BUMP() = 'W' fills A<2> when BUMP
           ;; moves I from 2)
@@ -1144,7 +1149,7 @@
        :else
        (let [ir (top-replacement (first (emitter p)))
              n  ((requiring-resolve 'SNOBOL4clojure.compiler/fold-error) ir)]
-         (if n (compile-failed! n (SNOBOL4clojure.env/error-message n)) ir))))))
+         (if n (compile-failed! n (SNOBOL4clojure.env/error-message n)) ((requiring-resolve 'SNOBOL4clojure.compiler/freeze) ir)))))))
 
 ;; EVAL's compilation: an expression that ends early is 103 (sbl.min s_evl: "err 103,eval argument is not expression" on gtexp's error exit).
 (defn- compile-or-fail [^String s]

@@ -309,6 +309,29 @@
         nil
         (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e))))))
 
+;; A pattern variable that an expression of constants reads is the pattern it holds from the start, whatever the program has put in it since: SPITBOL's compiler
+;; evaluates such an expression as it compiles (svpre, above), while a variable read alone is read as the program runs (sbl -bf: after 'abc' ? LEN(1) . REM,
+;; DATATYPE(REM) is PATTERN and X = REM gives a STRING; in a program's DEFINEd ABORT, whose call sets ABORT to the null string, DATATYPE(ABORT) is PATTERN and
+;; $'ABORT' the null string). Each such read becomes (pattern-constant V), which EVAL! reads as the pattern; a name position keeps its name (.ARB), and a
+;; deferred *E is no constant here, only what folds within it.
+(defn freeze
+  "The IR n with each pattern variable read by an expression of constants marked (pattern-constant V)."
+  [n]
+  (letfn [(mark [n]
+            (cond (and (symbol? n) (SNOBOL4clojure.env/protected-variables n)) (list 'pattern-constant n)
+                  (vector? n) (with-meta (mapv mark n) (meta n))
+                  (list? n)   (let [[op & args] n names (name-positions op args)]
+                                (with-meta (apply list op (map-indexed (fn [i a] (if (names i) a (mark a))) args)) (meta n)))
+                  :else n))
+          (walk [n]
+            (cond (and (list? n) (= '* (first n)) (= 2 (count n))) (with-meta (list '* (walk (second n))) (meta n))
+                  (and (or (list? n) (vector? n)) (first (try (fold n) (catch clojure.lang.ExceptionInfo _ [false nil])))) (mark n)
+                  (vector? n) (with-meta (mapv walk n) (meta n))
+                  (list? n)   (with-meta (apply list (first n) (map walk (rest n))) (meta n))
+                  :else n))]
+    ;; most statements read no pattern variable, and are left as they are
+    (if (some #(and (symbol? %) (SNOBOL4clojure.env/protected-variables %)) (tree-seq coll? seq n)) (walk n) n)))
+
 ;; -- CODE! — parse source into {CODES NOS LABELS} ----------------------------
 (defn CODE!
   "Compile SNOBOL4 source S into a [codes nos labels disp] vector. disp holds, for each statement in order, how many blank lines (statements SPITBOL
@@ -359,7 +382,9 @@
                  (let [label  (:label code)
                        body   (:body  code)
                        goto   (:goto  code)
-                       _      (when-let [n (fold-error body (when (map? goto) goto))] (swap! <DIAGNOSTICS> conj [pline n nil NO]))
+                       ferr   (fold-error body (when (map? goto) goto))
+                       _      (when ferr (swap! <DIAGNOSTICS> conj [pline ferr nil NO]))
+                       body   (if ferr body (freeze body))
                        key    (if label label NO)
                        code   (reduce #(conj %1 %2) [] [body goto])
                        nos    (if (keyword? key) (assoc NOS   key NO) NOS)
