@@ -674,7 +674,6 @@
                       (when (some? entry) (SNOBOL4clojure.env/->CodeBlock entry))))
                   (catch Exception e
                     (throw (ex-info (.getMessage e) {:snobol/signal :error})))))
-    quote   ($$ (second op))
             (let [raw-f (if (symbol? op) ($$fn op) op)   ; op is the container itself when it came from a subscript
                   ;; NAME indirect reference — dereference to actual array/table
                   f (if (instance? NAME raw-f)
@@ -1084,7 +1083,6 @@
                               (if (instance? clojure.lang.IDeref v) @v v))
           ;; the engine's own forms, unless the program defined a function of the name (SPITBOL has no SEQ, so a program may: Gimpel's seq.inc)
           (and (equal op 'SEQ) (not (program-fn op)))   (apply str (map #(sstr (EVAL! %)) parms))
-          (and (equal op 'quote) (not (program-fn op))) (first parms)
           ;; Unary * = deferred pattern: do NOT pre-evaluate the arg.
           ;; The thunk must re-read the variable at match time so that
           ;; SPAN(*B) / ANY(*B) / NOTANY(*B) see the current value of B,

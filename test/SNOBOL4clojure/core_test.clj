@@ -7223,6 +7223,24 @@
              (fatal-figures (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p))))))
       (finally (.delete f)))))
 
+;; quote is no function either ("22 Undefined function called", manual Appendix D): EVAL! and INVOKE read a call named quote as Clojure's quote form and
+;; returned its argument, so quote('a') was 'a' and a program's DEFINE of quote never ran (CEO-2028; the census of CEO-2024 stopped at that arm). The IR has
+;; no quote form of its own: the emitter never writes one, and a quoted IR in Clojure source reaches EVAL! already unquoted. sbl -bf prints the lines below.
+(deftest quote-is-no-function
+  (let [f (java.io.File/createTempFile "quote" ".sno") p (.getPath f)]
+    (try
+      (spit f (str "       &ERRLIMIT = 10\n"
+                   "       SETEXIT('H')\n"
+                   "       X = quote('a')\n"
+                   "       OUTPUT = 'quote gave [' X ']'\n"
+                   "       DEFINE('quote(Y)')                   :(Q_END)\n"
+                   "quote  quote = 'mine ' Y                  :(RETURN)\n"
+                   "Q_END  OUTPUT = quote('b')                :(END)\n"
+                   "H      OUTPUT = 'error ' &ERRTYPE          :(CONTINUE)\n"
+                   "END\n"))
+      (is (= "error 22\nquote gave []\nmine b\n" (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p)))))
+      (finally (.delete f)))))
+
 ;; Only a direct assignment to one of the seven pattern variables is "042 attempt to change value of protected variable": the compiled store goes through vrsto,
 ;; which is b_vre for them, and every other write sets the value (sbl.min b_pfc sets and restores a function's name, arguments and locals in vrval; an indirect
 ;; store and a pattern's capture go through asign; manual ch. 18: "The pattern valued variables ABORT, ARB, FAIL, REM and SUCCEED are write-protected so that
