@@ -332,6 +332,9 @@
     ;; most statements read no pattern variable, and are left as they are
     (if (some #(and (symbol? %) (SNOBOL4clojure.env/protected-variables %)) (tree-seq coll? seq n)) (walk n) n)))
 
+;; The labels SPITBOL defines before the program's first statement (manual ch. 16, Special names).
+(def ^:private system-labels #{:ABORT :CONTINUE :SCONTINUE :RETURN :FRETURN :NRETURN})
+
 ;; -- CODE! — parse source into {CODES NOS LABELS} ----------------------------
 (defn CODE!
   "Compile SNOBOL4 source S into a [codes nos labels disp] vector. disp holds, for each statement in order, how many blank lines (statements SPITBOL
@@ -342,7 +345,9 @@
   ([S include-path] (CODE! S include-path nil))
   ([S include-path file] (CODE! S include-path file false))
   ([S include-path file record?]
-   (let [;; a record with a line end in it is read as it stands: the -INCLUDE preprocessor reads lines, and would end them
+   (let [;; a CODE text (CODE-block passes record? true) may define a label again; the program's own compile may not (217, below)
+         code-text? record?
+         ;; a record with a line end in it is read as it stands: the -INCLUDE preprocessor reads lines, and would end them
          record?   (and record? (boolean (re-find #"[\r\n]" (str S))))
          [expanded _ cards] (if record? [(str S) #{} []] (preprocess-includes* (str S) include-path #{}))
          raw-stmts (split-source expanded record?)
@@ -382,10 +387,14 @@
                  (let [label  (:label code)
                        body   (:body  code)
                        goto   (:goto  code)
-                       ferr   (fold-error body (when (map? goto) goto))
+                       ;; a label the program's compile has defined already, or a system label, is "217 syntax error: duplicate label"; the first definition
+                       ;; stands (sbl.min cmp11, vrlbl not stndl outside a CODE call; sbl -bf: a second L, or a label ABORT, CONTINUE, SCONTINUE, RETURN, FRETURN
+                       ;; or NRETURN is 217, and a CODE text may define L again)
+                       dup?   (and (not code-text?) (keyword? label) (or (contains? NOS label) (system-labels label)))
+                       ferr   (if dup? 217 (fold-error body (when (map? goto) goto)))
                        _      (when ferr (swap! <DIAGNOSTICS> conj [pline ferr nil NO]))
                        body   (if ferr body (freeze body))
-                       key    (if label label NO)
+                       key    (if (and label (not dup?)) label NO)
                        code   (reduce #(conj %1 %2) [] [body goto])
                        nos    (if (keyword? key) (assoc NOS   key NO) NOS)
                        labels (if (keyword? key) (assoc LABELS NO key) LABELS)

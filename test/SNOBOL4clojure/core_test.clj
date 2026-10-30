@@ -7256,3 +7256,37 @@
                   "execution time msec  -\nREGENERATIONS        -\nmemory used (bytes)  -\nmemory left (bytes)  -\n\n")
              (fatal-figures (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p))))))
       (finally (.delete f)))))
+
+;; A label the program's own compile has already defined is "217 syntax error: duplicate label", and the system labels ABORT CONTINUE SCONTINUE RETURN FRETURN
+;; NRETURN are defined from the start, so a statement labelled with one is 217 too; the first definition stands, and the program is not run (sbl.min cmp11: a
+;; label whose vrlbl is not stndl is 217 outside a CODE call; manual ch. 16, Special names). A CODE text may define any label again. The engine checked none:
+;; a repeated L ran both statements, a label RETURN ended the run in silence. Expected output is sbl -bf's.
+(deftest a-label-already-defined-is-217
+  (let [dir (.toFile (java.nio.file.Files/createTempDirectory "dup" (make-array java.nio.file.attribute.FileAttribute 0)))
+        run (fn [nm src] (let [f (java.io.File. dir nm)] (spit f src)
+                           (let [rc (atom nil) out (with-out-str (binding [*err* (java.io.StringWriter.)] (reset! rc (-main (.getPath f)))))]
+                             [(-> out (clojure.string/replace (str dir "/") "")
+                                  (clojure.string/replace #"(?m)^snobol4jvm version \S+$" "IDENTITY")
+                                  (clojure.string/replace #"(?m)^x86-64  \w{3} \w{3} [ \d]\d \d\d:\d\d:\d\d \d{4}$" "CLOCK"))
+                              @rc])))
+        head (str "\n\n\nIDENTITY\nCLOCK\n\n\n\n" (apply str (repeat 112 \space)) "page 1\n\n")]
+    (try
+      (is (= [(str head "2       L      OUTPUT = 'b'\n\nd1.sno(2) : ERROR 217 -- syntax error: duplicate label\n\n"
+                   "3       RETURN OUTPUT = 'c'\n\nd1.sno(3) : ERROR 217 -- syntax error: duplicate label\n\n") 231]
+             (run "d1.sno" "L      OUTPUT = 'a'\nL      OUTPUT = 'b'\nRETURN OUTPUT = 'c'\n       OUTPUT = 'd'\nEND\n")))
+      (is (= [(str head "2       ABORT  OUTPUT = 'b'\n\nd2.sno(2) : ERROR 217 -- syntax error: duplicate label\n\n") 231]
+             (run "d2.sno" "       OUTPUT = 'a'\nABORT  OUTPUT = 'b'\n       OUTPUT = 'c'\nEND\n")))
+      (is (= ["old L\ncode ok\nin code\ndone\ncode2 ok\n" nil]
+             (run "d3.sno" (str "L      OUTPUT = 'old L'\n"
+                                "       N = N + 1\n"
+                                "       GT(N,1)                                        :S(DONE)\n"
+                                "       C = CODE(' OUTPUT = \"in code\" ; L OUTPUT = \"new L\" :(DONE)') :F(BAD)\n"
+                                "       OUTPUT = 'code ok'                             :<C>\n"
+                                "BAD    OUTPUT = 'code failed ' &ERRTYPE               :(END)\n"
+                                "DONE   OUTPUT = 'done'\n"
+                                "       N = 0\n"
+                                "       C2 = CODE(' OUTPUT = \"dup\" ; M OUTPUT = 1 ; M OUTPUT = 2')  :F(BAD2)\n"
+                                "       OUTPUT = 'code2 ok'                            :(END)\n"
+                                "BAD2   OUTPUT = 'code2 failed ' &ERRTYPE\n"
+                                "END\n"))))
+      (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))
