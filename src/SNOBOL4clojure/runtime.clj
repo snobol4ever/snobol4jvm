@@ -178,6 +178,14 @@
            (and err (clojure.core/= nm "ABORT"))
            (let [e ^clojure.lang.ExceptionInfo (:ex err)]
              (throw (ex-info (ex-message e) (-> (ex-data e) (dissoc :snobol/label :snobol/serial :snobol/fp :snobol/resume) (assoc :snobol/abort true)))))
+           ;; elsewhere ABORT ends the program with the last error, &ERRTYPE, however long ago it was trapped or continued; with none it is "036 goto abort with
+           ;; no preceding error", which a handler takes as any error (sbl.min l_abo: kvert, labo3; sbl -bf: after 1 + Y was trapped, :(ABORT) prints ERROR 002
+           ;; at the statement that took it; with no error the program ends with 036, or SETEXIT's handler runs with &ERRTYPE 36). It was 038, no such label.
+           (clojure.core/= nm "ABORT")
+           (let [n (long @&ERRTYPE)]
+             (throw (if (zero? n)
+                      (ex-info (SNOBOL4clojure.env/error-message 36) {:snobol/error 36})
+                      (ex-info (SNOBOL4clojure.env/error-message n) {:snobol/error n :snobol/abort true}))))
            tgt
            (do (goto! tgt) (let [a (label-addr tgt)] (when (pos? (long @&TRACE)) (fire-label! (or (second a) tgt))) [a err]))
            :else

@@ -7140,3 +7140,49 @@
                     "execution time msec  -\nREGENERATIONS        -\nmemory used (bytes)  -\nmemory left (bytes)  -\n\n")
                (fatal-figures out))))
       (finally (.delete f)))))
+
+;; A goto to ABORT outside a handler ends the program with the last error, &ERRTYPE, however long ago it was trapped or continued; with no error before it,
+;; it is "036 goto abort with no preceding error", which a SETEXIT handler takes as any error (sbl.min l_abo: kvert, labo3; manual ch. 16, ABORT: "Transfer
+;; to this special system label only when within an error routine"). The engine looked for a statement labelled ABORT and said 038. Expected output is sbl -bf's.
+(deftest a-goto-to-abort-outside-a-handler-ends-with-the-last-error-or-036
+  (doseq [[src pre line stmts msg] [[(str "        &ERRLIMIT = 5\n"
+                                          "        OUTPUT = 'go'                 :(ABORT)\n"
+                                          "        OUTPUT = 'next ' &ERRTYPE\n"
+                                          "END\n") "go\n" 2 2 "036 -- goto abort with no preceding error"]
+                                    [(str "        DEFINE('F()')                 :(F_END)\n"
+                                          "F       OUTPUT = 'in F'               :(ABORT)\n"
+                                          "F_END   F()\n"
+                                          "        OUTPUT = 'after F'\n"
+                                          "END\n") "in F\n" 2 3 "036 -- goto abort with no preceding error"]
+                                    [(str "        &ERRLIMIT = 5\n"
+                                          "        Y = 'a'\n"
+                                          "        X = 1 + Y\n"
+                                          "        OUTPUT = 'after ' &ERRTYPE    :(ABORT)\n"
+                                          "END\n") "after 2\n" 4 4 "002 -- addition right operand is not numeric"]
+                                    [(str "        &ERRLIMIT = 5\n"
+                                          "        SETEXIT('H')\n"
+                                          "        Y = 'a'\n"
+                                          "        X = 1 + Y\n"
+                                          "        OUTPUT = 'continued ' &ERRTYPE\n"
+                                          "        OUTPUT = 'now abort'          :(ABORT)\n"
+                                          "H       OUTPUT = 'handler ' &ERRTYPE  :(CONTINUE)\n"
+                                          "END\n") "handler 2\ncontinued 2\nnow abort\n" 6 7 "002 -- addition right operand is not numeric"]]]
+    (let [f (java.io.File/createTempFile "gen" ".sno") p (.getPath f)]
+      (try
+        (spit f src)
+        (let [out (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p)))]
+          (is (= (str pre "\n\n\n" p "(" line ") : ERROR " msg "\n\n\n\n\n\n"
+                      "in file              " p "\nin line              " line "\nin statement         " line "\nstmts executed       " stmts "\n"
+                      "execution time msec  -\nREGENERATIONS        -\nmemory used (bytes)  -\nmemory left (bytes)  -\n\n")
+                 (fatal-figures out))))
+        (finally (.delete f)))))
+  (let [f (java.io.File/createTempFile "gen" ".sno") p (.getPath f)]
+    (try
+      (spit f (str "        &ERRLIMIT = 5\n"
+                   "        SETEXIT('H')\n"
+                   "        OUTPUT = 'go'                 :S(ABORT)F(NO)\n"
+                   "NO      OUTPUT = 'failed to'          :(END)\n"
+                   "H       OUTPUT = 'handler ' &ERRTYPE  :(CONTINUE)\n"
+                   "END\n"))
+      (is (= "go\nhandler 36\nfailed to\n" (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p)))))
+      (finally (.delete f)))))
