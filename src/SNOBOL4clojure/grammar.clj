@@ -69,5 +69,10 @@
   white     ::=  #'[ \\t]'
 ")
 
-(def parse-statement  (insta/parser grammar :start :stmt  :total true))
-(def parse-expression (insta/parser grammar :start :expr))
+;; The EBNF above is parsed once, when this namespace is compiled, and the combinator map it gives is a constant of the class: a run no longer parses the grammar text
+;; (two parsers built from the text took 380 ms and 7 G instructions of every start, of the 17 G an empty program costs). The text stays the one source of the grammar;
+;; both parsers start from the same map, which instaparse takes in place of the text, so a rule changed above is compiled in again with the next build.
+(defmacro ^:private compiled-rules [] (list 'quote (:grammar (insta/parser grammar))))
+(def ^:private rules (compiled-rules))
+(def parse-statement  (insta/parser rules :start :stmt  :total true))
+(def parse-expression (insta/parser rules :start :expr))

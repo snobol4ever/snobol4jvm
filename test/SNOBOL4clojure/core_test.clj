@@ -7335,3 +7335,24 @@
       (is (= "ERROR 235\nfailed\n" (run "." "u[1]")))
       (is (= "ERROR 235\nfailed\n" (run "$" "u[1]")))
       (finally (.delete f)))))
+
+;; The grammar's EBNF text is parsed when SNOBOL4clojure.grammar is compiled, and the combinator map it gives is a constant of the namespace (grammar/rules) from which both
+;; parsers start, so a run no longer parses the text: building the two parsers from the text cost 380 ms and about 7 G user instructions of every start (perf stat -e
+;; instructions:u, an empty program 16.6 G before and 10.9 G after). The parsers must answer as the text-built ones do: the same tree, or the same failure, for each line.
+(deftest the-grammar-is-compiled-into-the-namespace-and-parses-as-its-text-does
+  (require 'instaparse.core 'SNOBOL4clojure.grammar)
+  (let [parser (resolve 'instaparse.core/parser) parse (resolve 'instaparse.core/parse)
+        text (var-get (resolve 'SNOBOL4clojure.grammar/grammar))
+        from-text-stmt (parser text :start :stmt :total true)
+        from-text-expr (parser text :start :expr)
+        rules (resolve 'SNOBOL4clojure.grammar/rules)
+        lines ["L       X = Y + 1                :(END)" "        OUTPUT = 'hello'" "* a comment" "-INCLUDE 'x.inc'" "END" "        :(L)"
+               "        X<I> = Y[J]" "        P = LEN(3) $ X . Y | 'z' @C" "A       B ? C . D = E            :S(X)F(Y)" "        DEFINE('F(X,Y)Z')  :(FEND)"
+               "        X = 1.5E3 + .5 * (2 ** 3)" "        &STLIMIT = 100" "L2      Z = F(A, , B)            :F<$S>" "        S ? ARBNO(BREAK(' ') . W SPAN(' ')) :F(D)"
+               "        )(" "   garbage ## ::"]]
+    (is (some? rules))
+    (when rules
+      (is (= (set (keys @rules)) (set (keys (:grammar (parser text)))))))
+    (doseq [l lines]
+      (is (= (pr-str (parse from-text-stmt l)) (pr-str (SNOBOL4clojure.grammar/parse-statement l))) l)
+      (is (= (pr-str (parse from-text-expr l)) (pr-str (SNOBOL4clojure.grammar/parse-expression l))) l))))
