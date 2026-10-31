@@ -7308,3 +7308,30 @@
                                 "BAD2   OUTPUT = 'code2 failed ' &ERRTYPE\n"
                                 "END\n"))))
       (finally (doseq [x (reverse (file-seq dir))] (.delete ^java.io.File x))))))
+
+;; A capture's target is evaluated after the pattern operand on its left, as the operands of any binary operator are (manual, Pattern Matching, Conditional
+;; assignment: the operator assigns "the matching substring on its left to the variable on its right"; sbl -bf evaluates the left operand first and fails the
+;; statement when it fails or raises, before the target function F() of P . F() or P $ F() is called). The engine took the target first, so LEN(GG()) . FF()
+;; called FF although GG failed, and LEN(U[1]) . FF() called FF and failed instead of raising 235 for the subscript of a variable that holds no array.
+;; Expected output is sbl -bf's.
+(deftest a-capture-target-is-called-after-the-pattern-operands-before-it
+  (let [f (java.io.File/createTempFile "capord" ".sno") p (.getPath f)
+        run (fn [target-op subject-operand]
+              (spit f (str "        DEFINE('ff()')  :(FFE)\n"
+                           "ff      OUTPUT = 'ff called'  :(FRETURN)\n"
+                           "FFE     DEFINE('gg()')  :(GGE)\n"
+                           "gg      OUTPUT = 'gg called'  :(FRETURN)\n"
+                           "GGE     &ERRLIMIT = 5\n"
+                           "        SETEXIT('ERR')\n"
+                           "        'x' ? LEN(" subject-operand ") " target-op " ff()   :F(S1)\n"
+                           "        OUTPUT = 'matched'  :(END)\n"
+                           "S1      OUTPUT = 'failed'  :(END)\n"
+                           "ERR     OUTPUT = 'ERROR ' &ERRTYPE  :(CONTINUE)\n"
+                           "END\n"))
+              (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p))))]
+    (try
+      (is (= "gg called\nfailed\n" (run "." "gg()")))
+      (is (= "gg called\nfailed\n" (run "$" "gg()")))
+      (is (= "ERROR 235\nfailed\n" (run "." "u[1]")))
+      (is (= "ERROR 235\nfailed\n" (run "$" "u[1]")))
+      (finally (.delete f)))))
