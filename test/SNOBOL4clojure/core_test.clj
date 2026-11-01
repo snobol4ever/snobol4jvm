@@ -7356,3 +7356,34 @@
     (doseq [l lines]
       (is (= (pr-str (parse from-text-stmt l)) (pr-str (SNOBOL4clojure.grammar/parse-statement l))) l)
       (is (= (pr-str (parse from-text-expr l)) (pr-str (SNOBOL4clojure.grammar/parse-expression l))) l))))
+
+;; A SNOBOL4 call is several nested evaluator calls, so a function that called itself died at depth 90 on the JVM's default thread stack with an uncaught
+;; StackOverflowError, where sbl -bf runs 57,000 deep at its default -s4m and ends a runaway recursion with "ERROR 246 -- stack overflow", the report every execution
+;; error ends with, no SETEXIT handler entered, exit code 0. The program now runs on a thread whose stack is sized from the stack it declares (main/on-a-stack, 256 times
+;; the declared kilobytes; the launcher passes -s as snobol4jvm.stack.kb), the declared stack being the hard cap (CEO-1353); a run that outgrows it, or a StackOverflowError
+;; that escapes, ends in error 246 (core.clj). Expected output is sbl -bf's.
+(deftest a-recursion-runs-on-the-stack-it-declares-and-outgrowing-it-is-error-246
+  (require 'SNOBOL4clojure.main)
+  (let [on-a-stack (resolve 'SNOBOL4clojure.main/on-a-stack)
+        f    (java.io.File/createTempFile "deep" ".sno") p (.getPath f)
+        deep (fn [n] (str "        DEFINE('DEEP(N)')               :(DEEPE)\n"
+                          "DEEP    DEEP = EQ(N, 0) 0               :S(RETURN)\n"
+                          "        DEEP = DEEP(N - 1) + 1          :(RETURN)\n"
+                          "DEEPE   OUTPUT = DEEP(" n ")\n"
+                          "END\n"))
+        run  (fn [src] (spit f src) (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p))))]
+    (try
+      (is (some? on-a-stack))
+      (when on-a-stack
+        (is (= "3000\n" (on-a-stack 4096 #(run (deep 3000)))))
+        (is (re-find #"\(\d+\) : ERROR 246 -- stack overflow" (on-a-stack 16 #(run (deep 20000))))))
+      (let [out (run (str "        DEFINE('FOREVER(N)')            :(FE)\n"
+                          "FOREVER FOREVER = FOREVER(N + 1) + 1    :(RETURN)\n"
+                          "FE      OUTPUT = 'start'\n"
+                          "        OUTPUT = FOREVER(0)\n"
+                          "        OUTPUT = 'after'\n"
+                          "END\n"))]
+        (is (re-find #"\(\d+\) : ERROR 246 -- stack overflow" out))
+        (is (.startsWith ^String out "start\n"))
+        (is (not (re-find #"after" out))))
+      (finally (.delete f)))))

@@ -245,6 +245,13 @@
                                       (reset! env/&ERRTEXT text)
                                       ;; the statement the limit stops is not executed
                                       (listed #(fatal/report! code text (if n @env/&STCOUNT (dec (long steps))) t0)))))
+                                ;; "246 stack overflow" (sbl -bf, a function that calls itself with no end): the run is over, a SETEXIT handler is not entered,
+                                ;; and the report is the one every execution error ends with
+                                (catch StackOverflowError _
+                                  (let [text (env/error-message 246)]
+                                    (reset! env/&ERRTYPE 246)
+                                    (reset! env/&ERRTEXT text)
+                                    (listed #(fatal/report! 246 text @env/&STCOUNT t0))))
                                 (finally (when (pos? (long @env/&DUMP)) (listed #(print (dump/dump-text @env/&DUMP))))))))))
         "vm"     (print (vm/run-program! src)))]
         (flush)
