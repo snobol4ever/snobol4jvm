@@ -7387,3 +7387,16 @@
         (is (.startsWith ^String out "start\n"))
         (is (not (re-find #"after" out))))
       (finally (.delete f)))))
+
+;; RETURN, FRETURN, NRETURN and END unwind the Java stack as exceptions that carry nothing that varies. clojure.core/ex-info reads the whole Java stack trace of its caller
+;; (elide-top-frames), and a SNOBOL4 call is dozens of Java frames deep per level, so each return paid for a stack trace of the whole recursion: fib(24) took 22 s and 281 G user
+;; instructions, 73 percent of them in the JVM's trace code (perf record), and 5000-deep recursion 3.8 s. One exception of each signal is thrown every time (2.16 s, 26.5 G, 5000-deep
+;; 1.3 s); what a catch reads, ex-data, is unchanged.
+(deftest the-return-signals-are-constants-carrying-the-same-data
+  (let [thrown (fn [f] (try (f) nil (catch clojure.lang.ExceptionInfo e e)))]
+    (doseq [[f sig msg] [[SNOBOL4clojure.env/snobol-return! :return "RETURN"] [SNOBOL4clojure.env/snobol-freturn! :freturn "FRETURN"]
+                         [SNOBOL4clojure.env/snobol-nreturn! :nreturn "NRETURN"] [SNOBOL4clojure.env/snobol-end! :end "END"]]]
+      (let [a (thrown f) b (thrown f)]
+        (is (= {:snobol/signal sig} (ex-data a)))
+        (is (= msg (ex-message a)))
+        (is (identical? a b))))))

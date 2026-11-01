@@ -701,10 +701,17 @@
 ;; ── SNOBOL4 control-flow signals ────────────────────────────────────────────
 ;; Used to unwind the call stack from :(RETURN), :(FRETURN), :(NRETURN), :(END)
 ;; These are ex-info maps thrown as exceptions and caught by DEFINE's wrapper.
-(defn snobol-return!  [] (throw (ex-info "RETURN"  {:snobol/signal :return})))
-(defn snobol-freturn! [] (throw (ex-info "FRETURN" {:snobol/signal :freturn})))
-(defn snobol-nreturn! [] (throw (ex-info "NRETURN" {:snobol/signal :nreturn})))
-(defn snobol-end!     [] (throw (ex-info "END"     {:snobol/signal :end})))
+;; Each signal carries nothing that varies, so one exception of each is thrown every time: clojure.core/ex-info reads the whole Java stack trace of the thrower (elide-top-frames:
+;; getStackTrace, a line number decoded for every frame) and a call of a SNOBOL4 function is dozens of Java frames deep per level, so a RETURN cost a stack trace of the whole
+;; recursion (fib(24) took 22 s and 281 G instructions, 73 percent of them in the JVM's trace code); a thrown constant has neither that nor fillInStackTrace's walk.
+(def ^:private return-signal  (clojure.lang.ExceptionInfo. "RETURN"  {:snobol/signal :return}))
+(def ^:private freturn-signal (clojure.lang.ExceptionInfo. "FRETURN" {:snobol/signal :freturn}))
+(def ^:private nreturn-signal (clojure.lang.ExceptionInfo. "NRETURN" {:snobol/signal :nreturn}))
+(def ^:private end-signal     (clojure.lang.ExceptionInfo. "END"     {:snobol/signal :end}))
+(defn snobol-return!  [] (throw return-signal))
+(defn snobol-freturn! [] (throw freturn-signal))
+(defn snobol-nreturn! [] (throw nreturn-signal))
+(defn snobol-end!     [] (throw end-signal))
 (defn snobol-steplimit! [n]
   (throw (ex-info (str "Step limit exceeded at step " n)
                   {:snobol/signal :step-limit :steps n})))
