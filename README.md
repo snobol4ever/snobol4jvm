@@ -1,7 +1,8 @@
 # snobol4jvm
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Tests](https://img.shields.io/badge/tests-1%2C896%20%2F%200%20failures-brightgreen)](#testing)
+[![Fleet suites](https://img.shields.io/badge/fleet%20suites-11%20of%2011%20at%20100%25-brightgreen)](#test-suite-coverage)
+[![lein test](https://img.shields.io/badge/lein%20test-2%2C295%20tests%20%2F%2074%20failures-orange)](#the-engines-own-unit-tests)
 
 **Full SNOBOL4/SPITBOL implementation for the JVM, written in Clojure.**
 
@@ -165,33 +166,107 @@ itself. This makes class loading fast and reliable across all JVM versions.
 
 ## Performance
 
-### Measured 2026-10-31: the engine the command line runs, counted in instructions
+snobol4jvm is much slower than both SPITBOL and CSNOBOL4. This section says by how much, for the engine the command line runs: `java -jar` on the default `interp` engine,
+started through the fleet's launcher `run_snobol4jvm.sh` (the AppCDS archive, `-XX:CompileThresholdScaling=4 -XX:-DontCompileHugeMethods`).
 
-`java -jar` (and every board of the fleet) runs the default `interp` engine; `--engine vm` is the only other one the command line selects, and it counted within 4 percent
-of `interp` on the two programs tried. Counts are user instructions retired by the whole process, JIT and collector threads included (`perf stat -e instructions:u`, median of 3), against
-pristine SPITBOL (`sbl -b`) and CSNOBOL4, on an idle box. The tool is `util_instr_count.sh` of the fleet's harness and the table script is `bench_snobol4_jvm_table.sh`;
-the table itself is `findings/JVM-BENCH-TABLE.md` in the org's `.github`.
+**How it is measured**
 
-| What | Instructions |
-|---|---|
-| A bare JVM printing one line | 0.06 G |
-| A bare Clojure runtime (`clojure.main -e nil`) | 4.2 G |
-| An empty SNOBOL4 program on this jar (the fixed start-up of every run; 16.7 G on 2026-10-31 before two start-up changes) | about 6.6 G |
-| The 23 SnoBench kernels, summed work above an empty program: jar / SPITBOL / CSNOBOL4 | 385 G / 0.16 G / 0.84 G |
+- The unit is **user instructions retired by the whole process**, JIT and collector threads included (`perf stat -e instructions:u`). G is a billion, M a million. An instruction
+  count does not move with the load on the box; a wall clock does, so wall times appear only where stated.
+- **SPITBOL** is the fleet's benchmark build of SPITBOL x64 (`/home/resources/spitbol-bench-oracle/sbl`): upstream with the minimal patches that make `-bf` accept SCRIP's
+  upper/lower-case convention and the nanosecond clock, and **no monitor hooks**. The correctness oracle (`x64/bin/sbl`) carries the monitor hooks and is never timed: even idle, its
+  hooks double the instruction count on the 23 kernels (348 M against 173 M). **CSNOBOL4** is the box's build of Phil Budne's CSNOBOL4. A figure is printed only when the engine's
+  output equals the reference; otherwise the cell reads n/a.
+- **Start-up is reported on its own, below, and is subtracted from every figure in the two benchmark tables:** each engine's number is its total less its own total on an empty program.
+  A "×" is the jar's work divided by the other engine's work; larger is slower.
 
-The kernels are millisecond-sized, so those multiples (the jar at 290 to 11,000 times SPITBOL, 2,372 times summed) price **running one small program once**: parsing the
-source with instaparse (about 6 ms a line cold), compiling, class loading and the JIT. Long loops, measured by wall clock on a loaded box: 12M arithmetic iterations took
-170 s or more here against 0.96 s on SPITBOL and 4.3 s on CSNOBOL4, and 3M pattern matches 80 s against 0.71 s and 1.7 s. The JVM is slower than both at every size
-measured; the figures below are the earlier author measurements and do not say otherwise about this engine.
+### Start-up (separate from the tables that follow)
 
-The JIT: the fleet's launcher passes `-XX:CompileThresholdScaling=4`, which takes an empty program from 11 G to 6.5 G instructions with the same wall clock; a bare
-`java -jar` without it works and costs more at start-up.
+An empty program (`END` alone), five runs, median instructions and the fastest wall clock:
 
-### Earlier figures (2026-10-17; in-process, after warm-up, not re-run)
+- **SPITBOL:** 0.20 M, 0.00 s
+- **CSNOBOL4:** 0.58 M, 0.01 s
+- **snobol4jvm:** 6.55 G, 0.82 s on a loaded box (0.58 s on an idle one). A bare JVM printing one line costs 0.06 G and a bare Clojure runtime 4.2 G; the engine's namespaces, the source parser and the
+  JIT's work on start-up code are the rest. It was 16.7 G before the grammar was compiled into the namespace and the launcher's JIT options were set (2026-10-31).
 
-Benchmarks on Linux / OpenJDK 21 / Leiningen 2.12.0. SPITBOL and CSNOBOL4 times include
-~15 ms process-spawn overhead — subtract for a fair per-execution comparison. The `Transpil`, `Stack VM` and `JVM code` columns are
-backends reachable from the API, not from the command line.
+Every run of the jar pays this once, whatever the program does.
+
+### General benchmarks: the 23 SnoBench kernels
+
+Work above start-up, median of 3 runs. The kernels (`corpus/benchmarks/snobol4`) are millisecond-sized, so the jar's work is mostly one-time cost (parsing the source with instaparse,
+compiling, class loading, the first run) and not loop iterations; the kernels that loop longest read lowest.
+
+| Kernel | jar | SPITBOL | CSNOBOL4 | jar / SPITBOL | jar / CSNOBOL4 |
+|---|---:|---:|---:|---:|---:|
+| arith_loop | 1.81 G | 0.23 M | 1.33 M | 7,795× | 1,357× |
+| arith_loop_twin | 21.42 G | 77.21 M | 365.42 M | 277× | 59× |
+| array_sum | 7.42 G | 5.13 M | 32.11 M | 1,446× | 231× |
+| eval_fixed | 7.80 G | 1.24 M | 4.14 M | 6,302× | 1,885× |
+| fibonacci | 5.88 G | 2.60 M | 11.70 M | 2,261× | 503× |
+| fib_recur | 17.35 G | 47.01 M | 208.15 M | 369× | 83× |
+| func_call | 2.91 G | 0.42 M | 1.98 M | 6,910× | 1,474× |
+| ident_call1 | 2.01 G | 0.29 M | 1.61 M | 6,996× | 1,245× |
+| ident_call2 | 2.09 G | 0.28 M | 1.58 M | 7,370× | 1,324× |
+| indirect_dispatch | 2.39 G | 0.32 M | 1.81 M | 7,473× | 1,323× |
+| mixed_workload | 3.06 G | 0.38 M | 1.49 M | 8,154× | 2,052× |
+| name_indirection | 6.31 G | 9.02 M | 50.65 M | 699× | 124× |
+| op_dispatch | 2.12 G | 0.47 M | 2.71 M | 4,478× | 784× |
+| pattern_bt | 5.00 G | 1.68 M | 7.70 M | 2,977× | 650× |
+| roman | 4.29 G | 1.21 M | 8.46 M | 3,546× | 507× |
+| string_concat | 2.02 G | 0.24 M | 1.81 M | 8,421× | 1,112× |
+| string_concat_twin | 2.83 G | 1.12 M | 7.02 M | 2,532× | 404× |
+| string_manip | 1.84 G | 0.52 M | 2.46 M | 3,556× | 748× |
+| string_pattern | 3.46 G | 0.75 M | 3.87 M | 4,582× | 893× |
+| table_access | 6.79 G | 7.12 M | 94.16 M | 954× | 72× |
+| table_variety | 6.27 G | 4.41 M | 22.28 M | 1,420× | 281× |
+| test_icon | 2.79 G | 0.25 M | 0.29 M | 11,091× | 9,545× |
+| var_access | 3.05 G | 0.55 M | 2.95 M | 5,511× | 1,032× |
+| **All 23** | **120.9 G** | **162 M** | **836 M** | **744×** | **145×** |
+
+### Work-horse demos: the 24 demo programs
+
+Each demo runs once on the full input its `.workhorse` sidecar declares (the sample input repeated by its scale, `DEMO-SCALE.tsv`); a demo has no iteration loop, so one run is the
+measure. Work above start-up, one run each; the jar's output equals SPITBOL's on all 24. The last column is the wall clock net of each engine's start-up.
+
+| Demo | Input (scale) | jar | SPITBOL | CSNOBOL4 | jar / SPITBOL | jar / CSNOBOL4 | Net wall: jar / SPITBOL / CSNOBOL4 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| arithmetic | — | start-up only | <1 M | 0.42 M | — | — | 0.0 s / 0.00 s / 0.00 s |
+| beauty | 44 KB (×1) | 149.26 G | 248.8 M | n/a | 600× | — | 16.3 s / 0.05 s / n/a |
+| calculator-1-match-fence | 33 KB (×1) | 42.08 G | 122.8 M | n/a | 343× | — | 2.1 s / 0.02 s / n/a |
+| calculator-1-match | 33 KB (×1) | 104.35 G | 314.8 M | n/a | 331× | — | 5.1 s / 0.04 s / n/a |
+| calculator-1 | 130 KB (×4) | 53.56 G | 138.8 M | n/a | 386× | — | 3.5 s / 0.04 s / n/a |
+| calculator-2-match-fence | 130 KB (×4) | 11.86 G | 14.8 M | n/a | 801× | — | 0.4 s / 0.01 s / n/a |
+| calculator-2-match | 130 KB (×4) | 12.26 G | 11.8 M | n/a | 1,039× | — | 0.6 s / 0.01 s / n/a |
+| calculator-2 | 130 KB (×4) | 464.32 G | 155.8 M | n/a | 2,980× | — | 28.9 s / 0.04 s / n/a |
+| claws5-match-fence | 2.1 MB (×32) | 21.95 G | 60.8 M | n/a | 361× | — | 0.9 s / 0.01 s / n/a |
+| claws5-match | 2.1 MB (×32) | 25.64 G | 57.8 M | n/a | 443× | — | 1.4 s / 0.01 s / n/a |
+| claws5 | 1.1 MB (×16) | 189.88 G | 671.8 M | n/a | 283× | — | 10.9 s / 0.08 s / n/a |
+| counter | — | start-up only | <1 M | 0.42 M | — | — | 0.0 s / 0.00 s / 0.00 s |
+| hello | — | start-up only | <1 M | 0.42 M | — | — | 0.0 s / 0.00 s / 0.00 s |
+| json-match-fence | 1.7 MB (×1) | 24.08 G | 49.8 M | n/a | 484× | — | 1.5 s / 0.02 s / n/a |
+| json-match | 1.7 MB (×1) | 24.15 G | 45.8 M | n/a | 527× | — | 1.8 s / 0.01 s / n/a |
+| json | 1.7 MB (×1) | 73.76 G | 307.8 M | n/a | 240× | — | 5.8 s / 0.05 s / n/a |
+| pattern_test | — | start-up only | <1 M | 0.42 M | — | — | 0.0 s / 0.00 s / 0.00 s |
+| porter | 3.0 MB (×16) | 1060.37 G | 5.20 G | 29.54 G | 204× | 36× | 82.3 s / 1.01 s / 5.32 s |
+| roman | — | 5.60 G | 1.8 M | 14.4 M | — | 388× | 0.1 s / 0.00 s / 0.00 s |
+| treebank-alloc | 335 KB (×1024) | 59.93 G | 3.30 G | n/a | 18× | — | 4.0 s / 0.94 s / n/a |
+| treebank-match-fence | 335 KB (×1024) | 12.60 G | 17.8 M | n/a | 708× | — | 0.6 s / 0.01 s / n/a |
+| treebank-match | 335 KB (×1024) | 13.54 G | 15.8 M | n/a | 857× | — | 0.6 s / 0.02 s / n/a |
+| treebank | 335 KB (×1024) | 4304.55 G | 1.71 G | n/a | 2,515× | — | 405.2 s / 0.21 s / n/a |
+| wordcount | 5.8 MB (×65536) | 69.88 G | 589.8 M | 2.24 G | 118× | 31× | 6.7 s / 0.08 s / 0.33 s |
+
+- *start-up only*: the jar's work is under 1 G, inside the spread of its start-up (about 0.3 G); SPITBOL's counts resolve to about 1 M.
+- *n/a*: CSNOBOL4's output differs from SPITBOL's, so no figure is given. It agrees on 7 of the 24 demos; I did not look into why it differs on the other 17.
+- The worst cases are `treebank` (about 400 s) and `calculator-2`; the closest to SPITBOL is `treebank-alloc`, where SPITBOL itself is slow.
+
+**Reproduce:** `bash harness/scripts/bench_snobol4_jvm_table.sh` (table 2) and `bash harness/scripts/bench_snobol4_jvm_demos.sh` (start-up and table 3) from the fleet's `harness`
+repository. The same numbers are kept in the org's `.github/findings/JVM-BENCH-TABLE.md`, with how each speed lever was found in `JVM-SPEED-NOTES.md`. Measured 2026-10-31 20:59 CDT by bench_snobol4_jvm_table.sh -n 3; snobol4jvm 4cd6529, load 7.92 5.08 5.41; corpus 0ffb9bd12.
+
+<details>
+<summary>Earlier figures (2026-10-17): in-process, after warm-up, on four tiny programs; not re-run and not about the default engine</summary>
+
+Benchmarks on Linux / OpenJDK 21 / Leiningen 2.12.0. SPITBOL and CSNOBOL4 times include ~15 ms process-spawn overhead. The `Transpil`, `Stack VM` and `JVM code` columns are backends
+reachable from the API, not from the command line; `--engine vm` is the only other engine the command line selects, and it counted within 4% of `interp` on the two programs tried.
 
 ```
 ╔══════════════════╦══════════╦══════════╦══════════╦══════════╦══════════╦══════════╗
@@ -205,24 +280,20 @@ backends reachable from the API, not from the command line.
 * fact45 overflows the interpreter's step limit at default settings
 ```
 
-**Notable results:**
-
-- `strcat-500`: The Clojure interpreter (9.7 ms net) already beats CSNOBOL4 (11 ms net)
-  before any acceleration stage kicks in.
-- `fact45`: JVM bytecode (0.89 ms) is **14–19× faster than SPITBOL** (net ~1.6 ms).
-  The JVM JIT has fully inlined the recursive function.
-- The EDN compilation cache gives a **22× cold-start speedup** — programs that have run
-  before skip reparsing entirely.
-
-### Acceleration Summary
+**Notable results claimed then:** `strcat-500` interpreter 9.7 ms net against CSNOBOL4's 11 ms; `fact45` JVM bytecode 0.89 ms, 14-19x faster than SPITBOL; the EDN compilation cache a 22x
+cold-start speedup.
 
 | Stage | Speedup vs interpreter | Mechanism |
 |-------|:----------------------:|-----------|
-| EDN cache | **22×** cold-start | Memoized IR, skip reparse |
-| Transpiler | **3.5–6×** | IR → Clojure `loop/case`, JVM JIT |
-| Stack VM | **2.5–5.7×** | Dense integer bytecode, single dispatch |
-| JVM bytecode | **7.6×** | ASM `.class`, full JIT optimization |
-| Cold-start cumulative | **~190×** | EDN cache + JVM bytecode combined |
+| EDN cache | **22x** cold-start | Memoized IR, skip reparse |
+| Transpiler | **3.5-6x** | IR to Clojure `loop/case`, JVM JIT |
+| Stack VM | **2.5-5.7x** | Dense integer bytecode, single dispatch |
+| JVM bytecode | **7.6x** | ASM `.class`, full JIT optimization |
+| Cold-start cumulative | **~190x** | EDN cache + JVM bytecode combined |
+
+</details>
+
+---
 
 ---
 
@@ -275,33 +346,48 @@ backends reachable from the API, not from the command line.
 
 ## Testing
 
-**1,896 tests / 4,120 assertions / 0 failures**
+### Test-suite coverage
+
+snobol4jvm is graded on the eleven suites of the snobol4ever fleet. Each program is run through the launcher (`run_snobol4jvm.sh`, the way `java -jar` is started) and its output
+is compared byte for byte with a reference cut from the oracle: SPITBOL (`sbl -bf`), and CSNOBOL4 for Budne's suite. **Every suite reads 100% of the programs it grades**,
+2,650 of 2,650, read on 2026-10-31 on snobol4jvm `4cd6529`.
+
+| Suite | What it is | Passing / graded | Excluded | Wall |
+|---|---|---:|---:|---:|
+| SnoRungs | The construct ladder: one master of oracle-graded programs, one construct each | 2,192 / 2,192 (100%) | 1 | 30 m 30 s |
+| Flake | Ori Livneh's snoflake fixture suite | 126 / 126 (100%) | 54 | 2 m 05 s |
+| Gimpel | Gimpel's SNOBOL4 programs (the driver programs of the package) | 144 / 144 (100%) | 1 | 2 m 37 s |
+| Budne | Phil Budne's CSNOBOL4 test suite, graded against CSNOBOL4 | 70 / 70 (100%) | 62 | 1 m 08 s |
+| X64T | SPITBOL's x64 test programs | 33 / 33 (100%) | 3 | 1 m 42 s |
+| X32T | SPITBOL's x32 test programs | 16 / 16 (100%) | 5 | 13 s |
+| TPgm | SPITBOL's own test programs 1-4 | 8 / 8 (100%) | — | 8 s |
+| AIS | The AIS SNOBOL4 package programs | 8 / 8 (100%) | 1 | 19 s |
+| Dotnet | Programs of the snobol4dotnet package | 6 / 6 (100%) | 8 | 8 s |
+| SnoBench | The 23 benchmark kernels below, output checked against the ref under three angles | 23 / 23 (100%) | — | 1 m 54 s |
+| SnoDemo | The 24 demo programs below, on their sample input, output checked against the ref | 24 / 24 (100%) | — | 1 m 00 s |
+| **All eleven** | | **2,650 / 2,650 (100%)** | **135** | |
+
+*Excluded* programs are kept out of the denominator and are listed with their reasons in each package's `EXCLUDED.tsv` in the corpus (for example: the oracle produced no output, the source
+cannot be carried by the harness, or a ruling excludes it; SnoRungs' one, `simple_program_11`, prints nothing under SPITBOL, so no output could witness it). *Wall* is the sum of each
+program's fastest run. The fleet's harness and corpus are in the `harness` and `corpus` repositories of snobol4ever; the suite rows are in its `SUITES.tsv`.
+
+### The engine's own unit tests
 
 ```bash
 lein test
 ```
 
-The test suite includes:
+**2,295 tests, 4,972 assertions, 74 failures, 0 errors** (snobol4jvm `4cd6529`). The 74 are known and are the same 74 on every commit from `10ff562` to `4cd6529`; `lein test`
+names each one. The suite is not clean, and the fleet table above is the measure of conformance, not this count. The unit tests cover:
 
-- **Worm corpus** — 1,000 automatically generated SNOBOL4 programs cross-validated
-  against the interpreter oracle. Every program runs through both engines; output must
-  match exactly. This is the regression guard for all engine changes.
-- **Micro-worm** — 500 additional short programs targeting specific language constructs
+- **Worm corpus** — automatically generated SNOBOL4 programs cross-validated against the interpreter oracle. Every program runs through both engines; output must match exactly.
+- **Micro-worm** — short programs targeting specific language constructs
 - **Bootstrap** — programs that compile and run SNOBOL4 at runtime via `CODE()` / `EVAL()`
-- **Cooper suite** — cross-validation against snobol4dotnet semantics (1,071 lines)
+- **Cooper suite** — cross-validation against snobol4dotnet semantics
 - **Snocone** — parser and emitter tests for the structured frontend
+- **Regression tests** for each defect cured, one `deftest` per commit
 
-Test suite growth as the implementation expanded:
-
-| Milestone | Tests | Assertions |
-|-----------|------:|----------:|
-| Sprint 13 baseline | 220 | 548 |
-| Sprint 18B | 1,488 | 3,249 |
-| Sprint 25E | 2,033 | 4,417 |
-| Current | **1,896** | **4,120** |
-
-*(Count reduced slightly in a housekeeping pass that merged duplicate suites; 0 failures
-throughout every milestone.)*
+---
 
 ---
 
@@ -422,7 +508,7 @@ project to bring full SNOBOL4/SPITBOL to every modern runtime.
 
 | Repo | Language | Target | Status |
 |------|----------|--------|--------|
-| [snobol4jvm](https://github.com/snobol4ever/snobol4jvm) | Clojure | JVM | **1,896 tests / 0 failures** |
+| [snobol4jvm](https://github.com/snobol4ever/snobol4jvm) | Clojure | JVM | **11 of 11 fleet suites at 100%; `lein test` 2,295 tests, 74 known failures** |
 | [snobol4dotnet](https://github.com/snobol4ever/snobol4dotnet) | C# | .NET / Windows / Linux / macOS | 1,911 tests / 0 failures |
 | [snobol4x](https://github.com/snobol4ever/snobol4x) | C | x86-64, JVM, .NET MSIL | Native compiler, all three backends |
 
