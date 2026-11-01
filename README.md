@@ -165,8 +165,33 @@ itself. This makes class loading fast and reliable across all JVM versions.
 
 ## Performance
 
+### Measured 2026-10-31: the engine the command line runs, counted in instructions
+
+`java -jar` (and every board of the fleet) runs the default `interp` engine; `--engine vm` is the only other one the command line selects, and it counted within 4 percent
+of `interp` on the two programs tried. Counts are user instructions retired by the whole process, JIT and collector threads included (`perf stat -e instructions:u`, median of 3), against
+pristine SPITBOL (`sbl -b`) and CSNOBOL4, on an idle box. The tool is `util_instr_count.sh` of the fleet's harness and the table script is `bench_snobol4_jvm_table.sh`;
+the table itself is `findings/JVM-BENCH-TABLE.md` in the org's `.github`.
+
+| What | Instructions |
+|---|---|
+| A bare JVM printing one line | 0.06 G |
+| A bare Clojure runtime (`clojure.main -e nil`) | 4.2 G |
+| An empty SNOBOL4 program on this jar (the fixed start-up of every run; 16.7 G on 2026-10-31 before two start-up changes) | about 6.6 G |
+| The 23 SnoBench kernels, summed work above an empty program: jar / SPITBOL / CSNOBOL4 | 385 G / 0.16 G / 0.84 G |
+
+The kernels are millisecond-sized, so those multiples (the jar at 290 to 11,000 times SPITBOL, 2,372 times summed) price **running one small program once**: parsing the
+source with instaparse (about 6 ms a line cold), compiling, class loading and the JIT. Long loops, measured by wall clock on a loaded box: 12M arithmetic iterations took
+170 s or more here against 0.96 s on SPITBOL and 4.3 s on CSNOBOL4, and 3M pattern matches 80 s against 0.71 s and 1.7 s. The JVM is slower than both at every size
+measured; the figures below are the earlier author measurements and do not say otherwise about this engine.
+
+The JIT: the fleet's launcher passes `-XX:CompileThresholdScaling=4`, which takes an empty program from 11 G to 6.5 G instructions with the same wall clock; a bare
+`java -jar` without it works and costs more at start-up.
+
+### Earlier figures (2026-10-17; in-process, after warm-up, not re-run)
+
 Benchmarks on Linux / OpenJDK 21 / Leiningen 2.12.0. SPITBOL and CSNOBOL4 times include
-~15 ms process-spawn overhead — subtract for a fair per-execution comparison.
+~15 ms process-spawn overhead — subtract for a fair per-execution comparison. The `Transpil`, `Stack VM` and `JVM code` columns are
+backends reachable from the API, not from the command line.
 
 ```
 ╔══════════════════╦══════════╦══════════╦══════════╦══════════╦══════════╦══════════╗
