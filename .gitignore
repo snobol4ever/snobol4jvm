@@ -21,3 +21,8 @@ profiles.clj
 /src/sno/ebnf-*.lisp
 /target
 /web
+
+# A seat root IS this clone (Lon 2026-11-14: "The folder holds one of three things: SCRIP, snobol4dotnet, or snobol4jvm."):
+# the seat's own local folders at its top stay out of git
+/.claude/
+/.scratch/
