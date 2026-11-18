@@ -232,6 +232,10 @@
             (let [c (at s j)]
               (cond (#{\) \] \> \,} c) (stray! c j)
                     (not (or (operator-char? c) (letter? c) (digit? c) (#{\' \" \( \< \[ \= \;} c))) (fail! 230 j)
+                    ;; an operator touching the subject is "233 invalid use of operator", at the operator, or for + and - at the subject's first column
+                    ;; (MEASURED on sbl -bf: "        M=1", X$Y, X*Y, X?Y, X|Y and X/Y are 233 at column 10, X+1, X-1, XY+1 and X1- at 9; X'a' and X"a" stay
+                    ;; 220; corpus gate_cases_snobol4 test_gate_s4e_donewhen_runs_the_whole_criterion__w, a shell script's MSG="$HERE/s4e_msg.sh")
+                    (operator-char? c) (fail! 233 (if (#{\+ \-} c) i j))
                     :else (fail! 220 j)))
             :else
             ;; the pattern, after a blank or the binary ? that makes the match explicit

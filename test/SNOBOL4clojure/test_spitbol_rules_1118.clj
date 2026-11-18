@@ -250,3 +250,11 @@
       (is (= 231 rc))
       (is (re-find #"\(2\) : ERROR 212 -- syntax error: value used where name is required" out) src)))
   (is (= ["c\n" nil] (run-sno "        X = 'ab'\n        X ? 'a' 'b' = 'c'\n        OUTPUT = X\nEND\n"))))
+
+;; A line whose label field begins with what no label may is one statement, its semicolons no ends; a quote in a label opens no literal; an operator touching the
+;; subject is 233. MEASURED on sbl -bf; corpus gate_cases_snobol4 test_gate_s4e_donewhen_runs_the_whole_criterion__w, a shell script read as a program
+(deftest a-bad-label-and-a-labels-quotes-read-as-spitbol-reads-them
+  (let [errs (fn [src] (vec (re-seq #"\(\d+(?:,\d+)?\) : ERROR \d+" (first (run-sno src)))))]
+    (is (= ["(1) : ERROR 214"] (errs "#   a; b\n        OUTPUT = 'n'\nEND\n")))
+    (is (= ["(1,15) : ERROR 224"] (errs "HERE=\"$(cd \"x\")\"; M=\"a\"\nEND\n")))
+    (is (= ["(1,10) : ERROR 233"] (errs "        M=1\nEND\n")))))

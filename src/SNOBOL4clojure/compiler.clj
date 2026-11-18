@@ -105,6 +105,12 @@
         (let [ch (.charAt chars i)
               sl (if (zero? (.length cur)) line sl)]
           (cond
+            ;; a quote in the label field opens no literal: the label runs to the first blank, whatever it holds (MEASURED on sbl -bf: the line
+            ;; HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; MSG="$HERE/s4e_msg.sh" is one statement, its body's literals reading the semicolon as
+            ;; text, so only its 233 at column 24 is named; corpus gate_cases_snobol4 test_gate_s4e_donewhen_runs_the_whole_criterion__w)
+            (and (#{\' \"} ch) (pos? (.length cur)) (not (Character/isWhitespace (.charAt cur 0)))
+                 (not (string/includes? (str cur) " ")) (not (string/includes? (str cur) "\t")))
+            (recur (inc i) (.append cur ch) stmts in-sq in-dq ls line sl diags)
             (and (= ch \') (not in-dq))
             (recur (inc i) (.append cur ch) stmts (not in-sq) in-dq ls line sl diags)
             (and (= ch \") (not in-sq))
@@ -113,7 +119,11 @@
             ;; statement SPITBOL numbers and never runs, as a blank line is (sbl -bf: X = 1 ;; Y = 2 is three statements, two executed)
             ;; a semicolon inside a parenthesis the statement leaves open separates nothing: the statement goes on (MEASURED on sbl -bf: "        Y = ( ; Z = 1 +" is
             ;; one statement, 226 at the semicolon, column 15, and no 221 for Z; corpus tests/snobol4 compile_diag__p22)
-            (and (= ch \;) (not in-sq) (not in-dq) (not (and (pos? (.length cur)) (= \* (.charAt cur 0)))) (not (pos? (long (open-parens (str cur))))))
+            ;; a statement whose label field begins with what no label may begin with is 214 at its first column, and SPITBOL reads no further on that line, so
+            ;; a semicolon later in it ends nothing (MEASURED on sbl -bf: "#   not ambiguous ... that; refusing ..." is one statement, the next line the next
+            ;; number; corpus gate_cases_snobol4 test_gate_s4e_donewhen_runs_the_whole_criterion__w, a shell script, where this engine counted two and named 223)
+            (and (= ch \;) (not in-sq) (not in-dq) (not (and (pos? (.length cur)) (= \* (.charAt cur 0)))) (not (pos? (long (open-parens (str cur)))))
+                 (not (and (pos? (.length cur)) (let [c (.charAt cur 0)] (not (or (Character/isLetterOrDigit c) (#{\space \tab \- \+ \.} c)))))))
             (let [s (trimr (str cur))]
               (recur (inc i) (StringBuilder.) (conj stmts (if (seq s) [s sl] [:blank sl])) false false ls line line diags))
             (and (= ch \newline) (not record?))
