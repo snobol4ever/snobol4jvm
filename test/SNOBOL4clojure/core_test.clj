@@ -2736,6 +2736,18 @@
           (is (re-find (re-pattern (str "\\Q" p "(" line ") : ERROR 014 -- division caused integer overflow\\E")) out) src))
         (finally (.delete f))))))
 
+;; The seven pattern variables SPITBOL predefines are dumped when the program's text names one, whether or not its statement runs (manual ch. 7, &DUMP).
+;; MEASURED on sbl -bf: a statement naming BAL ARB REM FAIL FENCE ABORT SUCCEED, passed over by a goto, dumps all seven "= PATTERN". snobol4jvm dumped only
+;; those a run had read (corpus decus_vax84a diag1).
+(deftest a-dump-lists-the-pattern-variables-the-text-names
+  (let [f (java.io.File/createTempFile "dmppat" ".sno") p (.getPath f)]
+    (try
+      (spit f "        OUTPUT = 'x'   :(L)\n        Y = BAL ARB REM\n+ FAIL FENCE ABORT SUCCEED\nL       &DUMP = 1\nEND\n")
+      (let [out (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p)))]
+        (doseq [n ["ABORT" "ARB" "BAL" "FAIL" "FENCE" "REM" "SUCCEED"]]
+          (is (re-find (re-pattern (str "(?m)^" n " = PATTERN$")) out) n)))
+      (finally (.delete f)))))
+
 
 ;; Concatenation groups to the right and its innermost operation is done first, left operand before right: the part before the last with no text is ERROR 8,
 ;; then the last 9, then any earlier part 8 (manual Appendix D 8, 9). MEASURED on sbl -bf, A an array: 'x' A 'y' 8, 'x' 'y' A 9, A 'x' 'y' 8, A 'x' 'y' A 9,

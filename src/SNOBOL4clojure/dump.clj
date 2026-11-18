@@ -29,8 +29,16 @@
     (symbol? (:defer-var (meta v))) (str "*" (:defer-var (meta v)))   ; *NAME for a variable, EXPRESSION for anything larger
     :else (env/DATATYPE v)))
 
+;; The seven pattern variables SPITBOL predefines are listed when the program's text names one, bare or called, whether or not the statement runs (MEASURED on
+;; sbl -bf: "Y = BAL ARB REM FAIL FENCE ABORT SUCCEED" skipped by a goto lists all seven = PATTERN, and Z = FENCE('a') lists FENCE; ARBNO is none; corpus
+;; decus_vax84a diag1, whose BAL lines never run, where this engine listed only the ones a run read)
+(def ^:private pattern-variables '#{ABORT ARB BAL FAIL FENCE REM SUCCEED})
+(defn- named-patterns []
+  (into {} (for [n @env/<NAMES> :let [s (symbol n)] :when (pattern-variables s)]
+             [s (if (clojure.core/= s 'FENCE) @(ns-resolve (the-ns 'SNOBOL4clojure.operators) 'bare-fence) (env/primitive-pattern s))])))
+
 (defn- variables [lvl]
-  (let [vars (cond-> (merge (into {} (for [s @env/<PRIMS-READ>] [s (deref (ns-resolve (the-ns 'SNOBOL4clojure.core) s))])) @<VARS>)
+  (let [vars (cond-> (merge (named-patterns) (into {} (for [s @env/<PRIMS-READ>] [s (deref (ns-resolve (the-ns 'SNOBOL4clojure.core) s))])) @<VARS>)
                true (merge @env/<ASSOC-LAST>))]   ; an associated variable holds the last record read or written through it
     (if (>= (long lvl) 3)
       ;; &DUMP = 3 "adds statement labels and all null-valued variables" (manual ch. 7): every name the program spoke, null ones as '' (MEASURED on sbl -bf: corpus
