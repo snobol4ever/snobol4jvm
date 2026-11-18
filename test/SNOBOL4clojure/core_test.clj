@@ -2696,6 +2696,19 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; A subscript of an assignment's target that fails fails the statement, and nothing is stored (manual ch. 8: a failure anywhere in the subject fails the statement).
+;; MEASURED on sbl -bf: T[K] = 0 :F(DONE), K input from a two-line file, takes :F at the third read and prints "done 2". snobol4jvm stored T[nil] and looped,
+;; as corpus spitbol_x64_tests demos/keyword (KEYTABLE[KEYS] = 0 :S(KEYLOOP)) and demos/kwic2 did until the harness killed them.
+(deftest a-failing-subscript-of-the-target-fails-the-statement
+  (let [f (java.io.File/createTempFile "two" ".txt")]
+    (try
+      (spit f "l1\nl2\n")
+      (is (= "done 2\n"
+             (:stdout (run-with-timeout (str "        INPUT(.K,1,'" (.getPath f) "')\n        T = TABLE()\n        N = 0\n"
+                                             "L       T[K] = 0  :F(DONE)\n        N = N + 1\n        GT(N, 10)  :S(LOOPED)F(L)\n"
+                                             "DONE    OUTPUT = 'done ' N  :(END)\nLOOPED  OUTPUT = 'looped'\nEND\n") 4000))))
+      (finally (.delete f)))))
+
 ;; A null first argument is HOST(), whatever follows it, and never HOST(0). MEASURED on sbl -bf: HOST(''), HOST('',), HOST('','') and HOST('','x') each answer
 ;; the identity; with Y unset, BITS = HOST(Y) is that string and EQ(BITS,64) ends ERROR 101 (corpus csnobol4_suite float2, its BITS = HOST(HOST_REAL_BITS)).
 (deftest a-null-first-argument-of-host-is-host-of-no-argument

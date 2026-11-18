@@ -784,7 +784,7 @@
 ;; is made, so a loop that moves I fills a different element each time.
 (defn- assign-to [target v] (INVOKE '= target v))
 
-(defn- element-target [N] (with-meta (apply list (first N) (map EVAL! (rest N))) (meta N)))
+(defn- element-target [N] (when-some [ks (eval-operands (rest N))] (with-meta (apply list (first N) ks) (meta N))))
 
 ;; The operators whose result is a value and never a name: an expression made with one of them cannot be the target of an assignment.
 (def ^:private value-operators '#{= ?= ? | at-op + - sharp-op / * % ** ^ ! . tilde-op & SEQ})
@@ -1053,9 +1053,12 @@
                                              container-val (if (list? container-sym) (EVAL! container-sym) ($$ container-sym))]
                                          (cond
                                            (nil? container-val) nil
-                                           ;; TABLE/ARRAY: evaluate keys
+                                           ;; TABLE/ARRAY: evaluate keys, left to right, and a key that fails fails the statement, nothing stored (manual ch. 8: a failure
+                                           ;; anywhere in the statement's subject fails the statement; sbl -bf: T[K] = 0 :F(DONE) over a K input from a two-line file takes
+                                           ;; :F at the third read, where this engine stored T[nil] and looped, as spitbol_x64_tests demos/keyword's KEYTABLE[KEYS] = 0 did)
                                            ;; the form keeps its :subscript mark, which tells A[k] from F(k)
-                                           :else (with-meta (apply list (if (list? container-sym) container-val container-sym) (map EVAL! (rest N))) (meta N))))
+                                           :else (when-some [ks (eval-operands (rest N))]
+                                                   (with-meta (apply list (if (list? container-sym) container-val container-sym) ks) (meta N)))))
                                        N)]
                               ;; the subject is evaluated before the replacement: an element out of bounds fails the statement and the replacement is never
                               ;; evaluated (sbl -bf: A[3] = F() on a two-element array does not call F)
