@@ -233,11 +233,15 @@
 (defn- concat-value [r]
   (if (and (list? r) (clojure.core/= (first r) 'SEQ))
     (let [parts (remove #(clojure.core/= ε %) (rest r))
+          ;; concatenation groups to the right, a (b (c d)), and the innermost is done first, its left operand checked before its right: so the part before the
+          ;; last is 8, then the last 9, then any earlier part 8 (MEASURED on sbl -bf, A an array: 'x' A 'y', 'x' A A and LEN(1) A 'x' are 8, A 'x' 'y' A and
+          ;; 'x' A 'y' A 9, A 'x' 'y' 8; corpus tests/snobol4 user_function_array_keyword_1, X = 'x' A F(), where this engine said 9, the first odd part's
+          ;; place read left to right)
           _     (when (next parts)
-                  (when-some [i (first (keep-indexed (fn [i v] (when (textless? v) i)) parts))]
-                    (if (zero? (long i))
-                      (throw (ex-info "concatenation left operand is not a string or pattern" {:snobol/error 8}))
-                      (throw (ex-info "concatenation right operand is not a string or pattern" {:snobol/error 9})))))]
+                  (let [v (vec parts) n (count v) e8 #(throw (ex-info "concatenation left operand is not a string or pattern" {:snobol/error 8}))]
+                    (cond (textless? (v (clojure.core/- n 2)))                (e8)
+                          (textless? (v (dec n)))                               (throw (ex-info "concatenation right operand is not a string or pattern" {:snobol/error 9}))
+                          (some textless? (subvec v 0 (clojure.core/- n 2)))    (e8))))]
       (cond
         (every? #(or (string? %) (number? %) (instance? NAME %)) parts)
         (if (and (clojure.core/= 1 (count parts)) (< 1 (count (rest r))))

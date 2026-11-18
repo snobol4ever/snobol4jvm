@@ -2702,6 +2702,16 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; Concatenation groups to the right and its innermost operation is done first, left operand before right: the part before the last with no text is ERROR 8,
+;; then the last 9, then any earlier part 8 (manual Appendix D 8, 9). MEASURED on sbl -bf, A an array: 'x' A 'y' 8, 'x' 'y' A 9, A 'x' 'y' 8, A 'x' 'y' A 9,
+;; 'x' A A 8, LEN(1) A 'x' 8. snobol4jvm named the first such part read left to right (corpus tests/snobol4 user_function_array_keyword_1).
+(deftest concatenation-errors-are-found-from-the-right
+  (doseq [[c want] [["'x' A 'y'" 8] ["'x' 'y' A" 9] ["A 'x' 'y'" 8] ["A 'x' 'y' A" 9] ["'x' A A" 8] ["LEN(1) A 'x'" 8] ["'x' A" 9] ["A 'x'" 8]]]
+    (GLOBALS)
+    (is (clojure.core/= (str "E " want "\n")
+                        (:stdout (run-with-timeout (str "        &ERRLIMIT = 1\n        A = ARRAY(3)\n        X = " c "\n        OUTPUT = 'E ' &ERRTYPE\nEND\n") 2000)))
+        c)))
+
 ;; After an -INCLUDE that cannot be opened SPITBOL reads on as inside that file: the card is listed with no statement number, the lines after it at depth 1,
 ;; and the first END closes the file, ending no program (manual ch. 14, -INCLUDE). MEASURED on sbl -bf: a statement, a missing -INCLUDE, a statement, END is
 ;; the 285 page then "No END statement found in source file(s).", exit 1; with a second END, 231. snobol4jvm numbered the card, listed no depth and answered
