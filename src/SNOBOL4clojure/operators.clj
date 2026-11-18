@@ -569,7 +569,20 @@
     ARRAY   (apply SNOBOL4clojure.env/ARRAY args)
     REMDR   (REMDR  (first args) (second args))
     ;; TRACE / STOPTR register and remove traces in trace.clj.
-    TRACE   (let [[nm ty lbl f] args] (trace! nm (or ty "VALUE") lbl f) ε)
+    ;; A LABEL trace names a label of the program, and a CALL, RETURN or FUNCTION trace a function a DEFINE made (or a name OPSYN gave one); any other name is
+    ;; "198 trace first argument is not appropriate name" (manual ch. 19, TRACE; MEASURED on sbl -bf: TRACE('NOLAB','LABEL'), TRACE('SIZE','FUNCTION'), a DATA
+    ;; constructor or field, OPSYN('syn2','SIZE') then TRACE('syn2','FUNCTION'), and TRACE('random','FUNCTION') before random's DEFINE runs are each 198; OPSYN
+    ;; of a DEFINEd function takes; corpus decus_vax84a deal, which ends at 198 on its line 3, where this engine registered the trace and ran on)
+    TRACE   (let [[nm ty lbl f] args
+                  ty    (or ty "VALUE")
+                  kinds (set (#'SNOBOL4clojure.trace/trace-kinds ty))
+                  s     (name-string nm)
+                  defd  (fn [] (or (contains? @<FDEFS> s)
+                                   (let [g (get @<FUNS> s)] (and g (some #(identical? g (get @<FUNS> %)) (keys @<FDEFS>))))))]
+              (when (or (and (kinds :label) (not (contains? @SNOBOL4clojure.env/<STNO> (keyword s))))
+                        (and (or (kinds :call) (kinds :return)) (not (defd))))
+                (throw (ex-info "trace first argument is not appropriate name" {:snobol/error 198})))
+              (trace! nm ty lbl f) ε)
     STOPTR  (let [[nm ty] args] (stoptr! nm (or ty "VALUE")) ε)
     ;; "The COLLECT function forces a garbage collection ... If this amount of storage cannot be obtained, the COLLECT function fails. When successful, it returns the
     ;; number of free words" (manual ch. 19, COLLECT): the JVM heap's limit in words of 8 bytes less the words the program's data occupies as SPITBOL lays it out
