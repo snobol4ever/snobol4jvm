@@ -2748,6 +2748,16 @@
           (is (re-find (re-pattern (str "(?m)^" n " = PATTERN$")) out) n)))
       (finally (.delete f)))))
 
+;; SORT and RSORT of a table take its entries as SPITBOL's gtarr gives them, the buckets from the last to the first, and keep equal keys in that order
+;; (sbl.min sorta: "if equal, compare key offsets to give stable sort"). MEASURED on sbl -bf: TABLE() with t B u a r = 1 and x = 0, sorted on column 2, is
+;; x a t u r B, and RSORT a t u r B x. snobol4jvm kept equal keys in the order they were made (corpus slobol_tests test/cfreq).
+(deftest sort-of-a-table-takes-entries-in-spitbols-bucket-order
+  (GLOBALS)
+  (is (clojure.core/= "x0\na1\nt1\nu1\nr1\nB1\nr a1\nr t1\nr u1\nr r1\nr B1\nr x0\n"
+                      (:stdout (run-with-timeout (str "        t = TABLE()\n        t<'t'> = 1\n        t<'B'> = 1\n        t<'u'> = 1\n        t<'a'> = 1\n"
+                                                      "        t<'r'> = 1\n        t<'x'> = 0\n        a = SORT(t,2)\n        i = 1\n"
+                                                      "L       OUTPUT = a<i,1> a<i,2>  :F(R)\n        i = i + 1 :(L)\nR       a = RSORT(t,2)\n        i = 1\n"
+                                                      "M       OUTPUT = 'r ' a<i,1> a<i,2>  :F(END)\n        i = i + 1 :(M)\nEND\n") 3000)))))
 
 ;; Concatenation groups to the right and its innermost operation is done first, left operand before right: the part before the last with no text is ERROR 8,
 ;; then the last 9, then any earlier part 8 (manual Appendix D 8, 9). MEASURED on sbl -bf, A an array: 'x' A 'y' 8, 'x' 'y' A 9, A 'x' 'y' 8, A 'x' 'y' A 9,

@@ -119,15 +119,26 @@
 ;; A table as an array: "The table is converted to a two-dimensional array ... The table must have at least one non-null element. If the table is empty, CONVERT,
 ;; RSORT and SORT will fail" (manual ch. 17, Table to array). As sbl -bf has it, an entry whose value is null is no element: N rows of key and value, in the order
 ;; the keys were first assigned, for the N entries with a value; nil (failure) when there are none.
-(defn table->array [t]
+(defn table->array
+  ([t] (table->array t false))
+  ([t sorting?]
   (let [entries (remove (fn [[_ v]] (or (nil? v) (clojure.core/= "" v))) (env/table-entries t))
+        ;; SORT and RSORT take a table's entries as SPITBOL's gtarr gives them to its sort, its buckets from the last to the first, each bucket's chain in the
+        ;; order its keys were made, and the sort keeps equal keys in that order (sbl.min sorta, sortc: "if equal, compare key offsets to give stable sort";
+        ;; MEASURED on sbl -bf: TABLE() with t B u a r = 4 and x = 1 sorts on the values as x a t u r B, RSORT as a t u r B x, where CONVERT gives t B u a r x;
+        ;; TABLE(1) with p q r s = 1 keeps p q r s both ways; corpus slobol_tests test/cfreq, RSORT(freq,2) of a TABLE(1000), whose equal counts sbl orders
+        ;; t u r n i a B and this engine in the order the keys came)
+        entries (if sorting?
+                  (let [kh (deref (ns-resolve (the-ns 'SNOBOL4clojure.dump) 'key-hash)) n (long (:size (meta t) 11))]
+                    (sort-by (fn [[k _]] (if-some [h (kh k)] (clojure.core/- (mod h n)) 1)) entries))
+                  entries)
         n       (count entries)]
     (when (pos? n)
       (let [arr (ARRAY (str n ",2"))]
         (doseq [[i [k v]] (map-indexed vector entries)]
           (array-set arr [(inc i) 1] k)
           (array-set arr [(inc i) 2] v))
-        arr))))
+        arr)))))
 
 (defn CONVERT [x t]
   "CONVERT(x, type) — coerce x to the named SNOBOL4 type.
@@ -929,7 +940,7 @@
 
 (defn- sort-any [A col descending?]
   (cond
-    (table? A) (when-some [arr (table->array A)] (sort-array arr col descending?))
+    (table? A) (when-some [arr (table->array A true)] (sort-array arr col descending?))
     (array? A) (sort-array A col descending?)
     :else (throw (ex-info (env/error-message 256) {:snobol/error 256}))))
 
