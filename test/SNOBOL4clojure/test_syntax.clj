@@ -195,3 +195,10 @@
   (doseq [n ["12ABC" "1.2.3" "1E" "1.5E+" "1- 1" "3.14X"]]
     (is (= {:error 231 :column 13} (select-keys (syntax-error (str "        X = " n)) [:error :column])) n)))
 
+;; A goto whose right paren is missing at the statement's end is 227 at the first character of the name it ends with. MEASURED on sbl -bf: "        :(END" and
+;; "        :(LONGLABEL" are 227 at column 11; "        X = 1 :S(A" at 18 and "        X = 1 :F($V" at 19; a colon inside stops it there, "        X = 1 :(L:X)" at
+;; 18. snobol4jvm said 13 and 19 for the first two (corpus tests/snobol4 compile_diag__p29).
+(deftest a-goto-unclosed-at-the-end-is-227-at-its-last-name
+  (doseq [[src col] [["        :(END" 11] ["        :(LONGLABEL" 11] ["        X = 1 :S(A" 18] ["        X = 1 :F($V" 19] ["        X = 1 :(L:X)" 18]]]
+    (is (= {:error 227 :column col} (select-keys (syntax-error src) [:error :column])) src)))
+

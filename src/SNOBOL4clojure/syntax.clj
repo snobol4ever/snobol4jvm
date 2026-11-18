@@ -162,7 +162,12 @@
                                       (when-not (or (nil? d) (blank? d) (#{\S \s \F \f \( \<} d)) (fail! 234 n))
                                       (recur n (conj seen kind)))
                 ;; a colon or a semicolon ends the scan inside the goto too (sbl -bf: :(L:X) and :S(L :F(L)) are 227, :<L :> 228)
-                (or (nil? (at s k)) (#{\: \;} (at s k))) (fail! (if (= closer \)) 227 228) k)
+                (#{\: \;} (at s k)) (fail! (if (= closer \)) 227 228) k)
+                ;; at the statement's end the error stands at the first character of the name the goto ends with (MEASURED on sbl -bf: "        :(END" is 227 at
+                ;; column 11, the E, and "        :(LONGLABEL" at 11, where this engine said 13 and 19; "        X = 1 :S(A", :F($V) and :(A + B stand at their last name,
+                ;; 18, 19 and 21; corpus tests/snobol4 compile_diag__p29)
+                (nil? (at s k))
+                (fail! (if (= closer \)) 227 228) (loop [b k] (if (and (pos? b) (name-char? (at s (dec b)))) (recur (dec b)) b)))
                 :else               (fail! 212 k)))))))))
 
 (defn syntax-error
