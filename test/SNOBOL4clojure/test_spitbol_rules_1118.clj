@@ -130,3 +130,12 @@
   (is (= "K value 16777216\n"
          (first (run-sno (str "        DEFINE('K()')                           :(K.E)\nK       K = .&MAXLNGTH                          :(NRETURN)\nK.E     Y = K()\n"
               "        OUTPUT = 'K value ' Y\nEND\n"))))))
+
+;; ARRAY's prototype as SPITBOL reads it (manual ch. 19, sbl.min s_arr): a whole integer is one dimension and the prototype, any other string its dimensions,
+;; kept as written; 064, 065, 066 and 067 for what will not do. MEASURED on sbl -bf; corpus gate_cases_snobol4 array_first_argument_converts_and_raises_as_spitbol_does__access
+(deftest array-reads-its-prototype-as-spitbol-does
+  (is (= "dx| 2 : 4 , 3 |\nzero|:2|\n7|1.5,2\n2 10 3\n66\n65\n64\n67\n67\n"
+         (first (run-sno (str "\tA = ARRAY(' 2 : 4 , 3 ', 'd')\n\tA[4,3] = 'x'\n\tOUTPUT = A[2,1] A[4,3] '|' PROTOTYPE(A) '|'\n\tB = ARRAY(':2')\n\tB[0] = 'zero'\n"
+              "\tOUTPUT = B[0] '|' PROTOTYPE(B) '|'\n\tC = ARRAY('1.5,2', 7)\n\tOUTPUT = C[1,2] '|' PROTOTYPE(C)\n\tE = ARRAY(2.9)\n\tOUTPUT = PROTOTYPE(E) ' ' PROT"
+              "OTYPE(ARRAY('1e1')) ' ' PROTOTYPE(ARRAY(' 3'))\n\t&ERRLIMIT = 20\n\tX = ARRAY('x')\n\tOUTPUT = &ERRTYPE\n\tX = ARRAY('a:2')\n\tOUTPUT = &ERRTYPE\n"
+              "\tX = ARRAY(LEN(1))\n\tOUTPUT = &ERRTYPE\n\tX = ARRAY('3:1')\n\tOUTPUT = &ERRTYPE\n\tX = ARRAY('2,')\n\tOUTPUT = &ERRTYPE\nEND\n"))))))

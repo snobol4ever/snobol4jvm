@@ -651,38 +651,44 @@
 ;; data  = atom wrapping a map from index-tuple (vector of ints) → value
 (defrecord SnobolArray [dims dflt data])
 
+;; ARRAY's prototype (manual ch. 19, ARRAY; sbl.min s_arr): an argument that converts whole to an integer is one dimension of that many elements, 1 to N, and
+;; the prototype PROTOTYPE gives is that integer; any other string is dimensions split at commas, each "lo:hi" or "hi" (lo 1), every bound converted to an integer as
+;; an argument is (blanks around it, a real truncated, the null string 0), and is kept as it was written. A value neither integer nor string is "064 array first
+;; argument is not integer or string", a lower bound that will not convert 065, an upper 066, a dimension of no element 067 (MEASURED on sbl -bf: ARRAY(2.9),
+;; ARRAY('2.9'), ARRAY(' 3') and ARRAY('1e1') have prototypes 2, 2, 3 and 10; ARRAY(' 2 : 4 , 3 ') keeps ' 2 : 4 , 3 '; ARRAY(':2') is 0:2; ARRAY('1.5,2')
+;; is 1 by 2; LEN(1) and TABLE() are 64, 'x' and '2,x' 66, 'a:2' 65, '3:1', 0, '', '2,', -1 and '2:' 67; corpus gate_cases_snobol4
+;; array_first_argument_converts_and_raises_as_spitbol_does__access, which this engine answered with an exception)
+(defn- array-bound [x err]
+  (let [n (num x)]
+    (cond (integer? n) (long n)
+          (and (double? n) (not (Double/isNaN n))) (long n)
+          :else (throw (ex-info (error-message err) {:snobol/error err})))))
+
+(defn- dimension [lo hi]
+  (when (> (long lo) (long hi)) (throw (ex-info (error-message 67) {:snobol/error 67})))
+  [lo hi])
+
 (defn- parse-array-proto
-  "Parse a SNOBOL4 array prototype string into a vector of [lo hi] pairs.
-   Accepts integer N (meaning [1,N]) or string '[-]m:n,...'.
-   Returns nil on any parse error."
+  "[dims proto]: the [lo hi] pairs of ARRAY's first argument and the prototype PROTOTYPE answers."
   [proto]
-  (let [s (str proto)]
-    (try
-      (let [parts (clojure.string/split s #",")]
-        (mapv (fn [part]
-                (let [part (clojure.string/trim part)]
-                  (if (re-find #":" part)
-                    (let [[lo hi] (clojure.string/split part #":" 2)
-                          lo (Long/parseLong (clojure.string/trim lo))
-                          hi (Long/parseLong (clojure.string/trim hi))]
-                      (when (> lo hi) (throw (ex-info "lo>hi" {})))
-                      [lo hi])
-                    (let [n (Long/parseLong part)]
-                      (when (<= n 0) (throw (ex-info "size<=0" {})))
-                      [1 n]))))
-              parts))
-      (catch Exception _ nil))))
+  (let [whole (when (or (number? proto) (string? proto)) (let [n (num proto)] (when (or (integer? n) (and (double? n) (not (Double/isNaN n)))) (long n))))]
+    (cond
+      whole                [[(dimension 1 whole)] (str whole)]
+      (not (string? proto)) (throw (ex-info (error-message 64) {:snobol/error 64}))
+      :else
+      [(mapv (fn [part]
+               (if-some [i (clojure.string/index-of part ":")]
+                 (dimension (array-bound (subs part 0 i) 65) (array-bound (subs part (inc i)) 66))
+                 (dimension 1 (array-bound part 66))))
+             (clojure.string/split proto #"," -1))
+       proto])))
 
 (defn ARRAY
-  "ARRAY(proto) or ARRAY(proto, default).
-   proto is an integer N → dimension [1..N], or a string like '-5:10,3:5,20'.
-   Returns a SnobolArray, or throws on invalid proto."
+  "ARRAY(proto) or ARRAY(proto, default): a SnobolArray of the dimensions proto gives, each element default."
   ([proto] (ARRAY proto ε))
   ([proto dflt]
-   (let [dims (parse-array-proto proto)]
-     (when (nil? dims) (throw (ex-info "ARRAY: invalid prototype" {:proto proto})))
-     ;; :proto keeps the prototype as written, for PROTOTYPE
-     (assoc (->SnobolArray dims dflt (atom {})) :proto (clojure.string/trim (str proto)) :serial (next-serial!)))))
+   (let [[dims text] (parse-array-proto proto)]
+     (assoc (->SnobolArray dims dflt (atom {})) :proto text :serial (next-serial!)))))
 
 ;; A TABLE is an atom holding a map, with the order its keys were first assigned kept beside it (in the atom's metadata), because SPITBOL lists a table's
 ;; entries in that order (CONVERT to an ARRAY, SORT, RSORT) and a plain map does not keep it.
