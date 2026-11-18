@@ -65,6 +65,12 @@
   ([src record?]
   ;; the null string is no line at all, so CODE('') compiles no statement (sbl -bf), not a blank one
   (let [chars (if (or record? (= "" (str src)) (string/ends-with? (str src) "\n")) (str src) (str src "\n"))
+        ;; a first line that begins #! is passed over, a statement of its own that does nothing, as a blank line is (MEASURED on sbl -bf: a program whose
+        ;; first line is "#! /usr/local/bin/snobol4 -b" runs, and its line 5 is statement 5; a #! line after the first is an error; corpus tkslide_examples
+        ;; take_note, which this engine refused with 214)
+        chars (if (and (not record?) (string/starts-with? chars "#!"))
+                (let [k (or (string/index-of chars "\n") (count chars))] (str (apply str (repeat k \space)) (subs chars k)))
+                chars)
         n     (count chars)
         ;; a record keeps the line ends at the end of a statement, which are no blanks
         trimr (if record? #(string/replace % #"[ \t]+\z" "") string/trimr)

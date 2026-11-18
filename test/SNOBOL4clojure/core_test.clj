@@ -2702,6 +2702,16 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; A first line that begins #! is passed over, a statement of its own that does nothing; a #! line after the first is an error (MEASURED on sbl -bf: a program
+;; whose first line is "#! /usr/local/bin/snobol4 -b" runs, its line 5 statement 5; corpus tkslide_examples take_note, which snobol4jvm refused with 214).
+(deftest a-first-line-that-begins-hash-bang-is-passed-over
+  (let [f (java.io.File/createTempFile "hashbang" ".sno")]
+    (try
+      (spit f "#! /usr/local/bin/snobol4 -b\n        OUTPUT = &LASTNO + 1\nEND\n")
+      ;; sbl -bf prints 1: the #! line is a statement that never runs, so &LASTNO is 0 at the next
+      (is (= "1\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
 ;; The name of a table or array element is the element, so the name of t['k'] and the name ITEM(t,'k') gives are one (manual ch. 17, the name operator; ITEM).
 ;; MEASURED on sbl -bf: IDENT(.ITEM(t,'k'), .t['k']) succeeds; DIFFER(.t['k'], .t['j']) and DIFFER(.t['k'], .t2['k']) succeed. snobol4jvm failed the first
 ;; (corpus gate_cases_snobol4 test_gate_sno_ident_of_two_names_of_one_table_or_array_element_succeeds_and_of_two_elements_fails).
