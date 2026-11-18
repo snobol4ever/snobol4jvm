@@ -2704,6 +2704,16 @@
          (:stdout (run-with-timeout (str "        DEFINE('F()')  :(F_END)\nF       F = 'f'\n        X = 1  :(RETURN)\n"
                                          "F_END   OUTPUT = 'x'\n        OUTPUT = F() ' ' &LASTNO ' ' &LASTLINE ' ' &STNO  :(END)\nEND\n") 2000)))))
 
+;; A KEYWORD trace names one of the three keywords SPITBOL traces, upper case: snobol4jvm never folds case (Lon 2026-11-17 18:2x CST). MEASURED on sbl -bf:
+;; TRACE('STCOUNT','k') takes; TRACE('stcount','K'), TRACE('STLIMIT','K') and TRACE('ZZZ','K') are "ERROR 198 -- trace first argument is not appropriate name".
+;; snobol4jvm registered the name and never fired it (corpus csnobol4_suite t: TRACE('stcount', 'k')).
+(deftest a-keyword-trace-names-errtype-fnclevel-or-stcount-in-upper-case
+  (doseq [a ["'stcount','K'" "'STLIMIT','K'" "'ZZZ','K'"]]
+    (let [r (run-with-timeout (str "	TRACE(" a ")\n	OUTPUT = 'ran on'\nEND\n") 2000)]
+      (is (= :error (:exit r)) a)
+      (is (= "trace first argument is not appropriate name" (:thrown r)) a)))
+  (is (= "ran\n" (:stdout (run-with-timeout "	TRACE('STCOUNT','k')\n	OUTPUT = 'ran'\nEND\n" 2000)))))
+
 ;; A Goto to SCONTINUE with no user interrupt is a fatal error (sbl.min l_scn): "331 goto scontinue with no user interrupt" while a trapped error's continuation
 ;; is pending, else "321 goto scontinue with no preceding error", each counted in errft, so the third ends the program whatever &ERRLIMIT is. MEASURED on
 ;; sbl -bf: a handler that arms SETEXIT again and goes :(SCONTINUE) prints h 251, h 331, h 331 and ends with ERROR 331; with the handler disarmed it ends at

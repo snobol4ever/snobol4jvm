@@ -58,8 +58,15 @@
   ([name type]       (trace! name type nil nil))
   ([name type label] (trace! name type label nil))
   ([name type label user-fn]
-   (doseq [kind (trace-kinds type)]
-     (swap! registry assoc (reg-key name kind) {:label label :fn user-fn}))
+   (let [kinds (trace-kinds type)]
+     ;; a KEYWORD trace names one of the three keywords SPITBOL traces, in upper case, as a keyword is always written (snobol4jvm never folds case, Lon 2026-11-17
+     ;; 18:2x CST): any other name is "198 trace first argument is not appropriate name" (MEASURED on sbl -bf: TRACE('ERRTYPE','K'), TRACE('FNCLEVEL','K') and
+     ;; TRACE('STCOUNT','k') take; TRACE('stcount','K'), TRACE('stcount','KEYWORD'), TRACE('STLIMIT','K'), TRACE('TRIM','K') and TRACE('ZZZ','K') are 198), where
+     ;; this engine registered the name and never fired it (corpus csnobol4_suite t: TRACE('stcount', 'k'))
+     (when (and (some #{:keyword} kinds) (not (#{"ERRTYPE" "FNCLEVEL" "STCOUNT"} (str name))))
+       (throw (ex-info "trace first argument is not appropriate name" {:snobol/error 198})))
+     (doseq [kind kinds]
+       (swap! registry assoc (reg-key name kind) {:label label :fn user-fn})))
    nil))
 
 (defn stoptr!
