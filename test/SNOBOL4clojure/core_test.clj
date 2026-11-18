@@ -2849,6 +2849,9 @@
         (is (= "" out))
         (is (= 1 rc))
         (is (= "No END statement found in source file(s).\n" (str err))))
+      ;; END may be written end, as sbl -bf takes it (corpus mikebeer_snobol tests/fold, which the first text of this check refused)
+      (spit f "        OUTPUT = 'ran'\nend\n")
+      (is (= "ran\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
 
 ;; An operator OPSYN defined as a function that returns a name is an assignment target, its value going to the name returned, as F(args) = v (manual ch. 15, OPSYN;

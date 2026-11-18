@@ -233,7 +233,8 @@
                          ;; a source with no END statement is not run: sbl -bf writes its one line on standard error, nothing on standard output, and exits 1
                          ;; (MEASURED: "        X = 1" / "        OUTPUT = X" with no END prints "No END statement found in source file(s)." on stderr, rc 1;
                          ;; corpus tests/snobol4 compile_diag__p10 and probe_errpath__probe_loose_errpath_missing_end, which this engine ran)
-                         (nil? (@env/<STNO> :END))
+                         ;; END is END or end (sbl -bf: a program ending "end" runs; corpus mikebeer_snobol tests/fold, which 319ca30 refused here by reading :END alone)
+                         (and (nil? (@env/<STNO> :END)) (nil? (@env/<STNO> :end)))
                          (do (binding [*out* *err*] (println "No END statement found in source file(s).") (flush)) 1)
                          :else
                          ;; an execution error that ends the program (and the statement limit, "244 Statement count exceeds value of STLIMIT keyword") is
