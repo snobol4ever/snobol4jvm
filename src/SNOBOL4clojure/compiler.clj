@@ -44,6 +44,19 @@
 
 (defn- error-node [info] (list 'ERROR (:line info) (:column info) (:text info)))
 
+(defn- open-parens
+  "The parentheses s leaves open, quoted text aside."
+  [^String s]
+  (loop [i 0 d 0 q nil]
+    (if (>= i (count s))
+      d
+      (let [c (.charAt s i)]
+        (cond q                    (recur (inc i) d (if (= c q) nil q))
+              (#{\' \"} c)         (recur (inc i) d c)
+              (= c \()             (recur (inc i) (inc d) q)
+              (= c \))             (recur (inc i) (dec d) q)
+              :else                (recur (inc i) d q))))))
+
 (defn- split-source
   "Split SNOBOL4 source into raw statement strings, each with the physical line it begins on, as [statement line]. A blank physical line is a statement of its own as
    SPITBOL numbers them, and is [:blank line]. ls is where the physical line being read begins, line is its number and sl the line the statement being read began on.
@@ -74,7 +87,9 @@
             (recur (inc i) (.append cur ch) stmts in-sq (not in-dq) ls line sl diags)
             ;; a comment line (* in column 1) is one comment: a semicolon in it separates nothing. Every statement a semicolon ends is one, an empty or blank one a
             ;; statement SPITBOL numbers and never runs, as a blank line is (sbl -bf: X = 1 ;; Y = 2 is three statements, two executed)
-            (and (= ch \;) (not in-sq) (not in-dq) (not (and (pos? (.length cur)) (= \* (.charAt cur 0)))))
+            ;; a semicolon inside a parenthesis the statement leaves open separates nothing: the statement goes on (MEASURED on sbl -bf: "        Y = ( ; Z = 1 +" is
+            ;; one statement, 226 at the semicolon, column 15, and no 221 for Z; corpus tests/snobol4 compile_diag__p22)
+            (and (= ch \;) (not in-sq) (not in-dq) (not (and (pos? (.length cur)) (= \* (.charAt cur 0)))) (not (pos? (long (open-parens (str cur))))))
             (let [s (trimr (str cur))]
               (recur (inc i) (StringBuilder.) (conj stmts (if (seq s) [s sl] [:blank sl])) false false ls line line diags))
             (and (= ch \newline) (not record?))
@@ -358,6 +373,13 @@
          _         (reset! <SOURCE> {:text expanded :stmts raw-stmts :cards cards})]
      ;; snobol4jvm never folds case (Lon 2026-11-17 18:2x CST, in the JVM window, verbatim: "We WILL NEVER support case-folding. We will always have upper-case built-in keywords and functions."): fold stays false, so a -CASE card is read as a card and folds nothing, and a name is
      ;; compiled as the program spells it whatever &CASE holds (sbl -bf folds after -CASE 1; such an entry is declared for this engine in EXCLUDED.jvm.tsv)
+     ;; where each statement begins in its line, so a diagnostic's column counts from the line's start as sbl -bf counts it (MEASURED: "        X = ) ; Y = ( ; Z = 1 +"
+     ;; is 224 at column 13 and 226 at 23; this engine said 6 for the second, counted from its statement); the line's text read past the statements already placed
+     (let [src-lines (string/split-lines (str expanded)) placed (atom {})
+           offset (fn [pline ^String stmt]
+                    (let [line (get src-lines (dec (long pline))) from (get @placed pline 0)
+                          k    (when (and line (string? stmt)) (string/index-of line stmt from))]
+                      (if k (do (swap! placed assoc pline (+ (long k) (count stmt))) k) 0)))]
      (loop [stmts raw-stmts NO 1 CODES {} NOS {} LABELS {} blanks 0 before [] fold false
             poss [] pos {:file (str file) :bp 1 :bl 1 :stack []}]
        (if (empty? stmts)
@@ -370,6 +392,14 @@
                                        (position-card fold command pline pos))
              :else
              (let [stmt   (cond-> command (not record?) (string/replace #"\r" "") fold fold-case)
+                   ;; the END statement's operand is its entry label: nothing, or a label the program defines; anything else is "215 syntax error: undefined or
+                   ;; erroneous entry label" at the operand, and the END stands (manual ch. 14, The END Statement; MEASURED on sbl -bf: "END     NOPE",
+                   ;; "END     :(NOWHERE)" and "END     X = (" are 215 at column 9, where this engine ran the first two and read the third as 226 with no END;
+                   ;; corpus tests/snobol4 compile_diag__p30, p31)
+                   [_ e-kw e-sp e-op] (re-find #"^(END|end)([ \t]+)(\S.*?)[ \t]*$" stmt)
+                   stmt   (if (and e-op (not (and (re-matches #"[A-Za-z0-9][A-Za-z0-9._]*" e-op) (contains? NOS (keyword e-op)))))
+                            (do (swap! <DIAGNOSTICS> conj [pline 215 (inc (count (str e-kw e-sp))) NO]) e-kw)
+                            stmt)
                    ;; a line end outside a literal in a record does not compile: 214 where it begins the label field, 230 elsewhere (sbl -bf: CODE(' OUTPUT = 1'
                    ;; CHAR(10) ' OUTPUT = 2') and CODE(' OUTPUT = 3' CHAR(13) ' OUTPUT = 4') are 230, CODE(' OUTPUT = 6;' CHAR(10)) 214)
                    ast    (if (and record? (line-end-outside-literals? stmt)) ::line-end (parse-statement stmt))
@@ -385,21 +415,15 @@
                  ;; a statement that does not compile is the error SPITBOL's scan names, at its line and column (syntax.clj); 220 when the scan finds none. A line
                  ;; that starts with a continuation mark is split-source's to judge (214, or a continuation sbl takes after a blank line)
                  (let [{n :error col :column} (or (when-not (= :compile (:reason code)) (syntax-error stmt))
+                                                  ;; a 231 the emitter finds stands where the scan puts it, the numeric item's start
+                                                  (when (= :compile (:reason code)) (let [se (syntax-error stmt)] (when (= 231 (:error se)) se)))
                                                   {:error (case (:reason code) :compile 231 :line-end 230 220)})]
                    (when-not (#{\+ \.} (first stmt))
-                     (swap! <DIAGNOSTICS> conj [pline n (when col (min (long col) (max 1 (count stmt)))) NO]))
+                     (swap! <DIAGNOSTICS> conj [pline n (when col (+ (long (offset pline command)) (min (long col) (max 1 (count stmt))))) NO]))
                    (recur (rest stmts) (inc NO) (assoc CODES NO (error-node code)) NOS LABELS blanks (conj before blanks) fold (conj poss here) pos''))
                  (let [label  (:label code)
                        body   (:body  code)
                        goto   (:goto  code)
-                   ;; the END statement's operand is its entry label: nothing, or a label the program defines; anything else is "215 syntax error: undefined or
-                   ;; erroneous entry label" at the operand, and the END stands (manual ch. 14, The END Statement; MEASURED on sbl -bf: "END     NOPE",
-                   ;; "END     :(NOWHERE)" and "END     X = (" are 215 at column 9, where this engine ran the first two and read the third as 226 with no END;
-                   ;; corpus tests/snobol4 compile_diag__p30, p31)
-                   [_ e-kw e-sp e-op] (re-find #"^(END|end)([ \t]+)(\S.*?)[ \t]*$" stmt)
-                   stmt   (if (and e-op (not (and (re-matches #"[A-Za-z0-9][A-Za-z0-9._]*" e-op) (contains? NOS (keyword e-op)))))
-                            (do (swap! <DIAGNOSTICS> conj [pline 215 (inc (count (str e-kw e-sp))) NO]) e-kw)
-                            stmt)
                        ;; a label the program's compile has defined already, or a system label, is "217 syntax error: duplicate label"; the first definition
                        ;; stands (sbl.min cmp11, vrlbl not stndl outside a CODE call; sbl -bf: a second L, or a label ABORT, CONTINUE, SCONTINUE, RETURN, FRETURN
                        ;; or NRETURN is 217, and a CODE text may define L again)
@@ -416,15 +440,13 @@
                    ;; is no statement, and no error (sbl -bf; snoflake eliza-duquet-original keeps its script after END)
                    (if (#{:END :end} label)
                      [codes nos labels {:before (conj before blanks) :total blanks :pos (conj poss here)}]
-                     (recur (rest stmts) (inc NO) codes nos labels blanks (conj before blanks) fold (conj poss here) pos''))))))))))))
+                     (recur (rest stmts) (inc NO) codes nos labels blanks (conj before blanks) fold (conj poss here) pos'')))))))))))))
 
 ;; "If we place a statement label in the subject field of the END statement, execution will begin there" (manual ch. 14, The END Statement): END START starts the
 ;; program at START. The label END is recognised in either case.
 (defn- end-entry [codes]
   (let [b (first (or (get codes :END) (get codes :end)))]
     (when (symbol? b)
-                                                  ;; a 231 the emitter finds stands where the scan puts it, the numeric item's start
-                                                  (when (= :compile (:reason code)) (let [se (syntax-error stmt)] (when (= 231 (:error se)) se)))
       (let [k (keyword (name b))] (when (@<STNO> k) k)))))
 
 ;; -- CODE — compile and load into the global statement store ------------------

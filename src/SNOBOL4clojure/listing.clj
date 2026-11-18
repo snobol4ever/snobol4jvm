@@ -125,7 +125,9 @@
                 :else                        (shown l))
               ;; a syntax error names its column too, and a line under the statement marks it with a ! (sbl -bf: "t.sno(2,6) : ERROR 232 -- ...", the marker
               ;; keeping the tabs of the line before the column, a blank for any other character)
-              (doseq [[_ code col] (get errs i)]
+              ;; a line with several errors is listed once, before the first, and a later error has an empty line in its place, on both streams (MEASURED on sbl -bf:
+              ;; "        X = ) ; Y = ( ; Z = 1 +" lists the line, then 224's mark and message, then 226's; corpus tests/snobol4 compile_diag__p22)
+              (doseq [[k [_ code col]] (map-indexed vector (get errs i))]
                 (let [stmt (numbered (some-> (first (rsubseq starts <= i)) val) depth l)
                       mark (if col
                              ;; the field, then the run to the column, never trimmed: numbered drops a line's trailing blanks, and the run is all blanks
@@ -134,10 +136,11 @@
                       msg  (if col
                              (format "%s(%d,%d) : ERROR %03d -- %s" file fline col code (env/error-message code))
                              (format "%s(%d) : ERROR %03d -- %s" file fline code (env/error-message code)))]
-                  (when-not (:on @st) (list-line! st stmt))
+                  (when (and (zero? (long k)) (not (:on @st))) (list-line! st stmt))
+                  (when (pos? (long k)) (write! "") (swap! st update :on-page inc))
                   (doseq [x [mark msg ""]] (write! x))
                   (swap! st update :on-page + 3)
-                  (binding [*out* *err*] (doseq [x [stmt mark msg ""]] (write! x)))))
+                  (binding [*out* *err*] (doseq [x [(if (zero? (long k)) stmt "") mark msg ""]] (write! x)))))
               ;; the listing ends with the END line
               (when-not (and n (re-find (if fold #"(?i)^END(\s|$)" #"^(END|end)(\s|$)") l))
                 (recur (inc i) (rest ls) depth places file fline cards)))))))

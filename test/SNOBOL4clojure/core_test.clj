@@ -2702,6 +2702,21 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; Several statements on one line: a semicolon inside a parenthesis left open separates nothing, each error's column counts from the line's start, and the line
+;; is listed once, a later error having an empty line in its place. MEASURED on sbl -bf: "        X = ) ; Y = ( ; Z = 1 +" is 224 at (1,13) and 226 at (1,23), the
+;; second semicolon, and nothing for Z. snobol4jvm said 226 at (1,6) and 221 at (1,8), each counted from its statement, and listed the line three times (compile_diag__p22).
+(deftest the-errors-of-one-line-are-placed-in-the-line-and-listed-once
+  (let [f (java.io.File/createTempFile "multi" ".sno")]
+    (try
+      (spit f "        X = ) ; Y = ( ; Z = 1 +\nEND\n")
+      (let [o (java.io.StringWriter.) rc (binding [*out* o *err* (java.io.StringWriter.)] (-main (.getPath f)))
+            ls (clojure.string/split-lines (str o))]
+        (is (= 231 rc))
+        (is (= 1 (count (filter #(clojure.string/includes? % "X = ) ; Y = (") ls))))
+        (is (= [[1 13 224] [1 23 226]]
+               (for [l ls :let [[_ a b c] (re-find #"\((\d+),(\d+)\) : ERROR (\d+)" l)] :when a] [(Long/parseLong a) (Long/parseLong b) (Long/parseLong c)]))))
+      (finally (.delete f)))))
+
 ;; The END statement's operand is its entry label: nothing, or a label the program defines, else ERROR 215 at the operand (manual ch. 14, The END Statement).
 ;; MEASURED on sbl -bf: "END     NOPE", "END     :(NOWHERE)" and "END     X = (" are "(n,9) : ERROR 215 -- syntax error: undefined or erroneous entry label" and nothing
 ;; runs; "END     START" with START defined starts there. snobol4jvm ran the first two and read the third as 226 (corpus tests/snobol4 compile_diag__p30, p31).
