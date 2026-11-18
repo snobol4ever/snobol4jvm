@@ -900,10 +900,23 @@
     ;; CONVERT left null, where this engine answered the null string)
     :else (throw (ex-info "prototype argument is not valid object" {:snobol/error 164}))))
 
+;; SPITBOL's sort order (sbl.min sortc): two strings compare as strings, two numbers as numbers; two objects of one other type by creation, "item first created is
+;; less"; anything else by its datatype's id. MEASURED on sbl -bf: SORT of '10' 5 '3' 20 'a' 2.0 is 2. 5 20 10 3 a; RSORT of one of each type orders them DATA,
+;; ARRAY (the later made first), TABLE, EXPRESSION, STRING, CODE, REAL, PATTERN, NAME, INTEGER; corpus gate_cases_snobol4 aggregate_registry_keys_are_descrs__w3,
+;; SORT of a table keyed by twelve arrays, which sbl gives in the order the arrays were made and this engine compared as the text of their atoms.
+(def ^:private sort-type-rank {"INTEGER" 0 "NAME" 1 "PATTERN" 2 "REAL" 3 "CODE" 4 "STRING" 5 "EXPRESSION" 6 "TABLE" 7 "ARRAY" 8})
+
+(defn- sort-serial [v] (cond (env/array? v) (:serial v) (env/table? v) (:serial (meta v)) (instance? SNOBOL4clojure.env.DataObj v) (.serial ^SNOBOL4clojure.env.DataObj v)))
+
 (defn- sort-key-compare
-  "SPITBOL's sort order: two numbers compare as numbers, anything else as strings."
   [a b]
-  (if (and (number? a) (number? b)) (compare a b) (compare (str a) (str b))))
+  (cond
+    (and (string? a) (string? b)) (compare a b)
+    (and (number? a) (number? b)) (compare a b)
+    :else (let [ta (str (env/DATATYPE a)) tb (str (env/DATATYPE b))]
+            (if (clojure.core/= ta tb)
+              (let [sa (sort-serial a) sb (sort-serial b)] (if (and sa sb) (compare sa sb) 0))
+              (compare (sort-type-rank ta 9) (sort-type-rank tb 9))))))
 
 ;; SORT and RSORT take a table or an array. A table sorts as the two-column array of its entries (keys in column 1, values in column 2, in the order the keys were
 ;; first assigned); an array sorts its rows on column col (1 by default), a one-dimensional array being its own column. The sort is stable, ascending for SORT and

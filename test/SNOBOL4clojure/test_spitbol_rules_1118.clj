@@ -47,3 +47,14 @@
          (first (run-sno (str "        &TRACE = 100\n        &FTRACE = 100000\n        DEFINE('CB(NAME,TAG)')\t:(S)\nCB      OUTPUT = 'cb ' NAME ' ' TAG\t:(RETURN)\n"
               "S       DEFINE('F(A)')\t:(S1)\nF       F = A\n        F = F + 1\t:(RETURN)\nS1      DEFINE('G(A)')\t:(S2)\nG       G = F(A) + 1\t:(RETURN)\n"
               "S2      TRACE('F', 'FUNCTION', 'tg', .CB)\n        X = G(1)\n        OUTPUT = X\n        TRACE('F')\n        Y = G(2)\nEND\n"))))))
+
+;; SPITBOL's sort order (sbl.min sortc): strings as strings, numbers as numbers, two objects of one other type by creation, anything else by its type's id.
+;; MEASURED on sbl -bf, the output; corpus gate_cases_snobol4 aggregate_registry_keys_are_descrs__w3, a table keyed by twelve arrays
+(deftest sort-orders-mixed-keys-as-spitbols-sortc
+  (is (= " 2. 5 20 10 3 a\n"
+         (first (run-sno (str "        A = ARRAY(6)\n        A[1] = '10'\n        A[2] = 5\n        A[3] = '3'\n        A[4] = 20\n        A[5] = 'a'\n        A[6] = 2.0\n"
+              "        B = SORT(A)\n        I = 1\nL       OUT = OUT ' ' B[I]\n        I = LT(I,6) I + 1 :S(L)\n        OUTPUT = OUT\nEND\n")))))
+  (is (= "1 2 3 4 5 6 7 8 9 10 11 12 \n"
+         (first (run-sno (str "        T = TABLE()\n        K = ARRAY(12)\n        I = 1\nL1      K[I] = ARRAY(1)\n        T[K[I]] = I\n        I = LT(I, 12) I + 1              :S("
+              "L1)\n        B = SORT(T)\n        I = 1\nL2      OUT = OUT B[I,2] \" \"\n        I = LT(I, 12) I + 1              :S(L2)\n        OUTPUT = OUT\n"
+              "END\n"))))))
