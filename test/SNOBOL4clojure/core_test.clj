@@ -2702,6 +2702,11 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; A goto needs no blank before its colon (manual ch. 9, the goto field). MEASURED on sbl -bf: "        X = 1:(L)" goes to L, and "        DEFINE('nl()'):(nlx)"
+;; compiles. snobol4jvm's grammar wanted a blank there, "220 syntax error: missing operator" (corpus rosetta-snobol4 short-circuit-evaluation, iban).
+(deftest a-goto-needs-no-blank-before-its-colon
+  (is (= "at L\n" (:stdout (run-with-timeout "        X = 1:(L)\n        OUTPUT = 'not here'\nL       OUTPUT = 'at L'\nEND\n" 2000)))))
+
 ;; An -INCLUDE whose file cannot be opened is ERROR 285 at the quote, and nothing runs (manual Appendix D, 285). MEASURED on sbl -bf: "-INCLUDE 'nosuch.inc'"
 ;; then OUTPUT = 'ran' is "(1,10) : ERROR 285 -- include file cannot be opened", rc 231. snobol4jvm made the card a comment and ran (corpus rosetta-snobol4
 ;; call-a-function-in-a-shared-library, include-a-file).

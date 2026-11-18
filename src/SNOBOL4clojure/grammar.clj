@@ -10,7 +10,7 @@
 " stmt      ::=  label? body? goto? <__> <eos?>
   label     ::=  #'[0-9A-Za-z][^ \\t\\r\\n]*'
   body      ::=  <_> (invoking | matching | replacing | assigning)
-  goto      ::=  <_ ':' __> (jmp  |  sjmp (<__> fjmp)?  |  fjmp (<__> sjmp)?)
+  goto      ::=  <__ ':' __> (jmp  |  sjmp (<__> fjmp)?  |  fjmp (<__> sjmp)?)
   invoking  ::=  subject | xand | xalt
   matching  ::=  subject <_> pattern | cat <_ '?' _> and qmatch*
   qmatch    ::=  <_ '?' _> and
