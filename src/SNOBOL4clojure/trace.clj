@@ -159,17 +159,24 @@
 ;; traced, and argument s2" (manual ch. 19, TRACE); "When a program-defined trace function is invoked, keywords &TRACE and &FTRACE are temporarily set to zero.
 ;; Their values are restored when the trace function returns" (ch. 10, Debugging). As sbl -bf has it: the function is called in place of the trace line and costs 1
 ;; of &TRACE as a line does; the item's name is a NAME. A function name that names no defined function leaves the line.
+;; A system function is a trace function too, called as a program calls it (MEASURED on sbl -bf: TRACE('X','VALUE','','IDENT') writes no line for X = 1 or
+;; X = 'two'; corpus gate_cases_snobol4 a_value_trace_callback_is_entered_by_the_assignment_box_and_not_by_c__e, where this engine wrote both lines).
 (defn- trace-fn [entry]
   (when-some [f (:fn entry)]
-    (get @<FUNS> (if (instance? NAME f) (str (.n ^NAME f)) (str f)))))
+    (let [n (if (instance? NAME f) (str (.n ^NAME f)) (str f))]
+      (or (get @<FUNS> n)
+          (when (contains? SNOBOL4clojure.env/system-functions n)
+            (let [invoke (ns-resolve (the-ns 'SNOBOL4clojure.operators) 'INVOKE)] (fn [& args] (apply @invoke (symbol n) args))))))))
 
+;; SPITBOL sets &TRACE alone to zero: the trace function is a function called like any other, so &FTRACE traces its call and return and is charged for them, and
+;; is not given back (MEASURED on sbl -bf: &TRACE = 100, &FTRACE = 50 and a VALUE trace calling CB writes "****6*******  CB(.X,'tg')", CB reads &TRACE 0 and
+;; &FTRACE 49, its RETURN line follows, and the statement after reads 99 and 48; corpus gate_cases_snobol4 a_trace_callback_is_ftraced_like_any_called_function)
 (defn- call-trace-fn! [f item-name entry]
   (swap! &TRACE dec)
-  (let [tr @&TRACE ft @&FTRACE]
+  (let [tr @&TRACE]
     (reset! &TRACE 0)
-    (reset! &FTRACE 0)
     (try (f (NAME. (symbol (str item-name))) (:label entry))
-         (finally (reset! &TRACE tr) (reset! &FTRACE ft)))))
+         (finally (reset! &TRACE tr)))))
 
 ;; ── Fire helpers — called from runtime / operators / functions ────────────────
 
@@ -238,12 +245,22 @@
    inside, a blank, then the text. The text is a thunk, built only when the line is written: a call's text quotes each argument whole, so building it on
    every call copied every string argument of every call (MEASURED: corpus mikebeer_snobol bench/recursion, whose PERM doubles its string argument each level,
    ran the JVM out of heap in trace-val, with no trace armed, where sbl -bf ends at ERROR 205)."
-  [fname kind text]
+  [fname kind text & [caller-stno]]
   (let [line  #(trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " " (text))
         entry (@registry (reg-key fname kind))]
-    (cond
-      (and entry (pos? @&TRACE)) (if-let [f (trace-fn entry)] (call-trace-fn! f fname entry) (do (swap! &TRACE dec) (line)))
-      (pos? @&FTRACE)            (do (swap! &FTRACE dec) (line)))))
+    ;; a trace function called in place of the line leaves &FTRACE its own line (MEASURED on sbl -bf: TRACE('F','CALL','tg',.CB) with &FTRACE on writes CB's
+    ;; call, CB's lines and return, then "****8*******  F(1)"; a TRACE line alone is the only line, &FTRACE not charged; corpus gate_cases_snobol4
+    ;; a_trace_callback_is_ftraced_like_any_called_function__call)
+    (let [f (when (and entry (pos? @&TRACE)) (trace-fn entry))]
+      (cond
+        ;; and the line after a RETURN trace function is the caller's statement's (MEASURED on sbl -bf: F's return at statement 7, called from 9, writes
+        ;; "****7******* i CB(.F,'tg')" then "****9******* i RETURN F = 2"; corpus gate_cases_snobol4
+        ;; a_return_trace_callback_prints_the_deferred_banner_with_the_callers_statement_number__nest)
+        f                          (do (call-trace-fn! f fname entry)
+                                       (when caller-stno (reset! &STNO caller-stno))
+                                       (when (pos? @&FTRACE) (swap! &FTRACE dec) (line)))
+        (and entry (pos? @&TRACE)) (do (swap! &TRACE dec) (line))
+        (pos? @&FTRACE)            (do (swap! &FTRACE dec) (line))))))
 
 (defn fire-call!
   "Fire the call trace of user function `fname`, whose parameters hold `args`. Called from the DEFINE wrapper before the body runs, at the caller's
@@ -254,12 +271,13 @@
 (defn fire-return!
   "Fire the return trace of user function `fname` returning `val`. signal is :return :freturn or :nreturn. Called from the DEFINE wrapper once the level is
    the caller's again and while the number of the returning statement is still &STNO."
-  [fname val signal]
+  [fname val signal & [caller-stno]]
   (function-line! fname :return
                   #(case signal
                     :freturn  (str "FRETURN " fname)
                     :nreturn  (str "NRETURN " fname " = " (trace-val val))
-                    (str "RETURN " fname " = " (trace-val val)))))
+                    (str "RETURN " fname " = " (trace-val val)))
+                  caller-stno))
 
 (defn pattern-trace-active?
   "True if PATTERN trace is registered for `subject-var` (or globally via \"*\").

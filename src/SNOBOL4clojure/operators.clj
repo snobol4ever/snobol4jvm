@@ -494,9 +494,15 @@
                                                 (throw (if (contains? (ex-data e) :fnclevel) e (ex-info (ex-message e) (assoc (ex-data e) :fnclevel @&FNCLEVEL) e))))))
                                           (finally (fire-keyword! "FNCLEVEL" (swap! &FNCLEVEL dec))))]
                             ;; Collect result before restoring
-                            (let [result ($$ f-sym)]
-                              ;; RETURN trace
-                              (fire-return! fname result outcome)
+                            (let [result ($$ f-sym)
+                                  ;; RETURN trace; a return trace function reads &RTNTYPE as the return it traces (MEASURED on sbl -bf: TRACE('G','RETURN',,'TRF') of
+                                  ;; a G that ends :(FRETURN) reads FRETURN in TRF; corpus gate_cases_snobol4 a_return_trace_function_sees_..._still_bound__fret)
+                                  _      (reset! &RTNTYPE (case outcome :freturn "FRETURN" :nreturn "NRETURN" "RETURN"))
+                                  _      (fire-return! fname result outcome stno-saved)
+                                  ;; and the function's names are still bound while it runs, so what it assigns to the result variable is the value returned
+                                  ;; (MEASURED on sbl -bf: a RETURN trace function TF that sets F = 'changed-by-tf' makes F('abc','def') return it; corpus
+                                  ;; gate_cases_snobol4 a_traced_call_keeps_its_procedure_and_its_value_across_a_collection__wb)
+                                  result ($$ f-sym)]
                               ;; Restore saved values
                               (doseq [[k v] saved]
                                 (restore-var! (symbol k) v))
