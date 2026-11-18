@@ -2702,6 +2702,16 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; A listing line ends at its last character that is not a blank or a tab. MEASURED on sbl -bf: "        X = 1 ? " (a blank at its end) refused at compile lists
+;; as "1               X = 1 ?"; snobol4jvm kept the blank (corpus tests/snobol4 compile_diag__p35).
+(deftest a-listing-line-ends-at-its-last-nonblank-character
+  (let [f (java.io.File/createTempFile "trail" ".sno")]
+    (try
+      (spit f "        X = 1 ? \nEND\n")
+      (let [out (with-out-str (-main (.getPath f)))]
+        (is (some #(= "1               X = 1 ?" %) (clojure.string/split-lines out)) out))
+      (finally (.delete f)))))
+
 ;; A source with no END statement is not run. MEASURED on sbl -bf: "        X = 1" / "        OUTPUT = X" with no END writes nothing on standard output,
 ;; "No END statement found in source file(s)." on standard error, and exits 1. snobol4jvm ran it and printed 1 (corpus tests/snobol4 compile_diag__p10).
 (deftest a-source-with-no-end-statement-is-not-run

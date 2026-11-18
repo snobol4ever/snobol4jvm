@@ -62,10 +62,13 @@
   (swap! st update :on-page inc)
   (when (:double @st) (println) (swap! st update :on-page inc)))
 
+;; A listed source line loses the blanks and tabs at its end, as sbl -bf prints it (MEASURED: "        X = 1 ? " and "        X = 1 ?\t" each list as
+;; "1               X = 1 ?"; corpus tests/snobol4 compile_diag__p35), while the number field keeps its width (a numbered line with no text is "4" and seven blanks)
 (defn- numbered [n depth line]
-  (if (pos? (long depth))
-    (format "%-5s%-3s%s" (or n "") depth line)
-    (format "%-8s%s" (or n "") line)))
+  (let [line (string/trimr line)]
+    (if (pos? (long depth))
+      (format "%-5s%-3s%s" (or n "") depth line)
+      (format "%-8s%s" (or n "") line))))
 
 ;; The number of the statement each physical line of the source begins, and of the statement in progress on each line: split-source's statements, [text line], are
 ;; numbered in order, a blank line too, and neither a comment nor a control line.
@@ -125,7 +128,8 @@
               (doseq [[_ code col] (get errs i)]
                 (let [stmt (numbered (some-> (first (rsubseq starts <= i)) val) depth l)
                       mark (if col
-                             (str (numbered nil depth (apply str (map #(if (= \tab %) \tab \space) (take (dec (long col)) l)))) "!")
+                             ;; the field, then the run to the column, never trimmed: numbered drops a line's trailing blanks, and the run is all blanks
+                             (str (numbered nil depth "") (apply str (map #(if (= \tab %) \tab \space) (take (dec (long col)) l))) "!")
                              "")
                       msg  (if col
                              (format "%s(%d,%d) : ERROR %03d -- %s" file fline col code (env/error-message code))
