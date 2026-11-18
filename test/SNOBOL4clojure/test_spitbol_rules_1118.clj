@@ -296,3 +296,11 @@
   (let [[out] (run-sno "      P = *P 'Z' | 'Y'\n      'Y' P . OUTPUT\n      OUTPUT = 'after'\nEND\n")]
     (is (re-find #"\(2\) : ERROR 246 -- stack overflow" out))
     (is (not (re-find #"(?m)^after$" out)))))
+
+;; EXIT(s) ends the run and has the system perform s, the run's exit code the command's, no dump and no &CODE after it; EXIT(-3) ends it as a save file is written;
+;; any other action is ERROR 105 (manual ch. 19, EXIT). MEASURED on sbl -bf: EXIT('exit 3') exits 3 with &DUMP = 1 and &CODE = 7 set, EXIT(5) is 105, EXIT(-3)
+;; exits 0; corpus tests/snobol4 test_probe_loose_conformance_f65_exit and f65b_exit_savefile.
+(deftest exit-ends-the-run-with-the-commands-status
+  (is (= ["b\n" 3] (run-sno "        &CODE = 7\n        &DUMP = 1\n        OUTPUT = 'b'\n        EXIT('exit 3')\n        OUTPUT = 'after'\nEND\n")))
+  (is (= ["b\n" nil] (run-sno "        OUTPUT = 'b'\n        EXIT(-3)\n        OUTPUT = 'after'\nEND\n")))
+  (is (re-find #"\(2\) : ERROR 105 -- exit action not available in this implementation" (first (run-sno "        OUTPUT = 'b'\n        EXIT(5)\nEND\n")))))

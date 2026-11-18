@@ -734,6 +734,7 @@
                 ;; this engine closed the unit at the DETACH and the ENDFILE was 098)
                 (do (swap! <CHANNELS> dissoc sym) ε))
     REWIND    (rewind-channel! (first args))
+    EXIT      (apply SNOBOL4clojure.functions/EXIT args)
     ;; CODE(src) — compile and execute a SNOBOL4 source fragment in the current env.
     ;; Returns nil on success; :F branch taken on compile/runtime error.
     ;; Uses resolve to avoid circular dependency (runtime → operators → compiler).

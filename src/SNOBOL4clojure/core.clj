@@ -196,6 +196,7 @@
 (def ^:dynamic *list-sink* nil)
 
 (def ^:private dump-switch (atom nil))   ; the -D# of the command line, set as &DUMP after the run's GLOBALS
+(def ^:private exit-code (atom nil))     ; the status EXIT ended the run with, which no dump and no &CODE follow
 
 (defn- noexecute? [^String src]
   (reduce (fn [no line]
@@ -211,6 +212,7 @@
   [& args]
   (reset! env/<WIDTH> 120)
   (reset! dump-switch nil)
+  (reset! exit-code nil)
   (let [argv          (into [(System/getProperty "java.class.path")] args)
         ;; before the file: --engine X, -u STR (HOST(0)'s text) and sbl's own switches (-b, -f, -bf, -dNk, -sNk and their kin), which stand in the command line
         ;; HOST(2, n) reads, as they stand in sbl's, so HOST(2, n) and HOST(3) answer as sbl -bf answers for one command line (MEASURED: sbl -bf -d131072k
@@ -281,12 +283,14 @@
                                         ;; error 0, which &ERRTYPE = 0 signals, ends the program as "036 goto abort with no preceding error" (sbl -bf)
                                         n    (if (and n (zero? (long n))) 36 n)
                                         code (or n (when (clojure.core/= :step-limit sig) 244))]
-                                    (when-not code (throw e))
+                                    ;; EXIT ends the run with its command's status, writing no report and no dump (functions.clj EXIT)
+                                    (when-not (or code (clojure.core/= :exit sig)) (throw e))
+                                    (if (clojure.core/= :exit sig) (reset! exit-code (long (:snobol/rc (ex-data e) 0)))
                                     (let [text (or (env/error-message code) (ex-message e))]
                                       (reset! env/&ERRTYPE code)
                                       (reset! env/&ERRTEXT text)
                                       ;; the statement the limit stops is not executed
-                                      (listed #(fatal/report! code text (if n @env/&STCOUNT (dec (long steps))) t0)))))
+                                      (listed #(fatal/report! code text (if n @env/&STCOUNT (dec (long steps))) t0))))))
                                 ;; "246 stack overflow" (sbl -bf, a function that calls itself with no end): the run is over, a SETEXIT handler is not entered,
                                 ;; and the report is the one every execution error ends with
                                 (catch StackOverflowError _
@@ -294,11 +298,11 @@
                                     (reset! env/&ERRTYPE 246)
                                     (reset! env/&ERRTEXT text)
                                     (listed #(fatal/report! 246 text @env/&STCOUNT t0))))
-                                (finally (when (pos? (long @env/&DUMP)) (listed #(print (dump/dump-text @env/&DUMP)))))))
+                                (finally (when (and (nil? @exit-code) (pos? (long @env/&DUMP))) (listed #(print (dump/dump-text @env/&DUMP)))))))
                          ;; the run ends with the exit code &CODE holds, however it ends, modulo 256 and 0 when negative (manual ch. 7, &CODE: "the end-of-job code";
                          ;; MEASURED on sbl -bf: &CODE = 3 exits 3, after an execution error or the statement limit too; 300 exits 44, 256 and -5 exit 0; corpus
                          ;; gate_cases_snobol4 test_gate_harness_road_lib_reads_the_per_process_verdict__code)
-                         (let [c (long @env/&CODE) c (if (neg? c) 0 (mod c 256))] (when (pos? c) c))))))
+                         (let [c (long (or @exit-code @env/&CODE)) c (if (neg? c) 0 (mod c 256))] (when (pos? c) c))))))
         "vm"     (print (vm/run-program! src)))]
         (flush)
         (when sink (.close ^java.io.Writer sink))

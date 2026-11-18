@@ -804,6 +804,26 @@
 ;; -d128m, which the harness declares), 4 the stack's size less 400 (-s4m), 6 the word size; 2 and 3, the heap's base and top addresses, and 5 and 7, the stack in
 ;; use and its high-water mark, are what a JVM can say of them: the first page and the heap's size above it, and the frames on the thread's stack. k omitted is 0.
 ;; Another selector is ERROR 254, erroneous argument for host, as sbl -bf raises it for the sub-functions this engine does not have.
+;; EXIT(s) "will terminate program execution and request that the operating system perform the system command s"; EXIT(n,s) "creates a file that captures the
+;; current state of program execution ... Argument n is -3 to create a save file, and +3 to create a load module. Other values are not permitted" (manual ch. 19,
+;; EXIT). MEASURED on sbl -bf: EXIT('echo hi; exit 3') prints the program's output, then hi, and exits 3, &CODE and &DUMP not read; EXIT('false') exits 1, an
+;; unknown command 127 (bash's); EXIT(-3, f) writes the save file f (a.spx when f is omitted) and exits 0; EXIT(3, f), EXIT(5) and EXIT() are "105 exit action not
+;; available in this implementation". A save file is SPITBOL's own memory image, which no JVM can write, so this engine writes none and ends as sbl does; corpus
+;; tests/snobol4 test_probe_loose_conformance_f65_exit and f65b_exit_savefile, where this engine said 022.
+(defn EXIT
+  ([] (EXIT nil nil))
+  ([a] (EXIT a nil))
+  ([a b & _]
+   (let [n (when-not (string? a) (SNOBOL4clojure.env/num a))]
+     (cond
+       (and (string? a) (seq a))
+       (do (flush)
+           (let [p (-> (ProcessBuilder. ^java.util.List ["/bin/bash" "-c" a]) (.inheritIO) (.start)) code (long (.waitFor p))]
+             (throw (ex-info "exit" {:snobol/signal :exit :snobol/rc code}))))
+       (and (integer? n) (clojure.core/= -3 n))
+       (throw (ex-info "exit" {:snobol/signal :exit :snobol/rc 0}))
+       :else (throw (ex-info (env/error-message 105) {:snobol/error 105}))))))
+
 (defn HOST
   ([] (str "jvm:" (System/getProperty "os.name") ":SNOBOL4clojure 0.2.0"))
   ([i & more]
