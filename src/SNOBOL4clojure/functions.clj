@@ -884,7 +884,10 @@
   (cond
     (SNOBOL4clojure.env/table? x) (:size (meta x) 11)
     (SNOBOL4clojure.env/array? x) (SNOBOL4clojure.env/array-prototype x)
-    :else ""))
+    ;; anything else, a string, a number, a pattern or a DATA object, is "164 prototype argument is not valid object" (MEASURED on sbl -bf: PROTOTYPE(''),
+    ;; PROTOTYPE('abc'), PROTOTYPE(3), PROTOTYPE(LEN(1)) and PROTOTYPE of a DATA object; corpus tests/snobol4 scrip_test_1113_table, PROTOTYPE of what a failed
+    ;; CONVERT left null, where this engine answered the null string)
+    :else (throw (ex-info "prototype argument is not valid object" {:snobol/error 164}))))
 
 (defn- sort-key-compare
   "SPITBOL's sort order: two numbers compare as numbers, anything else as strings."

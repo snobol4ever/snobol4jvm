@@ -2702,6 +2702,15 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; PROTOTYPE takes an array or a table; anything else is ERROR 164 (manual ch. 19, PROTOTYPE; Appendix D 164). MEASURED on sbl -bf: PROTOTYPE(''), ('abc'), (3),
+;; (LEN(1)) and of a DATA object are 164; of TABLE() 11, of ARRAY('2,3') 2,3. snobol4jvm answered the null string (corpus tests/snobol4 scrip_test_1113_table).
+(deftest prototype-of-no-array-or-table-is-164
+  (doseq [[c want] [["PROTOTYPE('')" "164"] ["PROTOTYPE(3)" "164"] ["PROTOTYPE(LEN(1))" "164"] ["PROTOTYPE(TABLE())" "11"] ["PROTOTYPE(ARRAY('2,3'))" "2,3"]]]
+    (GLOBALS)
+    (is (clojure.core/= (str want "\n")
+                        (:stdout (run-with-timeout (str "        &ERRLIMIT = 1\n        OUTPUT = " c "  :S(END)\n        OUTPUT = &ERRTYPE\nEND\n") 2000)))
+        c)))
+
 ;; Concatenation groups to the right and its innermost operation is done first, left operand before right: the part before the last with no text is ERROR 8,
 ;; then the last 9, then any earlier part 8 (manual Appendix D 8, 9). MEASURED on sbl -bf, A an array: 'x' A 'y' 8, 'x' 'y' A 9, A 'x' 'y' 8, A 'x' 'y' A 9,
 ;; 'x' A A 8, LEN(1) A 'x' 8. snobol4jvm named the first such part read left to right (corpus tests/snobol4 user_function_array_keyword_1).
