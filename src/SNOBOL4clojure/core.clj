@@ -227,8 +227,15 @@
                      ;; sbl's exit code for it
                      (let [entry (comp/CODE src (include-dirs dir (System/getenv "SNO_LIB")) file)]
                        (listed #(listing/write-listing! file))
-                       (if (seq @env/<DIAGNOSTICS>)
+                       (cond
+                         (seq @env/<DIAGNOSTICS>)
                          231
+                         ;; a source with no END statement is not run: sbl -bf writes its one line on standard error, nothing on standard output, and exits 1
+                         ;; (MEASURED: "        X = 1" / "        OUTPUT = X" with no END prints "No END statement found in source file(s)." on stderr, rc 1;
+                         ;; corpus tests/snobol4 compile_diag__p10 and probe_errpath__probe_loose_errpath_missing_end, which this engine ran)
+                         (nil? (@env/<STNO> :END))
+                         (do (binding [*out* *err*] (println "No END statement found in source file(s).") (flush)) 1)
+                         :else
                          ;; an execution error that ends the program (and the statement limit, "244 Statement count exceeds value of STLIMIT keyword") is
                          ;; reported as sbl -bf reports it, with &ERRTYPE and &ERRTEXT set, and the run ends there, exit code 0 as sbl's; the termination
                          ;; dump &DUMP asks for is written after it, however the program ends

@@ -2702,6 +2702,18 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; A source with no END statement is not run. MEASURED on sbl -bf: "        X = 1" / "        OUTPUT = X" with no END writes nothing on standard output,
+;; "No END statement found in source file(s)." on standard error, and exits 1. snobol4jvm ran it and printed 1 (corpus tests/snobol4 compile_diag__p10).
+(deftest a-source-with-no-end-statement-is-not-run
+  (let [f (java.io.File/createTempFile "noend" ".sno") err (java.io.StringWriter.)]
+    (try
+      (spit f "        X = 1\n        OUTPUT = X\n")
+      (let [[rc out] (binding [*err* err] (let [o (java.io.StringWriter.) r (binding [*out* o] (-main (.getPath f)))] [r (str o)]))]
+        (is (= "" out))
+        (is (= 1 rc))
+        (is (= "No END statement found in source file(s).\n" (str err))))
+      (finally (.delete f)))))
+
 ;; An operator OPSYN defined as a function that returns a name is an assignment target, its value going to the name returned, as F(args) = v (manual ch. 15, OPSYN;
 ;; ch. 9, NRETURN). MEASURED on sbl -bf: F(A) ending F = .Q :(NRETURN), OPSYN('%','F',1), then %X = 'v' calls F with X's value and sets Q to 'v'. snobol4jvm read
 ;; (% X) as a subscript of a container named %, ERROR 235, so corpus snoflake_suite stack-opsyn (Griswold 1971, Solution 6.1) stopped at its first push.
