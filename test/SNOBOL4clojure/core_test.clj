@@ -2702,6 +2702,19 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; DETACH removes a variable's association "without closing or disturbing the channel or file in any way" (manual ch. 8, DETACH). MEASURED on sbl -bf:
+;; OUTPUT(.X,10,'f'); X = 'a'; DETACH(.X); ENDFILE(10) runs on and f holds a; OUTPUT(.Z,10) after the DETACH writes to f. snobol4jvm closed the unit at the
+;; DETACH, so the ENDFILE was 098 (corpus gimpel asm_driver, whose asm.spt does REWIND(10), DETACH(.DISK), ENDFILE(10)).
+(deftest detach-leaves-the-unit-open
+  (GLOBALS)
+  (let [d (doto (java.io.File. (str (System/getProperty "java.io.tmpdir") "/detach-" (System/nanoTime))) .mkdirs)]
+    (try
+      (binding [SNOBOL4clojure.env/*file-dir* (.getPath d)]
+        (is (clojure.core/= "a\nvia z\nafter\n"
+               (:stdout (run-with-timeout (str "        OUTPUT(.X,10,'f.tmp')\n        X = 'a'\n        DETACH(.X)\n        OUTPUT(.Z,10)\n        Z = 'via z'\n"
+                                               "        ENDFILE(10)\n        INPUT(.Y,11,'f.tmp')\n        OUTPUT = Y\n        OUTPUT = Y\n        OUTPUT = 'after'\nEND\n") 2000)))))
+      (finally (doseq [f (.listFiles d)] (.delete f)) (.delete d)))))
+
 ;; A string longer than &MAXLNGTH is ERROR 205, made by a concatenation, a replacement or DUPL; a DUPL count past &MAXLNGTH fails (manual ch. 7, &MAXLNGTH;
 ;; Appendix D 205). MEASURED on sbl -bf with &MAXLNGTH 1024: X = DUPL('a', 1024) then X 'b', 'b' X, X 'a' = 'bb', DUPL('ab', 513) and DUPL('a', 1025) are 205;
 ;; DUPL('a', 16777217), a count past 2**24, fails. snobol4jvm made each string, so corpus mikebeer_snobol bench/recursion grew its string until the JVM ran out of heap.

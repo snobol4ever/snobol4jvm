@@ -686,8 +686,8 @@
       (when-let [rdr (:reader ch)] (.close ^java.io.BufferedReader rdr))
       (when-let [wtr (:writer ch)] (.close ^java.io.PrintWriter    wtr))
       (catch Exception _ nil))
-    (swap! <CHANNELS> dissoc (:var ch))
-    (swap! <CHANNELS> dissoc (:unit ch))
+    ;; every variable associated with the unit loses it, the unit's own variable and those attached after it alike (manual ch. 8, attaching to a channel)
+    (swap! <CHANNELS> (fn [m] (into {} (remove (fn [[_ v]] (and (map? v) (some? (:unit ch)) (clojure.core/= (:unit v) (:unit ch)))) (dissoc m (:var ch) (:unit ch))))))
     ε))
 
 (defn write-to-channel!

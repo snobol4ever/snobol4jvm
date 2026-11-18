@@ -141,7 +141,8 @@
 
 ;; ── DETACH: disassociate var from channel ──────────────────────────────────────
 (deftest t-io-detach
-  "DETACH(.RDR) closes and deregisters the channel."
+  "DETACH(.RDR) removes RDR's association \"without closing or disturbing the channel or file in any way\" (manual ch. 8, DETACH; MEASURED on sbl -bf:
+   OUTPUT(.X,10,'f'); DETACH(.X); ENDFILE(10) runs on): RDR is deregistered, unit 8 stays open."
   (let [path (tmpfile "hello\n")
         r    (run-with-timeout
                (str "        INPUT(.RDR,8,'" path "')\n"
@@ -152,7 +153,8 @@
                3000)]
     (is (= :ok (:exit r)))
     (is (= "hello\n" (:stdout r)))
-    (is (empty? @env/<CHANNELS>) "channel deregistered after DETACH")))
+    (is (not (contains? @env/<CHANNELS> 'RDR)) "RDR deregistered after DETACH")
+    (is (contains? @env/<CHANNELS> 8) "unit 8 still open after DETACH")))
 
 ;; ── Multiple simultaneous channels ────────────────────────────────────────────
 (deftest t-io-two-input-channels

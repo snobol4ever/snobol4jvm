@@ -691,7 +691,11 @@
                           (symbol? v) v
                           (instance? SNOBOL4clojure.env.NAME v) (symbol (str (.n ^SNOBOL4clojure.env.NAME v)))
                           :else (symbol (str v)))]
-                (close-channel! sym))
+                ;; "it is possible to remove the I/O association between a variable and a channel, without closing or disturbing the channel or file in any way"
+                ;; (manual ch. 8, DETACH): the variable's key goes and the unit stays open (MEASURED on sbl -bf: OUTPUT(.X,10,'f'); DETACH(.X); ENDFILE(10) runs
+                ;; on, and OUTPUT(.Z,10) after the DETACH writes to f; corpus gimpel asm_driver, whose asm.spt does REWIND(10), DETACH(.DISK), ENDFILE(10), where
+                ;; this engine closed the unit at the DETACH and the ENDFILE was 098)
+                (do (swap! <CHANNELS> dissoc sym) ε))
     REWIND    (rewind-channel! (first args))
     ;; CODE(src) — compile and execute a SNOBOL4 source fragment in the current env.
     ;; Returns nil on success; :F branch taken on compile/runtime error.
