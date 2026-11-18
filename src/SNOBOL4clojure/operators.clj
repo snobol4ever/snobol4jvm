@@ -404,7 +404,10 @@
                     ;; DATA field setter: accessor(instance) = val assigns the field of the object in place (the instance is already evaluated)
                     (fn? container)
                     (when (container (first ks) r) r)
-                    ;; a variable that holds no table, array or object cannot be subscripted: ERROR 235, as SPITBOL raises it
+                    ;; a variable that holds no table, array or object cannot be subscripted: ERROR 235, as SPITBOL raises it; written with parentheses it is a
+                    ;; call of a function no DEFINE made, ERROR 022 (MEASURED on sbl -bf: F(1) = 2 and X(1) = 2 of X = 3 are 22, X<1> = 2 and X[1] = 2 235; corpus
+                    ;; rosetta-snobol4 memory-allocation-6, whose datafield1(newnode) = "updated data value 1" this engine named 235)
+                    (and (symbol? container-sym) (not (:subscript (meta N)))) (throw (ex-info "undefined function called" {:snobol/error 22}))
                     :else (throw (ex-info "subscripted operand is not table or array" {:snobol/error 235}))))
                 ;; normal variable assignment
                 (clojure.core/contains? #{'OUTPUT 'TERMINAL 'INPUT} N)

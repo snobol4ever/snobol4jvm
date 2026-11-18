@@ -388,3 +388,9 @@
          (first (run-sno (str "        DEFINE('G()')  :(GE)\nG       G = 1  :(RETURN)\nGE      X = 1\n        Y = EVAL('G()')\n"
                               "        OUTPUT = &LASTLINE ' ' &LINE ' ' &LASTNO\n        Y = G()\n        OUTPUT = &LASTLINE ' ' &LINE ' ' &LASTNO\n"
                               "        Y = EVAL('G()')\n\n\n        OUTPUT = &LASTLINE ' ' &LINE ' ' &LASTNO\nEND\n"))))))
+
+;; An assignment to F(x) where F names no function is ERROR 022, an assignment to X<x> or X[x] of no table or array 235. MEASURED on sbl -bf: F(1) = 2 and X(1) = 2
+;; of X = 3 are 22, X<1> = 2 and X[1] = 2 235; corpus rosetta-snobol4 memory-allocation-6.
+(deftest an-assignment-through-an-undefined-function-is-22
+  (doseq [[s want] [["        F(1) = 2" "22"] ["        X = 3\n        X(1) = 2" "22"] ["        X = 3\n        X<1> = 2" "235"] ["        X[1] = 2" "235"]]]
+    (is (= (str want "\n") (first (run-sno (str "        &ERRLIMIT = 1\n" s "\n        OUTPUT = &ERRTYPE\nEND\n")))) s)))
