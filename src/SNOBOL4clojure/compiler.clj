@@ -418,9 +418,16 @@
                                                   ;; a 231 the emitter finds stands where the scan puts it, the numeric item's start
                                                   (when (= :compile (:reason code)) (let [se (syntax-error stmt)] (when (= 231 (:error se)) se)))
                                                   {:error (case (:reason code) :compile 231 :line-end 230 220)})]
-                   (when-not (#{\+ \.} (first stmt))
-                     (swap! <DIAGNOSTICS> conj [pline n (when col (+ (long (offset pline command)) (min (long col) (max 1 (count stmt))))) NO]))
-                   (recur (rest stmts) (inc NO) (assoc CODES NO (error-node code)) NOS LABELS blanks (conj before blanks) fold (conj poss here) pos''))
+                   ;; the statement's label is read before its body, so a statement that does not compile still defines its label, and a duplicate one is 217
+                   ;; first (MEASURED on sbl -bf: "A B\\C = 1" then "A" is 230 at (1,4) and "(2) : ERROR 217 -- syntax error: duplicate label"; corpus
+                   ;; tests/snobol4 compile_diag__p33, where this engine defined no A at line 1 and took line 2)
+                   (let [lbl  (when-not (#{\+ \.} (first stmt)) (second (re-find #"^([A-Za-z0-9][^ \t;]*)" stmt)))
+                         lkey (when lbl (keyword lbl))
+                         dup? (and lkey (not code-text?) (or (contains? NOS lkey) (system-labels lkey)))]
+                     (when-not (#{\+ \.} (first stmt))
+                       (swap! <DIAGNOSTICS> conj (if dup? [pline 217 nil NO] [pline n (when col (+ (long (offset pline command)) (min (long col) (max 1 (count stmt))))) NO])))
+                     (recur (rest stmts) (inc NO) (assoc CODES NO (error-node code)) (if (and lkey (not dup?)) (assoc NOS lkey NO) NOS)
+                            (if (and lkey (not dup?)) (assoc LABELS NO lkey) LABELS) blanks (conj before blanks) fold (conj poss here) pos'')))
                  (let [label  (:label code)
                        body   (:body  code)
                        goto   (:goto  code)

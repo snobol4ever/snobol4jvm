@@ -2702,6 +2702,19 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; A statement that does not compile still defines its label, read before its body, so a later statement of that label is a duplicate (manual Appendix D, 217).
+;; MEASURED on sbl -bf: "A B\\C = 1" then "A" is 230 at (1,4) and "(2) : ERROR 217 -- syntax error: duplicate label". snobol4jvm defined no A at line 1 and
+;; reported nothing for line 2 (corpus tests/snobol4 compile_diag__p33).
+(deftest a-statement-that-fails-to-compile-still-defines-its-label
+  (let [f (java.io.File/createTempFile "dup" ".sno")]
+    (try
+      (spit f "A B\\C = 1\nA\nEND\n")
+      (let [o (java.io.StringWriter.) rc (binding [*out* o *err* (java.io.StringWriter.)] (-main (.getPath f)))]
+        (is (= 231 rc))
+        (is (re-find #"\(1,4\) : ERROR 230" (str o)))
+        (is (re-find #"\(2\) : ERROR 217 -- syntax error: duplicate label" (str o))))
+      (finally (.delete f)))))
+
 ;; Several statements on one line: a semicolon inside a parenthesis left open separates nothing, each error's column counts from the line's start, and the line
 ;; is listed once, a later error having an empty line in its place. MEASURED on sbl -bf: "        X = ) ; Y = ( ; Z = 1 +" is 224 at (1,13) and 226 at (1,23), the
 ;; second semicolon, and nothing for Z. snobol4jvm said 226 at (1,6) and 221 at (1,8), each counted from its statement, and listed the line three times (compile_diag__p22).
