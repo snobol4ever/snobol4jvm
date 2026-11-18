@@ -2702,6 +2702,20 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; The marker line under a listed statement carries no include depth: its field is blank whatever the depth (MEASURED on sbl -bf: "2    1          Z = )"
+;; is marked "                    !"; snobol4jvm wrote "     1              !"; corpus tests/snobol4 compile_diag__p37, an error in an included file).
+(deftest the-marker-line-carries-no-include-depth
+  (let [d (doto (java.io.File. (str (System/getProperty "java.io.tmpdir") "/incmark-" (System/nanoTime))) .mkdirs)
+        m (java.io.File. d "m.sno") err (java.io.StringWriter.)]
+    (try
+      (spit (java.io.File. d "e.inc") "        Z = )\n")
+      (spit m "        X = 1\n-INCLUDE 'e.inc'\nEND\n")
+      (binding [*err* err *out* (java.io.StringWriter.)] (-main (.getPath m)))
+      (let [ls (clojure.string/split-lines (str err))]
+        (is (some #{"2    1          Z = )"} ls))
+        (is (some #{"                    !"} ls)))
+      (finally (doseq [f (.listFiles d)] (.delete f)) (.delete d)))))
+
 ;; A program that ends inside a function, by an error, by END or by the statement limit, ends at that function level, which its dump shows (manual ch. 7,
 ;; &FNCLEVEL). MEASURED on sbl -bf: each of the three dumps &FNCLEVEL = 1; an error EVAL catches leaves the level 0. snobol4jvm dumped 0 for the three
 ;; (corpus setl4_spitbol sbl-sonnets and concord, ERROR 041 at level 1).

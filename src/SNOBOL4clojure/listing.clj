@@ -131,7 +131,9 @@
                 (let [stmt (numbered (some-> (first (rsubseq starts <= i)) val) depth l)
                       mark (if col
                              ;; the field, then the run to the column, never trimmed: numbered drops a line's trailing blanks, and the run is all blanks
-                             (str (numbered nil depth "") (apply str (map #(if (= \tab %) \tab \space) (take (dec (long col)) l))) "!")
+                             ;; the field is blank, the include depth not shown on the marker's line (MEASURED on sbl -bf: corpus tests/snobol4 compile_diag__p37,
+                             ;; an error in an included file, and p15, after one that could not be opened, mark "                    !" under "2    1          Z = )")
+                             (str (numbered nil 0 "") (apply str (map #(if (= \tab %) \tab \space) (take (dec (long col)) l))) "!")
                              "")
                       msg  (if col
                              (format "%s(%d,%d) : ERROR %03d -- %s" file fline col code (env/error-message code))
