@@ -190,3 +190,8 @@
          (first (run-sno (str "        &ERRLIMIT = 5\n        OUTPUT(.X, 6, '@OUTFILE@')\n        OUTPUT(.Y, 6, '@OUTFILE@')  :F(F1)\n        OUTPUT = 'ok1'  :(N)\n"
               "F1      OUTPUT = 'fails ' &ERRTYPE\nN       OUTPUT(.Y, 6)  :F(F2)\n        OUTPUT = 'shared'  :(M)\nF2      OUTPUT = 'fails2 ' &ERRTYPE\n"
               "M       INPUT(.Z, 6, '@OUTFILE@')  :F(F3)\n        OUTPUT = 'ok3'  :(END)\nF3      OUTPUT = 'fails3 ' &ERRTYPE\nEND\n"))))))
+
+;; HOST(-1,2), the heap's base, is above 0 and HOST(-1,3) not below it. MEASURED on sbl -bf; corpus gate_cases_snobol4 host_minus_one_answers_the_memory_statistics__w
+(deftest host-minus-one-gives-a-base-above-zero
+  (is (= "base positive\ntop not below base\n"
+         (first (run-sno "        OUTPUT = GT(HOST(-1,2),0) 'base positive'\n        OUTPUT = GE(HOST(-1,3),HOST(-1,2)) 'top not below base'\nEND\n")))))

@@ -797,7 +797,7 @@
 ;; text of the -u option, "If -u was not specified, it returns the concatenation of all command line arguments" (manual ch. 19, HOST): sbl -bf joins the arguments after the
 ;; program file with blanks. HOST(-1, k) answers sbl x64's memory facts (osint/syshs.c): 0 the heap increment and 1 the heap's limit (sbl's defaults, -i1m and
 ;; -d128m, which the harness declares), 4 the stack's size less 400 (-s4m), 6 the word size; 2 and 3, the heap's base and top addresses, and 5 and 7, the stack in
-;; use and its high-water mark, are what a JVM can say of them: no address (0), the heap's current size, and the frames on the thread's stack. k omitted is 0.
+;; use and its high-water mark, are what a JVM can say of them: the first page and the heap's size above it, and the frames on the thread's stack. k omitted is 0.
 ;; Another selector is ERROR 254, erroneous argument for host, as sbl -bf raises it for the sub-functions this engine does not have.
 (defn HOST
   ([] (str "jvm:" (System/getProperty "os.name") ":SNOBOL4clojure 0.2.0"))
@@ -838,8 +838,10 @@
            (case (long k)
              0 1048576
              1 134217728
-             2 0
-             3 (.totalMemory (Runtime/getRuntime))
+             ;; the heap's base: a JVM has no address to give, and sbl's is above 0 (MEASURED on sbl -bf: GT(HOST(-1,2),0) succeeds; corpus gate_cases_snobol4
+             ;; host_minus_one_answers_the_memory_statistics__w), so the base is the first page and the top the heap's size above it
+             2 4096
+             3 (clojure.core/+ 4096 (.totalMemory (Runtime/getRuntime)))
              4 (clojure.core/- 4194304 400)
              5 (frames)
              6 8
