@@ -195,3 +195,11 @@
 (deftest host-minus-one-gives-a-base-above-zero
   (is (= "base positive\ntop not below base\n"
          (first (run-sno "        OUTPUT = GT(HOST(-1,2),0) 'base positive'\n        OUTPUT = GE(HOST(-1,3),HOST(-1,2)) 'top not below base'\nEND\n")))))
+
+;; TRIM drops the trailing blanks and tabs and no other character (manual ch. 19, TRIM). MEASURED on sbl -bf; corpus gate_cases_snobol4
+;; trim_drops_a_trailing_tab_and_scrips_own_builtins_are_undefined__tr
+(deftest trim-drops-trailing-blanks-and-tabs-alone
+  (is (= "3\n3\n4\n4\n4\n4\n"
+         (first (run-sno (str "        OUTPUT = SIZE(TRIM('abc' CHAR(9)))\n        OUTPUT = SIZE(TRIM('abc ' CHAR(9) ' '))\n        OUTPUT = SIZE(TRIM('abc' CHAR(13)))\n"
+              "        OUTPUT = SIZE(TRIM('abc' CHAR(10)))\n        OUTPUT = SIZE(TRIM('abc' CHAR(11)))\n        OUTPUT = SIZE(TRIM('abc' CHAR(12)))\n"
+              "END\n"))))))

@@ -87,7 +87,9 @@
           (cond (clojure.core/> n 16777216)                          nil
                 (clojure.core/> (clojure.core/* n (count s)) m)      (throw (ex-info "string length exceeds value of maxlngth keyword" {:snobol/error 205}))
                 :else                                                (apply str (repeat n s))))))))
-(defn TRIM    [s]     (clojure.string/trimr (str-arg s 200)))
+;; TRIM drops the trailing blanks and tabs, and no other character (MEASURED on sbl -bf: SIZE(TRIM('abc' CHAR(9))) and of 'abc ' CHAR(9) ' ' are 3; 'abc' and a
+;; CR, LF, VT or FF after it keep 4; corpus gate_cases_snobol4 trim_drops_a_trailing_tab_and_scrips_own_builtins_are_undefined__tr)
+(defn TRIM    [s]     (let [^String t (str-arg s 200)] (subs t 0 (loop [i (count t)] (if (and (pos? i) (#{\space \tab} (.charAt t (dec i)))) (recur (dec i)) i)))))
 (defn REVERSE [s]     (apply str (clojure.string/reverse (str-arg s 177))))
 (defn LPAD
   ([s n]        (LPAD s n " "))
