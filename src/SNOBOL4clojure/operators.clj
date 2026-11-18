@@ -479,8 +479,8 @@
                         (let [saved   (zipmap all-saved (map #(saved-value (symbol %)) all-saved))
                               f-saved (saved-value f-sym)
                               stno-saved @&STNO
-                              file-saved @&FILE
-                              line-saved @&LINE]
+                              file-saved (if-some [[f _] SNOBOL4clojure.env/*eval-block*] f @&FILE)
+                              line-saved (if-some [[_ l] SNOBOL4clojure.env/*eval-block*] l @&LINE)]
                           ;; Clear the result slot, then bind the parameters: a parameter that has the function's name starts the result with its argument, as sbl -bf
                           ;; has it (mx(9,2) of DEFINE('mx(mx,x)') returns 9 when the body assigns nothing)
                           (snobol-set! f-sym ε)
@@ -498,7 +498,7 @@
                                 ;; the body is the failure point of its statements, the innermost function's
                                 d       (inc (long SNOBOL4clojure.env/*fp*))
                                 outcome (try
-                                          (when run-fn (binding [SNOBOL4clojure.env/*fp* d SNOBOL4clojure.env/*flprt* d] ((var-get run-fn) entry)))
+                                          (when run-fn (binding [SNOBOL4clojure.env/*fp* d SNOBOL4clojure.env/*flprt* d SNOBOL4clojure.env/*eval-block* nil] ((var-get run-fn) entry)))
                                           :return   ; normal fall-through = return
                                           ;; only the three returns end a call; END, the step limit and an error go on up (END in a function ends the program)
                                           ;; what goes on up carries the function level it left, the innermost's, which &FNCLEVEL reads again if it ends the program:
@@ -1306,7 +1306,11 @@
     ;; and .EVAL('X ;') end the program with 103; under &ERRLIMIT the label SETEXIT armed takes it)
     (string? X)   (if (ends-in-mark? X)
                     (throw (ex-info "eval argument is not expression" {:snobol/error 103}))
-                    (evaluated-or-fail #(when-some [ir (binding [*raise-compile-errors* true] (compile-or-fail X))] (EVAL! ir))))
+                    ;; the expression runs in a block of its own, whose line is the compiler's last, so a function it calls returns to that line, not the
+                    ;; statement's (MEASURED on sbl -bf: Y = EVAL('G()') on line 4, END on line 12, then OUTPUT = &LASTLINE ' ' &LINE prints 12 5, where
+                    ;; EVAL('&LINE') reads the statement's line; corpus rosetta-snobol4 leap-year, whose dump reads &LASTLINE = 13, its END's line)
+                    (evaluated-or-fail #(when-some [ir (binding [*raise-compile-errors* true] (compile-or-fail X))]
+                                          (binding [SNOBOL4clojure.env/*eval-block* @SNOBOL4clojure.env/<CODELINE>] (EVAL! ir)))))
     (number? X)   X
     (and (instance? NAME X) (symbol? (.n ^NAME X))) (EVAL (name (.n ^NAME X)))
     (or (textless? X) (and (list? X) (clojure.core/= "PATTERN" (SNOBOL4clojure.env/DATATYPE X))))

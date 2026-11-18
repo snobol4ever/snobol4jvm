@@ -101,6 +101,9 @@
 ;;   :arity 1 = unary operator redefinition
 ;;   :arity 2 = binary operator redefinition
 (def <POS> (atom {}))   ; statement number -> [file line]: where the statement stands in the source, which &FILE and &LINE read
+;; the [file line] of the code block an EVAL string compiles into, while its expression runs: <CODELINE> as it stands, the program's END line until a CODE text
+;; moves it; a function called from that expression is given it back as it returns (operators.clj EVAL, the DEFINE wrapper)
+(def ^:dynamic *eval-block* nil)
 (def <CODELINE> (atom ["" 0]))   ; [file line] of the last line the compiler read, the program's END: each CODE text is the next line
 (def <OBJNO> (atom 0))   ; how many arrays, tables and DATA objects the program has made: the number a dump gives each, #n
 (defn next-serial! [] (swap! <OBJNO> inc))

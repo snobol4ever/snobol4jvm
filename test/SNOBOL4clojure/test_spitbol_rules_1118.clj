@@ -379,3 +379,12 @@
   (let [[out] (run-sno "        C = CODE(' OUTPUT = \"x\"')  :S<C>\nEND\n" ["-D1"])]
     (is (re-find #"(?m)^&LINE = 3$" out))
     (is (not (re-find #"(?m)^&FILE = ''$" out)))))
+
+;; A function called from an EVAL string's expression returns to that expression's block, whose line is the compiler's last, the END's until a CODE text moves it.
+;; MEASURED on sbl -bf: Y = EVAL('G()') on line 4 of a program whose END is line 12, then OUTPUT = &LASTLINE ' ' &LINE ' ' &LASTNO, prints 12 5 4; a plain call
+;; prints the caller's line; corpus rosetta-snobol4 leap-year.
+(deftest a-function-called-from-eval-returns-to-the-eval-blocks-line
+  (is (= "12 5 4\n6 7 6\n12 11 8\n"
+         (first (run-sno (str "        DEFINE('G()')  :(GE)\nG       G = 1  :(RETURN)\nGE      X = 1\n        Y = EVAL('G()')\n"
+                              "        OUTPUT = &LASTLINE ' ' &LINE ' ' &LASTNO\n        Y = G()\n        OUTPUT = &LASTLINE ' ' &LINE ' ' &LASTNO\n"
+                              "        Y = EVAL('G()')\n\n\n        OUTPUT = &LASTLINE ' ' &LINE ' ' &LASTNO\nEND\n"))))))
