@@ -266,3 +266,14 @@
   (is (re-find #"(?m)^&DUMP = 2$" (first (run-sno "        X = 1\nEND\n" ["-D2"]))))
   (is (not (re-find #"dump of" (first (run-sno "        &DUMP = 0\n        X = 1\nEND\n" ["-D1"])))))
   (is (not (re-find #"dump of" (first (run-sno "        X = 1\nEND\n"))))))
+
+
+;; A carriage return is a character of its line, never a line end: in a statement it is 230, after a goto 230, a line of NULs and a CR 214, a literal keeps it,
+;; and END followed by one is no END. MEASURED on sbl -bf; corpus snolib g360 and spitbol_88 DEMOS/TREESORT, CR LF files sbl refuses.
+(deftest a-carriage-return-is-a-character-of-its-line
+  (let [errs (fn [src] (vec (re-seq #"\(\d+(?:,\d+)?\) : ERROR \d+" (first (run-sno src)))))]
+    (is (= ["(1,14) : ERROR 230" "(2,19) : ERROR 230"] (errs "        X = 1\r\n        OUTPUT = X\r\nEND\r\n")))
+    (is (= 1 (second (run-sno "        X = 1\r\n        OUTPUT = X\r\nEND\r\n"))))
+    (is (= ["(1,20) : ERROR 230" "(2,21) : ERROR 230"] (errs "        X = 1  :(L)\r\nL       OUTPUT = 'l'\r\nEND\n")))
+    (is (= ["(3) : ERROR 214"] (errs "        OUTPUT = 'a'\nEND\r\n\u0000\u0000\r\n")))
+    (is (= "3\n" (first (run-sno "        X = 'a\rb'\n        OUTPUT = SIZE(X)\nEND\n"))))))

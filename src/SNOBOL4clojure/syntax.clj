@@ -167,7 +167,11 @@
 ;; What spoils the goto field is 234, unless it is an operator touching what is before it, which SPITBOL's scanner reads as an operator where none may stand,
 ;; "233 invalid use of operator" (MEASURED on sbl -bf: "X = 1 :$", ":*", ":+", ":=", ":#", ":.", ":S$(L)", ":S(L)$" and ":S(L)F$" are 233, while ":  $" and
 ;; ":S(L) +", the operator after a blank, are 234, as ":)" and ":," are; corpus tests/snobol4 compile_diag__p45, where this engine said 234)
-(defn- bad-goto! [s p] (fail! (if (and (operator-char? (at s p)) (pos? p) (not (blank? (at s (dec p))))) 233 234) p))
+;; and a control character there is "230 illegal character", as in any field (MEASURED on sbl -bf: "        X = 1  :(L)" ended by a carriage return is 230 at
+;; column 20; corpus snolib g360, a CR LF file)
+(defn- bad-goto! [s p] (fail! (cond (and (at s p) (< (int (at s p)) 32) (not= \tab (at s p))) 230
+                                    (and (operator-char? (at s p)) (pos? p) (not (blank? (at s (dec p))))) 233
+                                    :else 234) p))
 
 (defn- goto-field [s i]
   (let [i0 (skip-blanks s i)]

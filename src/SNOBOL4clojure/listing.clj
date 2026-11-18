@@ -65,7 +65,7 @@
 ;; A listed source line loses the blanks and tabs at its end, as sbl -bf prints it (MEASURED: "        X = 1 ? " and "        X = 1 ?\t" each list as
 ;; "1               X = 1 ?"; corpus tests/snobol4 compile_diag__p35), while the number field keeps its width (a numbered line with no text is "4" and seven blanks)
 (defn- numbered [n depth line]
-  (let [line (string/trimr line)]
+  (let [line (string/replace line #"[ \t]+\z" "")]   ; a carriage return stays, listed as sbl -bf lists it
     (if (pos? (long depth))
       (format "%-5s%-3s%s" (or n "") depth line)
       (format "%-8s%s" (or n "") line))))
@@ -84,7 +84,7 @@
   "Write the listing of the program last compiled, named file, as far as its -LIST cards ask for one, and its compile errors on their page."
   [file]
   (let [{:keys [text stmts cards]} @env/<SOURCE>
-        lines  (string/split-lines (str text))
+        lines  (string/split (str text) #"\n")   ; LF alone ends a line: a CR is a character of it (compiler split-source)
         starts (statement-numbers stmts)
         errs   (group-by first @env/<DIAGNOSTICS>)
         fold   false   ; snobol4jvm never folds case, so a card is upper case whatever &CASE holds (Lon 2026-11-17 18:2x CST, in the JVM window)
@@ -93,7 +93,7 @@
     ;; cards: the -INCLUDE lines as written, one for each -FILE-ENTER card the splice put in their place
     (loop [i 1 ls lines depth 0 places [] file (str file) fline 0 cards cards]
       (when-let [raw (first ls)]
-        (let [l   (string/replace raw #"\r$" "")
+        (let [l   raw
               n   (get starts i)
               ctl (string/starts-with? l "-")
               shown (fn [line] (when (and (:on @st) (or (not ctl) (:print @st))) (list-line! st (numbered n depth line))))]
@@ -122,8 +122,8 @@
                       (card c "NOPRINT") (swap! st assoc :print false)
                       (card c "SINGLE")  (swap! st assoc :double false)
                       (card c "DOUBLE")  (swap! st assoc :double true)
-                      (card c "TITLE")   (swap! st assoc :title (string/trim (subs c 6)) :subtitle "" :pending true)
-                      (card c "STITL")   (swap! st assoc :subtitle (string/trim (subs c 6)) :pending true)
+                      (card c "TITLE")   (swap! st assoc :title (string/replace (subs c 6) #"\A[ \t]+|[ \t]+\z" "") :subtitle "" :pending true)
+                      (card c "STITL")   (swap! st assoc :subtitle (string/replace (subs c 6) #"\A[ \t]+|[ \t]+\z" "") :pending true)
                       (card c "EJECT")   (when (:on @st) (when-not (open! st) (new-page! st)))
                       (card c "SPACE")   (when (and (:on @st) (not (open! st)))
                                            (let [k (if-let [[_ d] (re-find #"^-\S+\s+(\d+)" c)] (Long/parseLong d) 1)]
@@ -154,9 +154,10 @@
                   (doseq [x [mark msg ""]] (write! x))
                   (swap! st update :on-page + 3)
                   (binding [*out* *err*] (doseq [x [(if (zero? (long k)) stmt "") mark msg ""]] (write! x)))))
-              ;; the listing ends with the END line
+              ;; the listing ends with the END line, END and a blank or nothing after it: END and a carriage return is a label of its own, and SPITBOL lists on
+              ;; (MEASURED on sbl -bf: corpus spitbol_88 DEMOS/TREESORT, a CR LF file, lists its line 83 after "END\r" with 214; \z, since a regex $ stands before a CR)
               ;; an -INCLUDE card still standing names a file that could not be opened, and SPITBOL lists the lines after it one level deeper (compiler,
               ;; preprocess-includes*)
-              (when-not (and n (re-find (if fold #"(?i)^END(\s|$)" #"^(END|end)(\s|$)") l))
+              (when-not (and n (re-find (if fold #"(?i)^END([ \t]|\z)" #"^(END|end)([ \t]|\z)") l))
                 (recur (inc i) (rest ls) (if (and ctl (re-find #"^-INCLUDE\s+['\"]" l)) (inc depth) depth) places file fline cards)))))))
     (flush)))

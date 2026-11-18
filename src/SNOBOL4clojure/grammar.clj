@@ -8,7 +8,7 @@
 ;; expression the statement evaluates, as sbl -bf takes A | B 'D'. ? binds loosest of all, so A B ? 'B' matches 'B' against A B, and S ? P1 ? P2 is (S ? P1) ? P2.
 (def grammar
 " stmt      ::=  label? body? goto? <__> <eos?>
-  label     ::=  #'[0-9A-Za-z][^ \\t\\r\\n]*'
+  label     ::=  #'[0-9A-Za-z][^ \\t\\n]*'
   body      ::=  <_> (invoking | matching | replacing | assigning)
   goto      ::=  <__ ':' __> (jmp  |  sjmp (<__> fjmp)?  |  fjmp (<__> sjmp)?)
   invoking  ::=  subject | xand | xalt

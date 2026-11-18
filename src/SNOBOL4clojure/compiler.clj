@@ -91,8 +91,11 @@
                 chars)
         n     (count chars)
         ;; a record keeps the line ends at the end of a statement, which are no blanks
-        trimr (if record? #(string/replace % #"[ \t]+\z" "") string/trimr)
-        blank-line? (fn [from to] (every? #(Character/isWhitespace ^char %) (subs chars from to)))]
+        ;; a carriage return is a character of its line, never a line end or a blank: in a statement it is "230 illegal character", a line of one is 214, and
+        ;; END followed by one is no END (MEASURED on sbl -bf: "        X = 1\r" is 230 at column 14, "\r" alone 214, a file whose lines all end CR LF has "No END
+        ;; statement found" and exits 1; corpus snolib g360, a CR LF file sbl refuses, which this engine ran)
+        trimr (if record? #(string/replace % #"[ \t]+\z" "") #(string/replace % #"[ \t\n]+\z" ""))
+        blank-line? (fn [from to] (every? #(and (Character/isWhitespace ^char %) (not= \return %)) (subs chars from to)))]
     ;; "A continuation mark ... is placed in the first column of the additional lines" (manual ch. 14): a + or . line that continues nothing -- the first line, a
     ;; line after a comment line, or after a statement closed by a semicolon -- is "214 bad label or misplaced continuation line" at compile time, as sbl -bf reports it.
     ;; The diagnostics ride on the result as metadata, {:diagnostics [[line 214] ..]}.
@@ -127,7 +130,7 @@
             (let [s (trimr (str cur))]
               (recur (inc i) (StringBuilder.) (conj stmts (if (seq s) [s sl] [:blank sl])) false false ls line line diags))
             (and (= ch \newline) (not record?))
-            (let [s (string/trimr (str cur))
+            (let [s (trimr (str cur))
                   next-i (inc i)
                   next-ch (when (< next-i n) (.charAt chars next-i))
                   cont? (and next-ch (or (= next-ch \+) (= next-ch \.)))]
@@ -200,7 +203,7 @@
     ;; the first END after it closes that file, ending no program, so a later END is the program's or there is none (MEASURED on sbl -bf: a statement, a missing
     ;; -INCLUDE, a statement, END is the 285 page, then "No END statement found in source file(s).", exit 1; with a second END it is rc 231; corpus tests/snobol4
     ;; compile_diag__p15, which lists "2    1          Z = )"). That END becomes the card -DEPTH-LEAVE, on its own line, so no line moves.
-    (loop [lines (string/split-lines src) out [] seen seen cards [] ph 0]
+    (loop [lines (string/split src #"\n") out [] seen seen cards [] ph 0]
       (if-let [line (first lines)]
         (if-let [[_ fname] (re-find include-re line)]
           (let [found (some (fn [dir]
@@ -228,7 +231,7 @@
                     last-line           (let [ls (string/split text #"\r?\n" -1)] (last (if (and (next ls) (= "" (peek ls))) (pop ls) ls)))
                     stale?              (boolean (and last-line (string/starts-with? last-line "*")))]
                 (recur (rest lines)
-                       (into out (concat [(str "-FILE-ENTER \"" (string/trim fname) "\"")] (string/split-lines body) [(str "-FILE-LEAVE" (when stale? " STALE"))]))
+                       (into out (concat [(str "-FILE-ENTER \"" (string/trim fname) "\"")] (string/split body #"\n") [(str "-FILE-LEAVE" (when stale? " STALE"))]))
                        seen'
                        (into (conj cards line) inner)
                        ph))))
@@ -425,7 +428,7 @@
      ;; compiled as the program spells it whatever &CASE holds (sbl -bf folds after -CASE 1; such an entry is declared for this engine in EXCLUDED.jvm.tsv)
      ;; where each statement begins in its line, so a diagnostic's column counts from the line's start as sbl -bf counts it (MEASURED: "        X = ) ; Y = ( ; Z = 1 +"
      ;; is 224 at column 13 and 226 at 23; this engine said 6 for the second, counted from its statement); the line's text read past the statements already placed
-     (let [src-lines (string/split-lines (str expanded)) placed (atom {})
+     (let [src-lines (string/split (str expanded) #"\n") placed (atom {})
            offset (fn [pline ^String stmt]
                     (let [line (get src-lines (dec (long pline))) from (get @placed pline 0)
                           ;; a statement continued past its line stands in it as far as the line goes: the line's tail from k begins the statement
@@ -449,7 +452,7 @@
                                            fold) poss
                                        (position-card fold command pline pos))
              :else
-             (let [stmt   (cond-> command (not record?) (string/replace #"\r" "") fold fold-case)
+             (let [stmt   (cond-> command fold fold-case)   ; a carriage return stays, a character of its statement (split-source)
                    _      (SNOBOL4clojure.env/note-names! (source-names stmt))
                    ;; the END statement's operand is its entry label: nothing, or a label the program defines; anything else is "215 syntax error: undefined or
                    ;; erroneous entry label" at the operand, and the END stands (manual ch. 14, The END Statement; MEASURED on sbl -bf: "END     NOPE",
