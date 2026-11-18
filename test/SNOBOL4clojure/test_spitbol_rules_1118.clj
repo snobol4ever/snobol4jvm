@@ -73,3 +73,11 @@
   (is (= "got arg\n"
          (first (run-sno (str "        OUTPUT(.V, 7, '@OUTFILE@')\n        V = 'first'\n        DEFINE('F(V)')                          :(F_END)\nF       F = 'got ' V              "
               "              :(RETURN)\nF_END\n        OUTPUT = F('arg')\n        V = 'last'\n        ENDFILE(7)\nEND\n"))))))
+
+;; At &ERRLIMIT 0 a pattern's own check of its deferred argument, 043 to 058, ends the program, where an error inside the unevaluated expression fails the match.
+;; MEASURED on sbl -bf; corpus gate_cases_snobol4 a_deferred_cset_argument_that_evaluates_to_null_or_a_pattern_raises_spitbols_error__f
+(deftest a-patterns-own-argument-error-is-fatal-in-a-match
+  (let [[out] (run-sno "        S = ''\n        'abc' ? SPAN(*S)\n        OUTPUT = 'after'\nEND\n")]
+    (is (re-find #"\(2\) : ERROR 056 -- span evaluated argument is not a string" out))
+    (is (not (re-find #"(?m)^after$" out))))
+  (is (= "n\n" (first (run-sno "        S2 = 'x'\n        'abc' ? *(1 + S2)  :S(Y)F(N)\nY       OUTPUT = 'y'  :(END)\nN       OUTPUT = 'n'\nEND\n")))))

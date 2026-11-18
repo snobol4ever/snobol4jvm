@@ -560,7 +560,11 @@
          (catch clojure.lang.ExceptionInfo e
            (let [{n :snobol/error abort :snobol/abort :as data} (ex-data e)]
              ;; an error a failure point inside the match has already taken (operators.clj error-decided) goes on to it
-             (if (and n (not abort) (zero? (long @SNOBOL4clojure.env/&ERRLIMIT)) (not (contains? data :snobol/to)) (not (contains? data :snobol/label)))
+             ;; a pattern's own check of what its deferred argument evaluated to, 043 to 058, is fatal as anywhere else (MEASURED on sbl -bf at &ERRLIMIT 0: 'abc5' ?
+             ;; SPAN(*S) with S null ends at ERROR 056, ANY(*P) of a pattern 043, LEN(*S), POS(*S) and TAB(*S) of 'x' 047, 050 and 057, *T of a table 046, where
+             ;; *(1 + S) and *F() fail the match; corpus gate_cases_snobol4 a_deferred_cset_argument_that_evaluates_to_null_or_a_pattern_raises_spitbols_error__f)
+             (if (and n (not abort) (zero? (long @SNOBOL4clojure.env/&ERRLIMIT)) (not (contains? data :snobol/to)) (not (contains? data :snobol/label))
+                      (not (<= 43 (long n) 58)))
                (do (reset! SNOBOL4clojure.env/&ERRTYPE n)
                    (fire-keyword! "ERRTYPE" n)
                    (reset! SNOBOL4clojure.env/&ERRTEXT (ex-message e))
