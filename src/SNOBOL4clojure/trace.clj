@@ -171,12 +171,20 @@
 ;; SPITBOL sets &TRACE alone to zero: the trace function is a function called like any other, so &FTRACE traces its call and return and is charged for them, and
 ;; is not given back (MEASURED on sbl -bf: &TRACE = 100, &FTRACE = 50 and a VALUE trace calling CB writes "****6*******  CB(.X,'tg')", CB reads &TRACE 0 and
 ;; &FTRACE 49, its RETURN line follows, and the statement after reads 99 and 48; corpus gate_cases_snobol4 a_trace_callback_is_ftraced_like_any_called_function)
+;; and &TRACE is given back when the function returns, never when an error ends the run inside it (MEASURED on sbl -bf: the statement limit reached inside an
+;; STCOUNT trace function dumps &TRACE = 0; corpus spitbol_88 DEMOS/GOTOS)
 (defn- call-trace-fn! [f item-name entry]
   (swap! &TRACE dec)
   (let [tr @&TRACE]
     (reset! &TRACE 0)
-    (try (f (NAME. (symbol (str item-name))) (:label entry))
-         (finally (reset! &TRACE tr)))))
+    (let [r (f (NAME. (symbol (str item-name))) (:label entry))]
+      (reset! &TRACE tr)
+      ;; and SPITBOL does not give &LINE back after a trace function, as it does after a plain call: &LINE reads 2, wherever the function stands, while &STNO is
+      ;; the traced statement's again and &LASTNO and &LASTLINE the trace function's last (MEASURED on sbl -bf: a trace function of one statement on line 2, of
+      ;; two on lines 7 and 8, and of three on 9 to 11 each leave &LINE 2 in the statement traced, &LASTLINE 2, 8 and 11; HYPOTHESIS: the 2 is the count of the
+      ;; two arguments every trace function is given; corpus spitbol_88 DEMOS/GOTOS, whose dump reads &LASTLINE = 2 after its last trace)
+      (reset! SNOBOL4clojure.env/&LINE 2)
+      r)))
 
 ;; ── Fire helpers — called from runtime / operators / functions ────────────────
 
@@ -290,6 +298,9 @@
 ;; ── &TRACE as a simple on/off toggle (convenience, non-standard extension) ────
 ;; Setting &TRACE = 1 with no registrations enables a default statement trace.
 ;; Setting &TRACE = 0 suppresses all output even if registrations exist.
+
+;; True while an STCOUNT trace is armed, whatever &TRACE holds (sbl.min stgcc: "jump if not stcount tracing" reads the trace block alone)
+(defn stcount-traced? [] (boolean (@registry (reg-key "STCOUNT" :keyword))))
 
 (defn statement-trace-active?
   "True if &TRACE > 0 AND a global statement trace (name \"*\" type \"LABEL\")

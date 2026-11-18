@@ -342,3 +342,18 @@
     (is (re-find #"(?m)^N = 5$" out))
     (is (re-find #"(?m)^&STCOUNT = 20$" out))
     (is (re-find #"(?m)^&STLIMIT = 30$" out))))
+
+;; After a trace function SPITBOL gives &STNO back and not &LINE, which reads 2, and &TRACE is given back only when the function returns: an error that ends the
+;; run inside it leaves &TRACE 0. MEASURED on sbl -bf: a three-statement trace function on lines 9 to 11 leaves &LASTLINE 11, &LASTNO 9, &LINE 2 and &STNO 13 in
+;; the statement traced; corpus spitbol_88 DEMOS/GOTOS, whose dump reads &LASTLINE = 2 and &TRACE = 0.
+(deftest a-trace-function-leaves-line-two-and-keeps-trace-zero-at-an-error
+  (is (= "ll 11 9 2 13\nl2 11 9 2 15\n"
+         (first (run-sno (str "        X = 1\n        Y = 1\n        Z = 1\n        W = 1\n        V = 1\n        DEFINE('TF()')                     :(TFE)\n"
+                              "*       a comment\n*       a comment\nTF      M = M + 1\n        M = M + 1\n        M = M + 1                          :(RETURN)\n"
+                              "TFE     TRACE('STCOUNT', 'KEYWORD', , 'TF')\n        &TRACE = 1000\n        A = 1\n"
+                              "        OUTPUT = 'll ' &LASTLINE ' ' &LASTNO ' ' &LINE ' ' &STNO\n        B = 1\n"
+                              "        OUTPUT = 'l2 ' &LASTLINE ' ' &LASTNO ' ' &LINE ' ' &STNO\nEND\n")))))
+  (let [[out] (run-sno (str "        DEFINE('TF()')                     :(TFE)\nTF      N = N + 1\n        M = M + 1                          :(RETURN)\n"
+                            "TFE     TRACE('STCOUNT', 'KEYWORD', , 'TF')\n        &TRACE = 1000\n        &DUMP = 1\n        &STLIMIT = 20\n"
+                            "L       I = I + 1                          :(L)\nEND\n"))]
+    (is (re-find #"(?m)^&TRACE = 0$" out))))
