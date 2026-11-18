@@ -190,7 +190,9 @@
         (case action
           :proceed
           (let [[Σ Δ _ _ Π] ζ
-                [σ δ]        (LIT$ Σ Δ (if (string? Π) Π (sstr Π)))]
+                ;; a node (LIT$ "text"), the pattern CONVERT makes of a string, matches its text (MEASURED on sbl -bf: 'xxQRyy' CONVERT('QR','PATTERN') . M sets
+                ;; M to QR; corpus gate_cases_snobol4 convert_of_a_matched_substring_is_that_substring__conv, where the node matched the text of the list)
+                [σ δ]        (LIT$ Σ Δ (cond (string? Π) Π (seq? Π) (str (second Π)) :else (sstr Π)))]
             (if (>= δ 0)
               (recur :succeed (ζ↑ ζ σ δ) Ω)
               (recur :fail    (ζ↑ ζ Σ Δ) Ω))))

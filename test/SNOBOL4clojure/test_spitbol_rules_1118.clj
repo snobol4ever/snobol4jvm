@@ -139,3 +139,10 @@
               "\tOUTPUT = B[0] '|' PROTOTYPE(B) '|'\n\tC = ARRAY('1.5,2', 7)\n\tOUTPUT = C[1,2] '|' PROTOTYPE(C)\n\tE = ARRAY(2.9)\n\tOUTPUT = PROTOTYPE(E) ' ' PROT"
               "OTYPE(ARRAY('1e1')) ' ' PROTOTYPE(ARRAY(' 3'))\n\t&ERRLIMIT = 20\n\tX = ARRAY('x')\n\tOUTPUT = &ERRTYPE\n\tX = ARRAY('a:2')\n\tOUTPUT = &ERRTYPE\n"
               "\tX = ARRAY(LEN(1))\n\tOUTPUT = &ERRTYPE\n\tX = ARRAY('3:1')\n\tOUTPUT = &ERRTYPE\n\tX = ARRAY('2,')\n\tOUTPUT = &ERRTYPE\nEND\n"))))))
+
+;; A string converted to a PATTERN matches its text and stays a PATTERN when assigned. MEASURED on sbl -bf; corpus gate_cases_snobol4
+;; convert_of_a_matched_substring_is_that_substring__conv
+(deftest convert-to-pattern-matches-the-strings-text
+  (is (= "PATTERN\n[QR]\n[QR]\n"
+         (first (run-sno (str "        P = CONVERT('QR', 'PATTERN')\n        OUTPUT = DATATYPE(P)\n        'xxQRyy' P . M\n        OUTPUT = '[' M ']'\n        'QRST' LEN(2) . C6\n"
+              "        'xxQRyy' CONVERT(C6, 'PATTERN') . M2\n        OUTPUT = '[' M2 ']'\nEND\n"))))))

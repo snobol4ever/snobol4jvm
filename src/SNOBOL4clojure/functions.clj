@@ -175,7 +175,7 @@
       (string->real x)
 
       (and (clojure.core/= from "STRING") (clojure.core/= to "PATTERN"))
-      ;; A string converts to a literal LIT$ pattern node
+      ;; A string converts to a literal LIT$ pattern node, a PATTERN that an assignment keeps as one (primitives.clj LIT$ matches its text)
       (list 'SEQ (list 'LIT$ (str x)))
 
       (and (clojure.core/= from "STRING") (clojure.core/= to "NAME"))
