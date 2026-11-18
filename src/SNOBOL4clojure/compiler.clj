@@ -170,9 +170,11 @@
                                 (when (.exists f) f)))
                             search-path)]
             (cond
-              ;; File not found — keep the directive as a comment so the compiler sees a harmless *-line
+              ;; a file that cannot be opened leaves its card where it stands, which CODE! reads as "285 include file cannot be opened" (MEASURED on sbl -bf:
+              ;; -INCLUDE 'nosuch.inc' is "(1,10) : ERROR 285 -- include file cannot be opened", the column the quote's, and nothing runs; corpus rosetta-snobol4
+              ;; call-a-function-in-a-shared-library and include-a-file, which this engine ran on)
               (nil? found)
-              (recur (rest lines) (conj out (str "* -INCLUDE not found: " fname)) seen cards)
+              (recur (rest lines) (conj out line) seen cards)
               ;; "SPITBOL remembers only the 'trimmed' names of files included so far, so the comparison with the blank-padded name will fail, and the file will be
               ;; included again" (manual ch. 14, -INCLUDE): the name as written is looked up among the trimmed names
               (seen fname)
@@ -388,7 +390,12 @@
            (cond
              (= command :blank) (recur (rest stmts) NO CODES NOS LABELS (inc blanks) before fold poss pos)
              (comment? command) (recur (rest stmts) NO CODES NOS LABELS blanks before fold poss pos)
-             (control? command) (recur (rest stmts) NO CODES NOS LABELS blanks before (do (case-card fold command) fold) poss
+             (control? command) (recur (rest stmts) NO CODES NOS LABELS blanks before
+                                       (do (case-card fold command)
+                                           ;; an -INCLUDE card the preprocessor left standing names a file it could not open (preprocess-includes*)
+                                           (when-let [q (and (re-find #"^-INCLUDE\s+['\"]" command) (re-find #"['\"]" command))]
+                                             (swap! <DIAGNOSTICS> conj [pline 285 (inc (long (string/index-of command q))) NO]))
+                                           fold) poss
                                        (position-card fold command pline pos))
              :else
              (let [stmt   (cond-> command (not record?) (string/replace #"\r" "") fold fold-case)

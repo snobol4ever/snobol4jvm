@@ -2702,6 +2702,19 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; An -INCLUDE whose file cannot be opened is ERROR 285 at the quote, and nothing runs (manual Appendix D, 285). MEASURED on sbl -bf: "-INCLUDE 'nosuch.inc'"
+;; then OUTPUT = 'ran' is "(1,10) : ERROR 285 -- include file cannot be opened", rc 231. snobol4jvm made the card a comment and ran (corpus rosetta-snobol4
+;; call-a-function-in-a-shared-library, include-a-file).
+(deftest an-include-file-that-cannot-be-opened-is-285
+  (let [f (java.io.File/createTempFile "inc" ".sno")]
+    (try
+      (spit f "-INCLUDE 'nosuch.inc'\n        OUTPUT = 'ran'\nEND\n")
+      (let [o (java.io.StringWriter.) rc (binding [*out* o *err* (java.io.StringWriter.)] (-main (.getPath f)))]
+        (is (= 231 rc))
+        (is (re-find #"\(1,10\) : ERROR 285 -- include file cannot be opened" (str o)))
+        (is (not (re-find #"(?m)^ran$" (str o)))))
+      (finally (.delete f)))))
+
 ;; A direct goto is :<C> or :[C] (manual ch. 9, Direct Gotos; sbl -bf takes the brackets as the angles). MEASURED on sbl -bf: C = CODE(' OUTPUT = "in code"
 ;; :(BACK)') then :[C] prints "in code" and goes on at BACK; :S[C] and :F[C]S(L) compile. snobol4jvm refused the brackets, 234 goto field incorrect (corpus
 ;; exercism_snobol4, whose test harnesses go :[compiled]).

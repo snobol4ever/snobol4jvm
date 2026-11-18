@@ -32,13 +32,13 @@
             "Expanded source should not contain raw -INCLUDE directive"))
       (finally (.delete inc) (.delete dir)))))
 
+;; A missing include file leaves its card standing, which CODE! reads as ERROR 285 (MEASURED on sbl -bf: -INCLUDE 'nosuch.inc' is "(1,10) : ERROR 285 --
+;; include file cannot be opened" and nothing runs; the engine had made it a comment and run on).
 (deftest include_preprocess_not_found
-  "preprocess-includes converts missing -INCLUDE to a comment, no exception"
+  "preprocess-includes leaves a missing -INCLUDE card standing, no exception"
   (let [expanded (preprocess-includes "-INCLUDE 'does_not_exist.inc'\nEND\n" ["/nonexistent"])]
-    (is (.contains expanded "* -INCLUDE not found")
-        "Missing include should become a comment")
-    (is (.contains expanded "does_not_exist.inc")
-        "Comment should name the missing file")))
+    (is (.contains expanded "-INCLUDE 'does_not_exist.inc'")
+        "The card stands for CODE! to read as 285")))
 
 ;; snobol4jvm never folds case (Lon 2026-11-17 18:2x CST, in the JVM window, verbatim: "We WILL NEVER support case-folding. We will always have upper-case
 ;; built-in keywords and functions."): a control card is upper case, so -include is no card and includes nothing, as sbl -bf reads it (MEASURED).
