@@ -1,7 +1,7 @@
 (ns SNOBOL4clojure.core-test
   (:require [clojure.test :refer :all]
             [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
-            [SNOBOL4clojure.test-helpers :refer [prog prog-timeout]]))
+            [SNOBOL4clojure.test-helpers :refer [prog prog-timeout run-with-timeout]]))
 
 ;; Point the SNOBOL runtime at this namespace so that $$ resolves vars.
 (GLOBALS *ns*)
@@ -2696,6 +2696,16 @@
 
 ;; Binary $ and . associate to the left (SPITBOL manual ch. 15, Binary operators: $ left 12, . left 12): P $ X $ Y is (P $ X) $ Y and assigns what P matched to X and
 ;; to Y. The grammar built P $ (X $ Y), whose capture target is no variable, and raised ERROR 235 (aisnobol KALAH's REM $ OUTPUT $ SHADOW). The oracle, sbl -bf, wrote
+;; A null first argument is HOST(), whatever follows it, and never HOST(0). MEASURED on sbl -bf: HOST(''), HOST('',), HOST('','') and HOST('','x') each answer
+;; the identity; with Y unset, BITS = HOST(Y) is that string and EQ(BITS,64) ends ERROR 101 (corpus csnobol4_suite float2, its BITS = HOST(HOST_REAL_BITS)).
+(deftest a-null-first-argument-of-host-is-host-of-no-argument
+  (let [id (str (SNOBOL4clojure.functions/HOST))]
+    (doseq [args [[""] ["" ""] ["" "x"]]]
+      (is (= id (str (apply SNOBOL4clojure.functions/HOST args))) (pr-str args))))
+  (let [r (run-with-timeout "	BITS = HOST(Y)\n	EQ(BITS,64)\n	OUTPUT = 'ran on'\nEND\n" 2000)]
+    (is (= :error (:exit r)))
+    (is (= "eq first argument is not numeric" (:thrown r)))))
+
 ;; exactly this output.
 (deftest binary-dollar-and-dot-associate-to-the-left
   (let [f (java.io.File/createTempFile "gen" ".sno")]

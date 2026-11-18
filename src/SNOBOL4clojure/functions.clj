@@ -761,6 +761,11 @@
 (defn HOST
   ([] (str "jvm:" (System/getProperty "os.name") ":SNOBOL4clojure 0.2.0"))
   ([i & more]
+   ;; A null first argument is HOST() whatever follows it, never HOST(0), though the null string converts to 0 elsewhere (MEASURED on sbl -bf: HOST(''), HOST('',),
+   ;; HOST('','') and HOST('','x') each answer the identity, "x86-64:unix :Macro SPITBOL 15.01 #"; HOST(Y), Y unset, the same, so csnobol4_suite float2's
+   ;; BITS = HOST(HOST_REAL_BITS) is that string and EQ(BITS,64) ends ERROR 101, where this engine answered HOST(0), the null string, and EQ failed quietly)
+   (if (or (nil? i) (clojure.core/= "" i))
+     (HOST)
    (let [n   (SNOBOL4clojure.env/num i)
          bad #(throw (ex-info "erroneous argument for host" {:snobol/error 254}))]
      ;; As sbl -bf (x64) answers them: HOST(1, cmd) runs cmd in the shell, its output going where the program's goes, and returns the shell's wait status (an
@@ -799,7 +804,7 @@
              6 8
              7 (frames)
              (bad))))
-       :else (bad)))))
+       :else (bad))))))
 ;; SETEXIT(label) arms the label (a string or a NAME) as the error handler and returns the handler it replaces, as a NAME, or the null string when there was none.
 ;; The null string, or no argument, disarms. Anything else names a natural variable whose label is defined, else "187 setexit argument is not label name or null"
 ;; (sbl.min s_stx, gtnvr): a string folds as &CASE says at that moment (sbl -bf, under -f: with &CASE 1 SETEXIT('lab1') looks for LAB1), the name of a
