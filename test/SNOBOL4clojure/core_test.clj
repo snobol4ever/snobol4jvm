@@ -2702,6 +2702,14 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; ENDFILE(unit) closes the file on unit; a null argument is ERROR 097 and a unit nothing holds open ERROR 098 (manual ch. 19, ENDFILE; Appendix D). MEASURED on
+;; sbl -bf: ENDFILE() is 097, ENDFILE(7) never opened and a second ENDFILE(3) are 098. snobol4jvm ran on (corpus rosetta-snobol4 create-a-file).
+(deftest endfile-of-a-null-or-closed-unit-is-97-or-98
+  (doseq [[stmt msg] [["	ENDFILE()" "endfile argument is null"] ["	ENDFILE(57)" "endfile file does not exist"]]]
+    (let [r (run-with-timeout (str stmt "\n	OUTPUT = 'ran on'\nEND\n") 2000)]
+      (is (= :error (:exit r)) stmt)
+      (is (= msg (:thrown r)) stmt))))
+
 ;; An = with nothing after it assigns the null string, the last of a chain of assignments too (manual ch. 7, Assignment). MEASURED on sbl -bf: A = 'x',
 ;; C = 'y', then A = B = C = prints []STRING[]. snobol4jvm's grammar wanted an operand after every = inside an expression, 220 (corpus rosetta-snobol4 iban).
 (deftest a-chain-of-assignments-may-end-in-a-null-one

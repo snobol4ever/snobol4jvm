@@ -661,7 +661,13 @@
                 (open-input-channel! (channel-variable name-arg) unit filename))
     OUTPUT    (let [[name-arg unit filename] args]
                 (open-output-channel! (channel-variable name-arg) unit filename))
-    ENDFILE   (close-channel! (channel-key (first args)))
+    ;; ENDFILE(unit) closes the file on unit (manual ch. 19, ENDFILE): a null argument is "097 endfile argument is null", a unit no INPUT or OUTPUT holds open
+    ;; "098 endfile file does not exist" (MEASURED on sbl -bf: ENDFILE(), ENDFILE(7) never opened, and a second ENDFILE(3) after one closed it; corpus
+    ;; rosetta-snobol4 create-a-file, whose ENDFILE(1) follows an OUTPUT that could not open /output.txt, where this engine ran on)
+    ENDFILE   (let [u (first args)]
+                (cond (or (nil? u) (clojure.core/= "" u))           (throw (ex-info (SNOBOL4clojure.env/error-message 97) {:snobol/error 97}))
+                      (nil? (get @<CHANNELS> (channel-key u)))       (throw (ex-info (SNOBOL4clojure.env/error-message 98) {:snobol/error 98}))
+                      :else                                          (close-channel! (channel-key u))))
     DETACH    (let [v (first args)
                     sym (cond
                           (symbol? v) v
