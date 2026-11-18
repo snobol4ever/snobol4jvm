@@ -122,7 +122,8 @@
       (stop? c) i
       :else
       ;; q counts the binary ?s at this level and pre the operands before the first: a statement's ? binds loosest, so what stands before it is the subject
-      (loop [[j kind] (operand s i) n 1 q 0 pre 0]
+      ;; st is where the operand just read begins
+      (loop [[j kind] (operand s i) n 1 q 0 pre 0 st i]
         (let [c (at s j)]
           ;; right after an operand comes a blank, the end, a closer, a comma or a colon: another operand there lacks its operator, and an operator there lacks
           ;; the blank a binary operator needs
@@ -130,7 +131,10 @@
             (and (#{\) \] \> \,} c) (:top ctx))                       (stray! c j)
             (stop? c)                                                   j
             (or (letter? c) (digit? c) (#{\' \" \(} c))                (fail! 220 j)
-            (operator-char? c)                                          (fail! 233 j)
+            ;; an operator touching the operand before it is 233 there, a + or - at that operand's start (MEASURED on sbl -bf: Y = X+1 and Y = X-a are 233 at
+            ;; X, 13; Y = X*1 at the *, 14; Y = A<X+1> and F(X,X+1) at the X; corpus slobol_tests test/arith "junk = junk-adsfsd", 233 at column 9, and jmu_cs430
+            ;; snobol4p/test5 "anArray[i+1]" at 29, where this engine named the operator)
+            (operator-char? c)                                          (fail! 233 (if (#{\+ \-} c) st j))
             (not (blank? c))                                            (fail! 230 j)
             :else
             (let [k (skip-blanks s j)
@@ -158,9 +162,9 @@
                       (or (nil? (at s m)) (#{\) \] \> \, \: \;} (at s m)))      (fail! 221 m)
                       ;; a goto's target is a name: an expression of more than one element is "212 value used where name is required"
                       (:goto ctx)                                                 (fail! 212 m)
-                      :else                                                       (recur (operand s m) (inc n) (if (= d \?) (inc q) q) (if (and (= d \?) (zero? q)) n pre)))))
+                      :else                                                       (recur (operand s m) (inc n) (if (= d \?) (inc q) q) (if (and (= d \?) (zero? q)) n pre) m))))
                 (:goto ctx) (fail! 212 k)
-                :else (recur (operand s k) (inc n) q pre)))))))))
+                :else (recur (operand s k) (inc n) q pre k)))))))))
 
 ;; The goto field after the colon: S(label), F(label), (label) or the same with < >, each at most once (sbl -bf: 218 duplicated, 219 empty, 227 and 228 unclosed,
 ;; 234 anything else).

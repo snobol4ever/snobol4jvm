@@ -267,6 +267,13 @@
   (is (not (re-find #"dump of" (first (run-sno "        &DUMP = 0\n        X = 1\nEND\n" ["-D1"])))))
   (is (not (re-find #"dump of" (first (run-sno "        X = 1\nEND\n"))))))
 
+;; An operator touching the operand before it is 233 there, a + or - at that operand's start. MEASURED on sbl -bf: Y = X+1 at 13, Y = X*1 at 14, Y = A<X+1> at 15;
+;; corpus slobol_tests test/arith and jmu_cs430 snobol4p/test5.
+(deftest a-touching-plus-or-minus-is-233-at-its-operands-start
+  (let [errs (fn [src] (vec (re-seq #"\(\d+(?:,\d+)?\) : ERROR \d+" (first (run-sno src)))))]
+    (is (= ["(1,13) : ERROR 233"] (errs "        Y = X+1\nEND\n")))
+    (is (= ["(1,14) : ERROR 233"] (errs "        Y = X*1\nEND\n")))
+    (is (= ["(1,15) : ERROR 233"] (errs "        Y = A<X+1>\nEND\n")))))
 
 ;; A carriage return is a character of its line, never a line end: in a statement it is 230, after a goto 230, a line of NULs and a CR 214, a literal keeps it,
 ;; and END followed by one is no END. MEASURED on sbl -bf; corpus snolib g360 and spitbol_88 DEMOS/TREESORT, CR LF files sbl refuses.
