@@ -29,7 +29,8 @@
   eos       ::=  '\\n' | ';'
   eol       ::=  '\\n'
  <expr>     ::=  <__> asn <__>
-  asn       ::=  mch | mch  <_  '='  _>  asn
+  asn       ::=  mch | mch  <_  '='  _>  asn | mch <_> nulasn
+  nulasn    ::=  <'='>
   mch       ::=  and | mch  <_  '?'  _>  and (<_ '=' _> and)?
   and       ::=  alt | and  <_  '&'  _>  alt
   alt       ::=  cat | cat (<_  '|'  _>  cat)+

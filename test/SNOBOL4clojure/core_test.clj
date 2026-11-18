@@ -2702,6 +2702,11 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; An = with nothing after it assigns the null string, the last of a chain of assignments too (manual ch. 7, Assignment). MEASURED on sbl -bf: A = 'x',
+;; C = 'y', then A = B = C = prints []STRING[]. snobol4jvm's grammar wanted an operand after every = inside an expression, 220 (corpus rosetta-snobol4 iban).
+(deftest a-chain-of-assignments-may-end-in-a-null-one
+  (is (= "[]STRING[]\n" (:stdout (run-with-timeout "        A = 'x'\n        C = 'y'\n        A = B = C =\n        OUTPUT = '[' A ']' DATATYPE(A) '[' C ']'\nEND\n" 2000)))))
+
 ;; A goto needs no blank before its colon (manual ch. 9, the goto field). MEASURED on sbl -bf: "        X = 1:(L)" goes to L, and "        DEFINE('nl()'):(nlx)"
 ;; compiles. snobol4jvm's grammar wanted a blank there, "220 syntax error: missing operator" (corpus rosetta-snobol4 short-circuit-evaluation, iban).
 (deftest a-goto-needs-no-blank-before-its-colon

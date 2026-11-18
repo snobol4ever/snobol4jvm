@@ -49,6 +49,9 @@
      :sjmp      (fn [L]      [:S L])
      :fjmp      (fn [L]      [:F L])
      :expr      (fn [x]      x)
+     ;; an = with nothing after it assigns the null string, the last of a chain too (MEASURED on sbl -bf: A = B = C = leaves A, B and C null, STRING;
+     ;; corpus rosetta-snobol4 iban's country = checkdigits = line2 =, which this engine refused as 220)
+     :nulasn    (fn []       "")
      :asn       (fn
                   ([x]       x)
                   ;; (S ? P) = R is S ? P = R, a match with a replacement: the grammar reads it this way inside parentheses
