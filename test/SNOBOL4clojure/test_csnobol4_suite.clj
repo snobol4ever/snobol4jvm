@@ -3314,6 +3314,17 @@ abcdefghijklmnopqrstuvwxyz
 0123456789
 " (:stdout r)))))
 
+;; A built-in keyword is upper case: snobol4jvm never folds case (Lon 2026-11-17 18:2x CST, in the JVM window, verbatim: "We WILL NEVER support case-folding.
+;; We will always have upper-case built-in keywords and functions."). MEASURED on sbl -bf the same: &trim = 1 and X = &trim each end "ERROR 251 -- keyword
+;; operand is not name of defined keyword"; &TRIM = 1 is a keyword assignment. &DIGITS, CSNOBOL4's keyword, stays (snobol4jvm is SNOBOL4++, Lon the same hour).
+(deftest a-keyword-in-lower-case-is-error-251
+  (doseq [stmt ["	&trim = 1" "	X = &trim"]]
+    (let [r (run-with-timeout (str stmt "\n	OUTPUT = 'ran on'\nEND\n") 2000)]
+      (is (= :error (:exit r)) stmt)
+      (is (= "keyword operand is not name of defined keyword" (:thrown r)) stmt)))
+  (is (= "1\n" (:stdout (run-with-timeout "	&TRIM = 1\n	OUTPUT = &TRIM\nEND\n" 2000))))
+  (is (= "0123456789\n" (:stdout (run-with-timeout "	OUTPUT = &DIGITS\nEND\n" 2000)))))
+
 (deftest csnobol4-dump
   "Budne suite: dump.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [out (run-files [["dump.sno" "	a = 1

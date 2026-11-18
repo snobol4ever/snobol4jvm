@@ -374,12 +374,21 @@
         (and (instance? NAME x) (symbol? (.n ^NAME x))) (name (.n ^NAME x))
         :else (throw (ex-info (error-message n) {:snobol/error n}))))
 
+;; A keyword's name is upper case, as every built-in name is: snobol4jvm never folds case (Lon 2026-11-17 18:2x CST, in the JVM window, verbatim: "We WILL NEVER
+;; support case-folding. We will always have upper-case built-in keywords and functions."). MEASURED on sbl -bf the same: &trim = 1 and X = &trim each end
+;; "ERROR 251 -- keyword operand is not name of defined keyword"; this engine upper-cased the name of an assignment and took &trim = 1 as &TRIM = 1.
+;; Every &K def of this file is a keyword, SPITBOL's and the extensions snobol4jvm keeps (&DIGITS, CSNOBOL4's; &IOCOMPAT, its own).
+(defn keyword-var
+  "The var of keyword &K (K a string or symbol, spelled as the program spells it), or nil when there is no such keyword."
+  [k]
+  (ns-resolve (the-ns 'SNOBOL4clojure.env) (symbol (str "&" (name k)))))
+
 ;; &K = V, with SPITBOL's errors: an unknown keyword is 251, a value that is not
 ;; an integer is 208, a protected keyword is 209. Assigning &ERRTYPE raises the
 ;; error it names.
 (defn assign-keyword! [k v]
-  (let [kw (clojure.string/upper-case (name k))
-        vr (ns-resolve (the-ns 'SNOBOL4clojure.env) (symbol (str "&" kw)))]
+  (let [kw (name k)
+        vr (keyword-var kw)]
     (when-not vr
       (throw (ex-info "keyword operand is not name of defined keyword" {:snobol/error 251})))
     ;; &ERRTEXT is the one keyword that takes a string (manual ch. 14, Replacement field; ch. 16): what is assigned is kept as a string
