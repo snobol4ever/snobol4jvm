@@ -202,9 +202,15 @@
    then the current one. INPUT reads stdin."
   [& args]
   (let [argv          (into [(System/getProperty "java.class.path")] args)
-        [engine args] (if (clojure.core/= "--engine" (first args)) [(second args) (nnext args)] ["interp" args])
-        ;; -u STR before the file is HOST(0)'s text; the arguments after the file are the program's own, which HOST(0) joins when there is no -u
-        [u args]      (if (clojure.core/= "-u" (first args)) [(second args) (nnext args)] [nil args])
+        ;; before the file: --engine X, -u STR (HOST(0)'s text) and sbl's own switches (-b, -f, -bf, -dNk, -sNk and their kin), which stand in the command line
+        ;; HOST(2, n) reads, as they stand in sbl's, so HOST(2, n) and HOST(3) answer as sbl -bf answers for one command line (MEASURED: sbl -bf -d131072k
+        ;; -s4096k ha.sno x y answers HOST(2,1) -bf ... HOST(2,4) ha.sno and HOST(3) 5; corpus strange_code_book classify reads HOST(2,2) to HOST(2,5), where
+        ;; this engine's command line held the file at 1); the arguments after the file are the program's own, which HOST(0) joins when there is no -u
+        [engine u args] (loop [engine "interp" u nil as args]
+                          (cond (clojure.core/= "--engine" (first as))                               (recur (second as) u (nnext as))
+                                (clojure.core/= "-u" (first as))                                     (recur engine (second as) (nnext as))
+                                (and (first as) (re-matches #"-(?:[bfnelsx]+|[dsimt]\d+[kmgKMG]?)" (first as))) (recur engine u (next as))
+                                :else                                                                [engine u as]))
         [file & prog-args] args]
     (when (or (nil? file) (not (#{"interp" "vm"} engine)))
       (binding [*out* *err*]

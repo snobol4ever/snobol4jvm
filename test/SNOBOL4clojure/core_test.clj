@@ -2702,6 +2702,16 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; sbl's switches before the program stand in the command line HOST(2, n) reads, as in sbl's (manual ch. 19, HOST). MEASURED on sbl -bf: "sbl -bf -d131072k
+;; -s4096k ha.sno x y" answers HOST(2,1) -bf, HOST(2,2) -d131072k, HOST(2,3) -s4096k, HOST(2,4) ha.sno, HOST(2,5) x and HOST(3) 5. snobol4jvm took no
+;; such switch, so a program reading HOST(2,2) read its first argument (corpus strange_code_book classify).
+(deftest sbl-switches-stand-in-the-command-line-host-reads
+  (let [f (java.io.File/createTempFile "hostargs" ".sno")]
+    (try
+      (spit f "        OUTPUT = HOST(2,1) ' ' HOST(2,2) ' ' HOST(2,3) ' ' HOST(2,5) ' ' HOST(3)\nEND\n")
+      (is (= "-bf -d131072k -s4096k x 5\n" (with-out-str (-main "-bf" "-d131072k" "-s4096k" (.getPath f) "x" "y"))))
+      (finally (.delete f)))))
+
 ;; A first line that begins #! is passed over, a statement of its own that does nothing; a #! line after the first is an error (MEASURED on sbl -bf: a program
 ;; whose first line is "#! /usr/local/bin/snobol4 -b" runs, its line 5 statement 5; corpus tkslide_examples take_note, which snobol4jvm refused with 214).
 (deftest a-first-line-that-begins-hash-bang-is-passed-over
