@@ -34,6 +34,24 @@
             [SNOBOL4clojure.emitter  :refer [emitter]]))
 
 ;; -- Source tokenizer ---------------------------------------------------------
+;; The names a statement's text holds, as SPITBOL's scanner interns them: every name outside a literal (a variable, a function, a label, a goto's target, the name
+;; of a keyword after its &), a number never one (1.5E3 holds no E3), nor a goto's S or F; and a label's first character, which SPITBOL's label scan interns as a
+;; name of its own (MEASURED on sbl -bf, &DUMP = 3: labels foo, bar.baz, QUX and zed list f, b, Q and z beside them, and END lists E). &DUMP = 3 lists them
+;; (env/<NAMES>).
+(defn- source-names [^String s]
+  (let [n (count s) name-char? (fn [c] (or (Character/isLetterOrDigit (char c)) (= c \_) (= c \.)))]
+    (loop [i 0 goto? false out (transient (if (and (pos? n) (Character/isLetterOrDigit (.charAt s 0))) [(subs s 0 1)] []))]
+      (if (>= i n)
+        (persistent! out)
+        (let [c (.charAt s i)]
+          (cond
+            (or (= c \') (= c \")) (let [k (.indexOf s (str c) (int (inc i)))] (recur (if (neg? k) n (inc k)) goto? out))
+            (= c \:)                (recur (inc i) true out)
+            (Character/isDigit c)   (recur (loop [j (inc i)] (if (and (< j n) (name-char? (.charAt s j))) (recur (inc j)) j)) goto? out)
+            (Character/isLetter c)  (let [j (loop [j (inc i)] (if (and (< j n) (name-char? (.charAt s j))) (recur (inc j)) j))
+                                          t (subs s i j)]
+                                      (recur j goto? (if (and goto? (#{"S" "F"} t) (< j n) (#{\( \<} (.charAt s j))) out (conj! out t))))
+            :else                   (recur (inc i) goto? out)))))))
 (defn- comment? [cmd] (re-find #"^\*" cmd))
 (defn- control? [cmd] (re-find #"^\-" cmd))
 ;; A -CASE card sets whether the statements after it are compiled with lower case names folded to upper case: -CASE N folds when N is not 0, -CASE alone or -CASE 0 does not.
@@ -412,6 +430,7 @@
                                        (position-card fold command pline pos))
              :else
              (let [stmt   (cond-> command (not record?) (string/replace #"\r" "") fold fold-case)
+                   _      (SNOBOL4clojure.env/note-names! (source-names stmt))
                    ;; the END statement's operand is its entry label: nothing, or a label the program defines; anything else is "215 syntax error: undefined or
                    ;; erroneous entry label" at the operand, and the END stands (manual ch. 14, The END Statement; MEASURED on sbl -bf: "END     NOPE",
                    ;; "END     :(NOWHERE)" and "END     X = (" are 215 at column 9, where this engine ran the first two and read the third as 226 with no END;

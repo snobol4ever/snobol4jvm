@@ -514,6 +514,8 @@
                                 result)))))]   ; fall-through = return
                 ;; The function lives in <FUNS>, not in the variable of its name: a function and a variable are two things (sbl -bf).
                 (swap! <FUNS>  assoc fname the-fn)
+                ;; the function's name, its parameters and its locals are names the program has made, which &DUMP = 3 lists (env/<NAMES>)
+                (SNOBOL4clojure.env/note-names! (concat [fname] params locals))
                 (swap! <FDEFS> assoc fname
                                {:params params :locals locals})
                 ε))

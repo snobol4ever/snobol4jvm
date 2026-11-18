@@ -29,10 +29,18 @@
     (symbol? (:defer-var (meta v))) (str "*" (:defer-var (meta v)))   ; *NAME for a variable, EXPRESSION for anything larger
     :else (env/DATATYPE v)))
 
-(defn- variables []
+(defn- variables [lvl]
   (let [vars (cond-> (merge (into {} (for [s @env/<PRIMS-READ>] [s (deref (ns-resolve (the-ns 'SNOBOL4clojure.core) s))])) @<VARS>)
                true (merge @env/<ASSOC-LAST>))]   ; an associated variable holds the last record read or written through it
-    (sort-by (comp name key) (remove (fn [[_ v]] (or (nil? v) (clojure.core/= "" v) (fn? v))) vars))))
+    (if (>= (long lvl) 3)
+      ;; &DUMP = 3 "adds statement labels and all null-valued variables" (manual ch. 7): every name the program spoke, null ones as '' (MEASURED on sbl -bf: corpus
+      ;; setl4_spitbol sbl-sonnets, &DUMP = 3, lists ANCHOR = '', BREAK = '', END = '', RETURN = '', a DEFINE's locals and a DATA's fields, where this engine
+      ;; listed the non-null ones alone)
+      (sort-by (comp name key)
+               ;; INPUT, OUTPUT and TERMINAL are SPITBOL's own, there in every program (MEASURED: "        &DUMP = 3" / "        X = 1" / "END" lists them)
+               (for [[k v] (merge (into {} (for [n (into @env/<NAMES> ["INPUT" "OUTPUT" "TERMINAL"])] [(symbol n) ""])) vars)]
+                 (clojure.lang.MapEntry/create k (if (or (nil? v) (fn? v)) "" v))))
+      (sort-by (comp name key) (remove (fn [[_ v]] (or (nil? v) (clojure.core/= "" v) (fn? v))) vars)))))
 
 (def ^:private keyword-order
   '[ANCHOR CASE CODE DUMP ERRLIMIT ERRTEXT ERRTYPE FILE FNCLEVEL FTRACE FULLSCAN INPUT LASTFILE LASTLINE LASTNO LINE MAXLNGTH OUTPUT PROFILE RTNTYPE STCOUNT STLIMIT STNO TRACE TRIM])
@@ -92,7 +100,7 @@
 (defn dump-text
   "The text of a dump at level lvl (1 or more): after the last line, SPITBOL writes its newline and three blank lines."
   [lvl]
-  (let [vars (variables)
+  (let [vars (variables lvl)
         sec  (fn [header lines] (concat ["" "" header ""] lines))]
     (str (string/join "\n"
            (concat [""]

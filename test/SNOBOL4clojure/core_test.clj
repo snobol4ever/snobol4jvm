@@ -2702,6 +2702,21 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; &DUMP = 3 "adds statement labels and all null-valued variables" (manual ch. 7, &DUMP): every name the program spoke, a DEFINE's and a DATA's included, each
+;; label's first character too, and INPUT, OUTPUT and TERMINAL; a goto's S and F are no names. MEASURED on sbl -bf, this program's dump; snobol4jvm listed X
+;; alone (corpus setl4_spitbol examples/sonnets/sbl-sonnets and concord).
+(deftest dump-3-lists-every-name-the-program-spoke
+  (let [f (java.io.File/createTempFile "dump3" ".sno")]
+    (try
+      (spit f "        &DUMP = 3\n        DEFINE('F(A)L')\n        DATA('pt(xx,yy)')\nfoo\nzed     X = 2  :S(END)F(foo)\nEND\n")
+      (let [out  (binding [*err* (java.io.StringWriter.)] (with-out-str (-main (.getPath f))))
+            sect (->> (clojure.string/split-lines out) (drop-while #(not= "dump of natural variables" %)) rest (take-while #(not= "dump of keyword values" %))
+                      (remove clojure.string/blank?))]
+        (is (clojure.core/= ["A = ''" "DATA = ''" "DEFINE = ''" "DUMP = ''" "E = ''" "END = ''" "F = ''" "INPUT = ''" "L = ''" "OUTPUT = ''" "TERMINAL = ''"
+                             "X = 2" "f = ''" "foo = ''" "pt = ''" "xx = ''" "yy = ''" "z = ''" "zed = ''"]
+                            (vec sect))))
+      (finally (.delete f)))))
+
 ;; A source with a compile error and no END exits 1, as one with no END does, the no-END line on standard error after the error's page (manual ch. 14; MEASURED
 ;; on sbl -bf: "        X = (" then "        OUTPUT = 'x'" exits 1, its stderr ending "No END statement found in source file(s)."). snobol4jvm answered 231
 ;; (corpus setl4_spitbol examples/roman, three syntax errors and no END).

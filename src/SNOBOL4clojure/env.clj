@@ -104,6 +104,11 @@
 (def <CODELINE> (atom ["" 0]))   ; [file line] of the last line the compiler read, the program's END: each CODE text is the next line
 (def <OBJNO> (atom 0))   ; how many arrays, tables and DATA objects the program has made: the number a dump gives each, #n
 (defn next-serial! [] (swap! <OBJNO> inc))
+;; The names the program has spoken: every name its statements' text holds (a variable, a function, a label, a goto's target, a keyword's name) and each name a
+;; DEFINE or a DATA prototype makes, as SPITBOL keeps a variable block for each; &DUMP = 3 lists them all, the null ones too (manual ch. 7, &DUMP: "&DUMP = 3 adds
+;; statement labels and all null-valued variables")
+(def <NAMES> (atom #{}))
+(defn note-names! [names] (when (seq names) (swap! <NAMES> into names)))
 (def <PRIMS-READ> (atom #{}))   ; the primitive pattern variables (BAL, ARB, ...) the program has read, which a dump lists as SPITBOL lists them
 (def <DIAGNOSTICS> (atom []))   ; the compile-time errors of the last source compiled, as [line code] pairs
 (def <SOURCE> (atom nil))   ; the last source compiled, its -INCLUDEs spliced in, as {:text t :stmts its [text line] statements :cards the -INCLUDE lines}, for the listing
@@ -339,6 +344,7 @@
    (reset! <ARGV>     [])
    (reset! <ARGI>     0)
    (reset! <PRIMS-READ> #{})
+   (reset! <NAMES> #{})
    (reset! &RTNTYPE   ε)
    (reset! &ERRTYPE   0)
    (reset! &ERRTEXT   ε)

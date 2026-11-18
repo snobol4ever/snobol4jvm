@@ -431,6 +431,8 @@
 
 (defn DATA [S]
   (when-let [form (DATA! S)]
+    ;; the type's name and its fields are names the program has made, which &DUMP = 3 lists (env/<NAMES>)
+    (when-let [[t fs] (parse-data-spec S)] (env/note-names! (cons t fs)))
     (eval form)
     ε))
 
