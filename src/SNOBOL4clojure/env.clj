@@ -457,6 +457,19 @@
         (reset! stdin-cache [in r])
         r))))
 
+;; The keyboard TERMINAL reads (manual ch. 6): /dev/tty, opened once, ISO-8859-1 as main.clj reads a program's streams; nil where no terminal can be opened,
+;; so a read of TERMINAL fails there as it does on sbl -bf. The failure to open is remembered, so a loop over TERMINAL tries the device once. *terminal-device*
+;; names the device, so a test can name one that does not exist and never waits on the keyboard of whoever runs it.
+(def ^:dynamic *terminal-device* "/dev/tty")
+(defonce ^:private terminal-cache (atom nil))   ; [device reader-or-nil]
+(defn terminal-reader ^java.io.BufferedReader []
+  (let [dev *terminal-device* [k r] @terminal-cache]
+    (if (clojure.core/= k dev)
+      r
+      (let [r (try (java.io.BufferedReader. (java.io.InputStreamReader. (java.io.FileInputStream. ^String dev) "ISO-8859-1")) (catch Exception _ nil))]
+        (reset! terminal-cache [dev r])
+        r))))
+
 ;; An input record as the program reads it: at most 1024 characters, a longer line losing the rest of its length (it is not read as the next record), and
 ;; while &TRIM is not 0 the blanks and tabs at its end dropped.
 (def ^:private record-length 1024)
@@ -543,6 +556,15 @@
               v    (when-not (nil? line) (input-record line))]
           (when (some? v) (swap! <ASSOC-LAST> assoc 'INPUT v))
           v))   ; nil = EOF = statement fails, as SPITBOL does
+
+      ;; TERMINAL reads the keyboard, never standard input ("TERMINAL always refers to the same things—the keyboard for input and the screen for output", manual
+      ;; ch. 6): a line of /dev/tty, and a statement that reads it fails where there is no terminal. MEASURED on sbl -bf with no terminal: X = TERMINAL fails with
+      ;; stdin a pipe holding a line and with stdin /dev/null alike, so dotnet palin and temp end at once; this engine read the null string and looped for ever.
+      (clojure.core/= sym 'TERMINAL)
+      (let [line (try (.readLine (terminal-reader)) (catch Exception _ nil))
+            v    (when-not (nil? line) (input-record line))]
+        (when (some? v) (swap! <ASSOC-LAST> assoc 'TERMINAL v))
+        v)
 
       ;; An output-associated variable, OUTPUT among them, reads the value last assigned to it ("the string assigned to the output variable is written", manual
       ;; ch. 19, INPUT/OUTPUT), as sbl -bf has it; the value is the one <ASSOC-LAST> keeps for the dump. OUTPUT is not set as a variable, which would hide the function.

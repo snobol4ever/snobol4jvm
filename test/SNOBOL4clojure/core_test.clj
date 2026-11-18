@@ -236,6 +236,22 @@
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
 
+;; TERMINAL reads the keyboard, never standard input ("TERMINAL always refers to the same things—the keyboard for input and the screen for output", manual
+;; ch. 6), and a read of it fails where there is no terminal. MEASURED on sbl -bf with no terminal: the program below prints "failed" with a line waiting on
+;; stdin and with stdin /dev/null alike; snobol4jvm read the null string, so packages/snobol4/dotnet palin and code looped for ever and temp wrote 256 MB.
+(deftest a-read-of-terminal-fails-where-there-is-no-terminal-and-never-reads-stdin
+  (let [f (java.io.File/createTempFile "term" ".sno")]
+    (try
+      (spit f (str "        X = TERMINAL :F(NO)\n"
+                   "        OUTPUT = 'got [' X ']' :(END)\n"
+                   "NO      OUTPUT = 'failed'\n"
+                   "END\n"))
+      (is (= "failed\n"
+             (binding [*in* (java.io.BufferedReader. (java.io.StringReader. "hello\n"))
+                       SNOBOL4clojure.env/*terminal-device* "/nonexistent/terminal"]
+               (with-out-str (-main (.getPath f))))))
+      (finally (.delete f)))))
+
 ;; A file specification the engine cannot open is an error, never a failure and
 ;; never a file: ERROR 116 for INPUT, ERROR 160 for OUTPUT. A pipe spec
 ;; ("|cat >x") was opened by FileWriter as a file literally named "|cat >x",
