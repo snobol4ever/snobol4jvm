@@ -289,3 +289,10 @@
 ;; V['VAR']; corpus snolib ROUTING.tst.
 (deftest an-element-of-an-expression-container-takes-a-capture
   (is (= "xyz\n" (first (run-sno "        V = TABLE()\n        VARS_ = .V\n        S = 'VAR'\n        'xyz' REM . ($VARS_)[S]  :F(N)\n        OUTPUT = V['VAR']  :(END)\nN       OUTPUT = 'FAIL'\nEND\n")))))
+
+;; A pattern that defers to itself before it reads a character recurses without end: "246 stack overflow". MEASURED on sbl -bf: P = *P 'Z' | 'Y' then 'Y' P . OUTPUT
+;; ends at ERROR 246 on that line; corpus snobol_playground ch2/recursive and recursive1.
+(deftest a-left-recursive-pattern-overflows-the-stack
+  (let [[out] (run-sno "      P = *P 'Z' | 'Y'\n      'Y' P . OUTPUT\n      OUTPUT = 'after'\nEND\n")]
+    (is (re-find #"\(2\) : ERROR 246 -- stack overflow" out))
+    (is (not (re-find #"(?m)^after$" out)))))

@@ -538,7 +538,11 @@
                 ;; a value with no text is "046 expression does not evaluate to pattern" (MEASURED on sbl -bf: 'ab' ? *T of a table; corpus gate_cases_snobol4
                 ;; an_array_or_table_as_a_pattern_operand_raises_the_operand_errors_of_spitbol_in_both_modes__a, where this engine's matcher crashed)
                 _     (when (or (SNOBOL4clojure.env/array? P) (SNOBOL4clojure.env/table? P) (instance? SNOBOL4clojure.env.DataObj P))
-                        (throw (ex-info (SNOBOL4clojure.env/error-message 46) {:snobol/error 46})))]
+                        (throw (ex-info (SNOBOL4clojure.env/error-message 46) {:snobol/error 46})))
+                ;; a pattern that defers to itself before it reads a character recurses without end, and SPITBOL's stack runs out: "246 stack overflow" (MEASURED
+                ;; on sbl -bf: P = *P 'Z' | 'Y' then 'Y' P . OUTPUT ends at ERROR 246 on that line; corpus snobol_playground ch2/recursive and recursive1, where this
+                ;; engine's frame stack grew until the JVM was killed). The bound is the descent's depth, far past any pattern that reads as it nests
+                _     (when (> (count (nth ζ 6)) 200000) (throw (ex-info (SNOBOL4clojure.env/error-message 246) {:snobol/error 246 :snobol/abort true})))]
             (if (nil? P)
               (let [[Σ Δ] ζ] (recur :fail (ζ↑ ζ Σ Δ) Ω))
               (recur :proceed (ζ↓ ζ P) (🡥 Ω ζ))))
