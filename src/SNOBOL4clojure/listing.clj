@@ -88,7 +88,7 @@
         starts (statement-numbers stmts)
         errs   (group-by first @env/<DIAGNOSTICS>)
         fold   false   ; snobol4jvm never folds case, so a card is upper case whatever &CASE holds (Lon 2026-11-17 18:2x CST, in the JVM window)
-        card   (fn [^String l nm] (re-find (re-pattern (str (when fold "(?i)") "^-" nm "(?:\\s|$)")) l))
+        card   (fn [^String l nm] (re-find (re-pattern (str (when fold "(?i)") "^-" nm "(?:\\s|,|$)")) l))
         st     (atom {:page 0 :on-page 0 :title "" :subtitle nil :pending false :on false :print true :double false})]
     ;; cards: the -INCLUDE lines as written, one for each -FILE-ENTER card the splice put in their place
     (loop [i 1 ls lines depth 0 places [] file (str file) fline 0 cards cards]
@@ -109,23 +109,30 @@
               (recur (inc i) (rest ls) (inc depth) (conj places [file (inc fline)]) nm 0 (rest cards)))
             :else
             (let [fline (inc fline)]
-              (cond
-                (and ctl (card l "LIST"))    (do (swap! st assoc :on true) (shown l))
-                (and ctl (card l "NOLIST"))  (swap! st assoc :on false)
-                (and ctl (card l "PRINT"))   (do (swap! st assoc :print true) (shown l))
-                (and ctl (card l "NOPRINT")) (swap! st assoc :print false)
-                (and ctl (card l "SINGLE"))  (do (swap! st assoc :double false) (shown l))
-                (and ctl (card l "DOUBLE"))  (do (swap! st assoc :double true) (shown l))
-                (and ctl (card l "TITLE"))   (do (swap! st assoc :title (string/trim (subs l 6)) :subtitle "" :pending true) (shown l))
-                (and ctl (card l "STITL"))   (do (swap! st assoc :subtitle (string/trim (subs l 6)) :pending true) (shown l))
-                (and ctl (card l "EJECT"))   (do (when (:on @st) (when-not (open! st) (new-page! st))) (shown l))
-                (and ctl (card l "SPACE"))   (do (when (and (:on @st) (not (open! st)))
-                                                   (let [k (if-let [[_ d] (re-find #"^-\S+\s+(\d+)" l)] (Long/parseLong d) 1)]
-                                                     (if (< (+ (long (:on-page @st)) k) page-lines)
-                                                       (do (print (apply str (repeat k \newline))) (swap! st update :on-page + k))
-                                                       (new-page! st))))
-                                                 (shown l))
-                :else                        (shown l))
+              ;; a card may be followed by a comma and another card, each taking effect, and the line is listed once (MEASURED on sbl -bf: "-LIST,-EJECT" turns
+              ;; the listing on and is listed whole; -TITLE and -STITL take the rest of their line, so "-TITLE x,-LIST" titles the page "x,-LIST"; corpus
+              ;; gate_cases_snobol4 test_gate_snobol4_list_listing_matches_sbl__p_chain, which this engine did not list)
+              (if ctl
+                (let [segs (if (or (card l "TITLE") (card l "STITL")) [l] (map #(if (string/starts-with? % "-") % (str "-" %)) (string/split l #",-")))]
+                  (doseq [c segs]
+                    (cond
+                      (card c "LIST")    (swap! st assoc :on true)
+                      (card c "NOLIST")  (swap! st assoc :on false)
+                      (card c "PRINT")   (swap! st assoc :print true)
+                      (card c "NOPRINT") (swap! st assoc :print false)
+                      (card c "SINGLE")  (swap! st assoc :double false)
+                      (card c "DOUBLE")  (swap! st assoc :double true)
+                      (card c "TITLE")   (swap! st assoc :title (string/trim (subs c 6)) :subtitle "" :pending true)
+                      (card c "STITL")   (swap! st assoc :subtitle (string/trim (subs c 6)) :pending true)
+                      (card c "EJECT")   (when (:on @st) (when-not (open! st) (new-page! st)))
+                      (card c "SPACE")   (when (and (:on @st) (not (open! st)))
+                                           (let [k (if-let [[_ d] (re-find #"^-\S+\s+(\d+)" c)] (Long/parseLong d) 1)]
+                                             (if (< (+ (long (:on-page @st)) k) page-lines)
+                                               (do (print (apply str (repeat k \newline))) (swap! st update :on-page + k))
+                                               (new-page! st))))
+                      :else              nil))
+                  (shown l))
+                (shown l))
               ;; a syntax error names its column too, and a line under the statement marks it with a ! (sbl -bf: "t.sno(2,6) : ERROR 232 -- ...", the marker
               ;; keeping the tabs of the line before the column, a blank for any other character)
               ;; a line with several errors is listed once, before the first, and a later error has an empty line in its place, on both streams (MEASURED on sbl -bf:

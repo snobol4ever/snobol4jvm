@@ -224,3 +224,12 @@
     (is (re-find #"\(2\) : ERROR 242 -- function return from level zero" out))
     (is (not (re-find #"(?m)^C$" out))))
   (is (= "B\nh 242\n" (first (run-sno "        &ERRLIMIT = 10\n        SETEXIT('H')\n        OUTPUT = 'B'  :(RETURN)\n        OUTPUT = 'C'  :(END)\nH       OUTPUT = 'h ' &ERRTYPE\nEND\n")))))
+
+;; A control card may be followed by a comma and another card, each taking effect, the line listed once; -TITLE takes the rest of its line (manual ch. 14).
+;; MEASURED on sbl -bf; corpus gate_cases_snobol4 test_gate_snobol4_list_listing_matches_sbl__p_chain
+(deftest control-cards-chain-with-commas
+  (let [[out] (run-sno "-LIST,-EJECT\n A = 1\n-TITLE x,-LIST\n\tB = 2\n OUTPUT = A + B\nEND\n")
+        ls (clojure.string/split-lines out)]
+    (is (some #(= "        -LIST,-EJECT" %) ls))
+    (is (some #(re-matches #"x,-LIST +page 2" %) ls))
+    (is (some #(= "        -TITLE x,-LIST" %) ls))))
