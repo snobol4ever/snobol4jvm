@@ -169,15 +169,18 @@
             ;; a direct goto is :<C> or :[C] (MEASURED on sbl -bf: :[C], :S[C] and :F[C]S(L) compile and run as :<C> does; corpus exercism_snobol4's test
             ;; harnesses go :[compiled], where this engine said 234)
             (when-not (#{\( \< \[} o) (fail! 234 j))
-            (when (or (seen kind) (and (= kind :G) (seq seen)) (seen :G)) (fail! 218 j))
-            (let [closer (case o \( \) \< \> \[ \])
+            ;; a duplicated element is 218 at its closer, once it is scanned (MEASURED on sbl -bf: "X = 1 :S(L)S(L)" is 218 at column 23, ":S(LL)S(LLL)" at 26,
+            ;; ":(L)S(L)" at 22, ":S<L>S<L>" at 23, where this engine said 21, 22, 20 and 21, the opener; corpus tests/snobol4 compile_diag__p11c)
+            (let [dup?   (or (seen kind) (and (= kind :G) (seq seen)) (seen :G))
+                  closer (case o \( \) \< \> \[ \])
                   k      (skip-blanks s (inc j))
-                  _      (when (= (at s k) closer) (fail! 212 k))
+                  _      (when (= (at s k) closer) (fail! (if dup? 218 212) k))   ; an empty duplicate is 218 too (sbl -bf: :S(L)S() at 22)
                   k      (try (expression s k {:closer closer :goto true})
                               (catch clojure.lang.ExceptionInfo e
                                 (if (and (= 226 (::error (ex-data e))) (= closer \))) (fail! 227 (::at (ex-data e))) (throw e))))]
               (cond
                 (= (at s k) closer) (let [n (inc k) d (at s n)]
+                                      (when dup? (fail! 218 k))
                                       (when-not (or (nil? d) (blank? d) (#{\S \s \F \f \( \<} d)) (fail! 234 n))
                                       (recur n (conj seen kind)))
                 ;; a colon or a semicolon ends the scan inside the goto too (sbl -bf: :(L:X) and :S(L :F(L)) are 227, :<L :> 228)

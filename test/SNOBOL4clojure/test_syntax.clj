@@ -222,3 +222,10 @@
     (SNOBOL4clojure.env/GLOBALS)
     (SNOBOL4clojure.compiler/CODE src)
     (is (clojure.core/= want (vec (take 3 (first @SNOBOL4clojure.env/<DIAGNOSTICS>)))) src)))
+
+;; A duplicated goto element is 218 at its closer, once it is scanned (manual Appendix D 218). MEASURED on sbl -bf: "X = 1 :S(L)S(L)" at column 23,
+;; ":S(LL)S(LLL)" at 26, ":(L)S(L)" at 22, ":S<L>S<L>" at 23, ":S(L)S()" at 22; snobol4jvm said the opener, 21 and so on (corpus tests/snobol4 compile_diag__p11c).
+(deftest a-duplicated-goto-is-218-at-its-closer
+  (doseq [[src col] [["        X = 1 :S(L)S(L)" 23] ["        X = 1 :S(LL)S(LLL)" 26] ["        X = 1 :(L)S(L)" 22] ["        X = 1 :S<L>S<L>" 23]
+                     ["        X = 1 :S(L)S()" 22] ["        X = 1 :S(L)F(L)S(L)" 27]]]
+    (is (clojure.core/= {:error 218 :column col} (syntax-error src)) src)))
