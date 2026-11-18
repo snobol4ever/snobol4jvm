@@ -357,3 +357,10 @@
                             "TFE     TRACE('STCOUNT', 'KEYWORD', , 'TF')\n        &TRACE = 1000\n        &DUMP = 1\n        &STLIMIT = 20\n"
                             "L       I = I + 1                          :(L)\nEND\n"))]
     (is (re-find #"(?m)^&TRACE = 0$" out))))
+
+;; The empty line standing for a later error's listed line is no line of the page. MEASURED on sbl -bf: fourteen lines of "X = ) ; Y = (", two errors each, put
+;; the page 2 header on the listing's 78th line; corpus gate_cases_snobol4 test_gate_s4e_donewhen_runs_the_whole_criterion__w.
+(deftest a-later-errors-empty-line-is-no-line-of-the-page
+  (let [[out] (run-sno (str (apply str (repeat 14 "        X = ) ; Y = (\n")) "END\n"))
+        ls (clojure.string/split-lines out)]
+    (is (= [8 77] (keep-indexed (fn [i l] (when (re-find #"page [0-9]+$" l) i)) ls)))))

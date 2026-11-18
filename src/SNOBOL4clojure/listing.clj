@@ -150,7 +150,9 @@
                              (format "%s(%d,%d) : ERROR %03d -- %s" file fline col code (env/error-message code))
                              (format "%s(%d) : ERROR %03d -- %s" file fline code (env/error-message code)))]
                   (when (and (zero? (long k)) (not (:on @st))) (list-line! st stmt))
-                  (when (pos? (long k)) (write! "") (swap! st update :on-page inc))
+                  ;; the empty line standing for a later error's listed line is no line of the page (MEASURED on sbl -bf: corpus gate_cases_snobol4
+                  ;; test_gate_s4e_donewhen_runs_the_whole_criterion__w, whose page 3 holds two such lines and breaks one statement later than a count of them would)
+                  (when (pos? (long k)) (write! ""))
                   (doseq [x [mark msg ""]] (write! x))
                   (swap! st update :on-page + 3)
                   (binding [*out* *err*] (doseq [x [(if (zero? (long k)) stmt "") mark msg ""]] (write! x)))))
