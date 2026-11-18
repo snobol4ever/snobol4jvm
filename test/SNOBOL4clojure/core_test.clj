@@ -1604,7 +1604,10 @@
 ;; A -CASE N card (N not 0) folds the lower case names of the statements after it to upper case, and -CASE alone or -CASE 0 stops folding. The card's own name follows the mode: while
 ;; folding is off only -CASE is a card (-case is ignored), while it is on any case is. The card leaves &CASE alone. The engine ignored every control card, so a lower case OUTPUT
 ;; after -CASE 1 was a variable of its own (Budne's case1). The oracle, sbl -bf, wrote exactly this output.
-(deftest a-case-card-folds-the-names-after-it
+;; snobol4jvm never folds case (Lon 2026-11-17 18:2x CST, in the JVM window, verbatim: "We WILL NEVER support case-folding. We will always have upper-case built-in
+;; keywords and functions."): -CASE N is read as a card and folds nothing, a lower case name stays a name of its
+;; own, and &CASE stays 0. sbl -bf folds after -CASE 1 (its answer a1 A2 A3 a4 a6 a8 0 A9 b1 last); the corpus entries that turn on it are declared in EXCLUDED.jvm.tsv.
+(deftest a-case-card-folds-nothing
   (let [f (java.io.File/createTempFile "gen" ".sno")]
     (try
       (spit f (str "        OUTPUT = .a1\n"
@@ -1627,13 +1630,16 @@
                    "        output = .b2\n"
                    "        OUTPUT = 'last'\n"
                    "END\n"))
-      (is (= "a1\nA2\nA3\na4\na6\na8\n0\nA9\nb1\nlast\n"
+      (is (= "a1\na2\na4\na6\na8\n0\nb1\nlast\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
 
 ;; &CASE is a keyword, 0 when a program starts under sbl -bf, and while it is not 0 EVAL and CODE fold the lower case names of their text to upper case. The engine raised ERROR 251
 ;; on &CASE = 0 (Budne's case1). The oracle, sbl -bf, wrote exactly this output.
-(deftest case-keyword-folds-the-names-eval-and-code-read
+;; snobol4jvm never folds case (Lon 2026-11-17 18:2x CST, in the JVM window, verbatim: "We WILL NEVER support case-folding. We will always have upper-case built-in
+;; keywords and functions."): &CASE is a keyword a program may set, and EVAL and CODE read their text as written whatever
+;; it holds. sbl -bf folds while it is not 0 (its answer 0 lower 1 UPPER UPPER ABC lower abc done).
+(deftest case-keyword-folds-nothing-eval-and-code-read
   (let [f (java.io.File/createTempFile "gen" ".sno")]
     (try
       (spit f (str "        OUTPUT = &CASE\n"
@@ -1650,7 +1656,7 @@
                    "        :<C>\n"
                    "BACK2   OUTPUT = 'done'\n"
                    "END\n"))
-      (is (= "0\nlower\n1 UPPER UPPER\nABC\nlower\nabc\ndone\n"
+      (is (= "0\nlower\n1 lower UPPER\nabc\nlower\nabc\ndone\n"
              (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
 
@@ -5800,6 +5806,9 @@
 ;; SETEXIT's argument names a natural variable whose label is defined, else "187 setexit argument is not label name or null" (sbl.min s_stx, gtnvr): a string
 ;; folds as &CASE says at that moment, the name of a variable does not, and a pattern or the name of an element is no variable. The engine armed any argument.
 ;; Expected output is sbl -bf's.
+;; snobol4jvm never folds case (Lon 2026-11-17 18:2x CST, in the JVM window, verbatim: "We WILL NEVER support case-folding. We will always have upper-case built-in
+;; keywords and functions."): a SETEXIT string is the label as written whatever &CASE holds, so with &CASE 1
+;; SETEXIT('lab1') arms the label lab1, where sbl -bf folds it to LAB1 and answers 187 (its 4 F 187, 5 []).
 (deftest setexit-takes-a-defined-label
   (let [f (java.io.File/createTempFile "gen" ".sno")]
     (try
@@ -5830,7 +5839,7 @@
                    "        OUTPUT = '11 F ' &ERRTYPE                       :(END)\n"
                    "lab1    OUTPUT = 'handler'\n"
                    "END\n"))
-      (is (= "1 F 187\n2 F 187\n3 F 187\n4 F 187\n5 []\n6 [lab1]\n7 []\n8 [lab1]\n9 []\n10 [CONTINUE]\n11 F 187\n" (with-out-str (-main (.getPath f)))))
+      (is (= "1 F 187\n2 F 187\n3 F 187\n4 S\n5 [lab1]\n6 [lab1]\n7 []\n8 [lab1]\n9 []\n10 [CONTINUE]\n11 F 187\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
 
 ;; An expression where a name is wanted is evaluated by name (sbl.min o_lex, evalx by name, s_evl): .*E is .X for a variable, else a pseudo-variable read as

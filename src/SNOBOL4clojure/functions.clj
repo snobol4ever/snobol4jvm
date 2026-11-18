@@ -824,7 +824,8 @@
   ([label]
    (let [prev @env/<SETEXIT>
          s    (env/gtstg label 187)
-         s    (if (and (string? label) (not (zero? (long @env/&CASE)))) (env/fold-case s) s)]
+         ;; the label as written: snobol4jvm never folds case, whatever &CASE holds (Lon 2026-11-17 18:2x CST, in the JVM window)
+         s    s]
      (when-not (or (clojure.core/= "" s) (system-labels s) (@env/<STNO> (keyword s)))
        (throw (ex-info (env/error-message 187) {:snobol/error 187})))
      (reset! env/<SETEXIT> (when-not (clojure.core/= "" s) (keyword s)))

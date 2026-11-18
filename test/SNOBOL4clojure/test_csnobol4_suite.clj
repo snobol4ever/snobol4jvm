@@ -2345,7 +2345,8 @@ this is a test
 " (:stdout r)))))
 
 (deftest csnobol4-case1
-  "Budne suite: case1.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
+  "Budne suite: case1.sno, with snobol4jvm's answer: it never folds case (Lon 2026-11-17 18:2x CST), so a lower case output is a variable of its own and
+   -CASE 1 folds nothing; sbl -bf's answer (two three four FIVE SIX seven yes!) is declared for this engine (corpus csnobol4_suite EXCLUDED.jvm.tsv)"
   (let [r (run-with-timeout "* test case (in)sensitivity
 * 5/25/94 -plb
 
@@ -2388,8 +2389,7 @@ END
     (is (same-output? "two
 three
 four
-FIVE
-SIX
+six
 seven
 yes!
 " (:stdout r)))))

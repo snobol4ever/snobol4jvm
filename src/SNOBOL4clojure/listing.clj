@@ -84,7 +84,7 @@
         lines  (string/split-lines (str text))
         starts (statement-numbers stmts)
         errs   (group-by first @env/<DIAGNOSTICS>)
-        fold   (not (zero? (long @env/&CASE)))
+        fold   false   ; snobol4jvm never folds case, so a card is upper case whatever &CASE holds (Lon 2026-11-17 18:2x CST, in the JVM window)
         card   (fn [^String l nm] (re-find (re-pattern (str (when fold "(?i)") "^-" nm "(?:\\s|$)")) l))
         st     (atom {:page 0 :on-page 0 :title "" :subtitle nil :pending false :on false :print true :double false})]
     ;; cards: the -INCLUDE lines as written, one for each -FILE-ENTER card the splice put in their place

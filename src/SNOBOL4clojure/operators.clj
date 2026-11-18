@@ -1153,7 +1153,8 @@
 (defn- compile-expression
   ([s] (compile-expression s nil))
   ([^String s early]
-   (let [p (parse-expression (if (zero? (long @&CASE)) s (fold-case s)))]
+   ;; the text as written: snobol4jvm never folds case, whatever &CASE holds (Lon 2026-11-17 18:2x CST, in the JVM win ...)
+   (let [p (parse-expression s)]
      (cond
        ;; the null string, or blanks, is the null expression (sbl -bf: EVAL('') and EVAL('   ') are the null string, CONVERT('', 'EXPRESSION') an EXPRESSION)
        (re-matches #"[ \t]*" s) ""

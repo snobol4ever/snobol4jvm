@@ -356,7 +356,9 @@
          raw-stmts (split-source expanded record?)
          _         (reset! <DIAGNOSTICS> (:diagnostics (meta raw-stmts)))
          _         (reset! <SOURCE> {:text expanded :stmts raw-stmts :cards cards})]
-     (loop [stmts raw-stmts NO 1 CODES {} NOS {} LABELS {} blanks 0 before [] fold (not (zero? (long @&CASE)))
+     ;; snobol4jvm never folds case (Lon 2026-11-17 18:2x CST, in the JVM window, verbatim: "We WILL NEVER support case-folding. We will always have upper-case built-in keywords and functions."): fold stays false, so a -CASE card is read as a card and folds nothing, and a name is
+     ;; compiled as the program spells it whatever &CASE holds (sbl -bf folds after -CASE 1; such an entry is declared for this engine in EXCLUDED.jvm.tsv)
+     (loop [stmts raw-stmts NO 1 CODES {} NOS {} LABELS {} blanks 0 before [] fold false
             poss [] pos {:file (str file) :bp 1 :bl 1 :stack []}]
        (if (empty? stmts)
          [CODES NOS LABELS {:before before :total blanks :pos poss}]
@@ -364,7 +366,7 @@
            (cond
              (= command :blank) (recur (rest stmts) NO CODES NOS LABELS (inc blanks) before fold poss pos)
              (comment? command) (recur (rest stmts) NO CODES NOS LABELS blanks before fold poss pos)
-             (control? command) (recur (rest stmts) NO CODES NOS LABELS blanks before (let [f (case-card fold command)] (if (nil? f) fold f)) poss
+             (control? command) (recur (rest stmts) NO CODES NOS LABELS blanks before (do (case-card fold command) fold) poss
                                        (position-card fold command pline pos))
              :else
              (let [stmt   (cond-> command (not record?) (string/replace #"\r" "") fold fold-case)
