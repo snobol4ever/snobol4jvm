@@ -2702,6 +2702,16 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; SNOBOL4++ (Lon 2026-11-17 18:1x CST): OPSYN may redefine any operator, the ones SPITBOL defines among them, as CSNOBOL4 lets it; sbl -bf answers 156.
+;; MEASURED on CSNOBOL4 -b: after OPSYN('+','ADD',2), 1 + 2 calls ADD; OPSYN('^','ADD',2) redefines ** and ^; OPSYN('-','NEG',1) makes -3 call NEG, and so for
+;; unary * and ?. corpus vanilla diff and cbrooker_snobol diff, which begin OPSYN("+","ADD",2), now print what CSNOBOL4 prints.
+(deftest opsyn-may-redefine-any-operator
+  (is (= "add(1,2) add(1,2) add(1,2)\nneg(3) neg(3) neg(3)\n"
+         (:stdout (run-with-timeout (str "        DEFINE('ADD(U,V)')  :(AE)\nADD     ADD = 'add(' U ',' V ')'  :(RETURN)\n"
+                                         "AE      DEFINE('NEG(U)')  :(NE)\nNEG     NEG = 'neg(' U ')'  :(RETURN)\n"
+                                         "NE      OPSYN('+','ADD',2)\n        OPSYN('^','ADD',2)\n        OUTPUT = (1 + 2) ' ' (1 ** 2) ' ' (1 ^ 2)\n"
+                                         "        OPSYN('-','NEG',1)\n        OPSYN('*','NEG',1)\n        OPSYN('?','NEG',1)\n        OUTPUT = -3 ' ' *3 ' ' ?3\nEND\n") 3000)))))
+
 ;; sbl's switches before the program stand in the command line HOST(2, n) reads, as in sbl's (manual ch. 19, HOST). MEASURED on sbl -bf: "sbl -bf -d131072k
 ;; -s4096k ha.sno x y" answers HOST(2,1) -bf, HOST(2,2) -d131072k, HOST(2,3) -s4096k, HOST(2,4) ha.sno, HOST(2,5) x and HOST(3) 5. snobol4jvm took no
 ;; such switch, so a program reading HOST(2,2) read its first argument (corpus strange_code_book classify).
@@ -5410,9 +5420,11 @@
         run (fn [a] (spit f (str "        &ERRLIMIT = 1\n        OPSYN(" a ")   :S(Y)\n        OUTPUT = &ERRTYPE   :(END)\nY       OUTPUT = 'ok'\nEND\n"))
               (with-out-str (-main (.getPath f))))]
     (try
-      (doseq [[a want] [["'SIZE', 'TRIM', 0" "248"] ["'STRLEN', 'SIZE', 1" "156"] ["'+', 'SIZE', 2" "156"] ["'&', 'SIZE', 1" "156"]
+      ;; an operator synonym may take any operator's name or any name (SNOBOL4++, Lon 2026-11-17 18:1x CST; MEASURED on CSNOBOL4 -b: OPSYN('STRLEN','SIZE',1),
+      ;; OPSYN('+','SIZE',2) and OPSYN('&','SIZE',1) take), where sbl -bf answers 156: the four rows that read 156 read ok
+      (doseq [[a want] [["'SIZE', 'TRIM', 0" "248"] ["'STRLEN', 'SIZE', 1" "ok"] ["'+', 'SIZE', 2" "ok"] ["'&', 'SIZE', 1" "ok"]
                         ["'&', 'DIFFER', 2" "ok"] ["'!', 'SIZE', 1" "ok"] ["'@', 'SIZE', 3" "ok"] ["'~', 'SIZE', 'zz'" "152"] ["'~', 'SIZE', -1" "153"]
-                        ["'~', 'SIZE', 16777216" "ok"] ["'~', 'SIZE', 16777217" "153"] ["'#', 'SIZE', 2.7" "ok"] ["'FOO', 'SIZE', 3" "156"]
+                        ["'~', 'SIZE', 16777216" "ok"] ["'~', 'SIZE', 16777217" "153"] ["'#', 'SIZE', 2.7" "ok"] ["'FOO', 'SIZE', 3" "ok"]
                         ["'FOO', 'NOSUCH'" "ok"] ["'', 'SIZE'" "155"] ["'FOO', ''" "154"]]]
         (is (= (str want "\n") (run a)) a))
       (finally (.delete f)))))

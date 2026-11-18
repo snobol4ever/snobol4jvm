@@ -56,8 +56,8 @@ END
 
 ;; ── Binary operator synonym (n=2) ─────────────────────────────────────────────
 (deftest t-opsyn-binary-plus-as-concat
-  "OPSYN('+','SADD',2): + is an operator SPITBOL uses, which OPSYN may not redefine: 156 opsyn first arg is not correct operator name (sbl -bf; only the
-   unused binary operators & @ # % ~ are OPSYN's to define, manual ch. 15)."
+  "OPSYN('+','SADD',2) redefines +: SNOBOL4++ (Lon 2026-11-17 18:1x CST), as CSNOBOL4 has it (MEASURED on CSNOBOL4 -b: hello world). sbl -bf answers 156,
+   opsyn first arg is not correct operator name (manual ch. 15: only the unused binary operators & @ # % ~ are OPSYN's to define in SPITBOL)."
   (let [r (run-with-timeout
              "        DEFINE('SADD(A,B)')
         OPSYN('+','SADD',2)
@@ -67,8 +67,8 @@ END
 SADD    SADD = A B :(RETURN)
 END
 " 2000)]
-    (is (= :error (:exit r)))
-    (is (= "OPSYN first arg is not correct operator name" (:thrown r)))))
+    (is (= :ok (:exit r)))
+    (is (= "hello world\n" (:stdout r)))))
 
 (deftest t-opsyn-binary-builtin-still-works-after-alias
   "Defining a new alias does not affect the original symbol."
@@ -81,7 +81,7 @@ END
     (is (= "7\n" (:stdout r)))))
 
 (deftest t-opsyn-binary-custom-multiply
-  "OPSYN('*','MYMUL',2): * is an operator SPITBOL uses, which OPSYN may not redefine: 156 (sbl -bf); the unused # is OPSYN's to define."
+  "OPSYN('*','MYMUL',2) redefines *: SNOBOL4++ (Lon 2026-11-17 18:1x CST), as CSNOBOL4 has it (MEASURED on CSNOBOL4 -b: 7); sbl -bf answers 156. # too."
   (let [r (run-with-timeout
              "        DEFINE('MYMUL(A,B)')
         OPSYN('*','MYMUL',2)
@@ -91,8 +91,8 @@ END
 MYMUL   MYMUL = A + B :(RETURN)
 END
 " 2000)]
-    (is (= :error (:exit r)))
-    (is (= "OPSYN first arg is not correct operator name" (:thrown r))))
+    (is (= :ok (:exit r)))
+    (is (= "7\n" (:stdout r))))
   (let [r (run-with-timeout
              "        DEFINE('MYMUL(A,B)')
         OPSYN('#','MYMUL',2)

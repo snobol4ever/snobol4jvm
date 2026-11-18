@@ -527,10 +527,11 @@
                              (clojure.core/= "" old-name) (fail! 154 "OPSYN second arg is not natural variable name")
                              (or (nil? n) (zero? n))
                              (when (contains? SNOBOL4clojure.env/system-functions new-name) (fail! 248 "attempted redefinition of system function"))
-                             (clojure.core/= 1 n)
-                             (when-not (contains? (set (vals unused-unary-ops)) new-name) (fail! 156 "OPSYN first arg is not correct operator name"))
-                             :else
-                             (when-not (contains? (set (vals unused-binary-ops)) new-name) (fail! 156 "OPSYN first arg is not correct operator name")))
+                             ;; an operator synonym may take any operator's name, the operators SPITBOL defines among them: SNOBOL4++, as CSNOBOL4 has it (Lon
+                             ;; 2026-11-17 18:1x CST, in the JVM window: "Since SPITBOL restricts OPSYN for optimization. But Clojure will not see any of that
+                             ;; optimization so let's do more of a SNOBOL4++"; MEASURED on CSNOBOL4 -b: OPSYN('+','ADD',2) and each of - * / ** ^ ! ? $ . | take,
+                             ;; then 1 + 2 calls ADD; sbl -bf answers 156 for each; corpus vanilla diff, OPSYN("+","ADD",2))
+                             :else nil)
                   n        (when n (min n 2))
                   old-fn   (or (get @<FUNS> old-name)
                                (if (and n (pos? n))
@@ -539,7 +540,8 @@
                                    (fn [a b] (INVOKE old-sym a b)))
                                  (fn [& a] (apply INVOKE old-sym (vec a)))))]
               (if (and n (pos? n))
-                (swap! <FUNS> assoc (opsyn-key (name-string new-arg) n) old-fn)
+                ;; ^ and ! are SPITBOL's spellings of **, one operator (the emitter reads all three as **), so a synonym for one is a synonym for the three
+                (swap! <FUNS> assoc (opsyn-key (if (and (clojure.core/= 2 n) (#{"^" "!"} new-name)) "**" new-name) n) old-fn)
                 (swap! <FUNS> assoc new-name old-fn))
               ε)
     ;; LOAD(prototype, library) loads an external function (manual ch. 19, LOAD). This engine loads no native code, so no external function exists for it, and a
@@ -979,8 +981,14 @@
                    (nil? (get @<FUNS> (opsyn-key (unused-binary-ops op) 2)))))
           (throw (ex-info "undefined operator referenced" {:snobol/error 29}))
           ;; Unary ?X — interrogation: the null string if X succeeds, failure if not
-          (and (equal op '?) (clojure.core/= 1 (count parms)))
+          (and (equal op '?) (clojure.core/= 1 (count parms)) (nil? (get @<FUNS> (opsyn-key "?" 1))))
           (when-not (nil? (EVAL! (first parms))) ε)
+          ;; binary . and $ and unary * and ? redefined by OPSYN (SNOBOL4++, above at OPSYN) call their synonym with the operands evaluated, as any other
+          ;; operator does (MEASURED on CSNOBOL4 -b: OPSYN('*','NEG',1) then *3 is neg(3))
+          (and (or (and (clojure.core/= 2 (count parms)) (or (equal op '.) (equal op '$)))
+                   (and (clojure.core/= 1 (count parms)) (or (equal op '*) (equal op '?))))
+               (get @<FUNS> (opsyn-key (str op) (count parms))))
+          (when-some [args (eval-operands parms)] (deref-result (apply (get @<FUNS> (opsyn-key (str op) (count parms))) args)))
           (equal op '.)
           (let [n (count parms)]
             (if (clojure.core/= n 1)
