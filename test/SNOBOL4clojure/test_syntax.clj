@@ -229,3 +229,10 @@
   (doseq [[src col] [["        X = 1 :S(L)S(L)" 23] ["        X = 1 :S(LL)S(LLL)" 26] ["        X = 1 :(L)S(L)" 22] ["        X = 1 :S<L>S<L>" 23]
                      ["        X = 1 :S(L)S()" 22] ["        X = 1 :S(L)F(L)S(L)" 27]]]
     (is (clojure.core/= {:error 218 :column col} (syntax-error src)) src)))
+
+;; An operator touching what is before it where the goto field wants an element is 233, anything else there 234 (manual Appendix D 233, 234). MEASURED on
+;; sbl -bf: ":$" and ":S$(L)" are 233 at 16 and 17, ":S(L)$" at 20; ":  $" and ":S(L) +" are 234 at 18 and 21, ":)" 234 at 16 (corpus compile_diag__p45).
+(deftest an-operator-in-the-goto-field-is-233
+  (doseq [[src want] [["        X = 1 :$" [233 16]] ["        X = 1 :S$(L)" [233 17]] ["        X = 1 :S(L)$" [233 20]] ["        X = 1 :  $" [234 18]]
+                      ["        X = 1 :S(L) +" [234 21]] ["        X = 1 :)" [234 16]]]]
+    (is (clojure.core/= {:error (first want) :column (second want)} (syntax-error src)) src)))

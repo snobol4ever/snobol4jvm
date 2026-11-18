@@ -157,6 +157,11 @@
 
 ;; The goto field after the colon: S(label), F(label), (label) or the same with < >, each at most once (sbl -bf: 218 duplicated, 219 empty, 227 and 228 unclosed,
 ;; 234 anything else).
+;; What spoils the goto field is 234, unless it is an operator touching what is before it, which SPITBOL's scanner reads as an operator where none may stand,
+;; "233 invalid use of operator" (MEASURED on sbl -bf: "X = 1 :$", ":*", ":+", ":=", ":#", ":.", ":S$(L)", ":S(L)$" and ":S(L)F$" are 233, while ":  $" and
+;; ":S(L) +", the operator after a blank, are 234, as ":)" and ":," are; corpus tests/snobol4 compile_diag__p45, where this engine said 234)
+(defn- bad-goto! [s p] (fail! (if (and (operator-char? (at s p)) (pos? p) (not (blank? (at s (dec p))))) 233 234) p))
+
 (defn- goto-field [s i]
   (let [i0 (skip-blanks s i)]
     (when (nil? (at s i0)) (fail! 219 i0))
@@ -168,7 +173,7 @@
                 o        (at s j)]
             ;; a direct goto is :<C> or :[C] (MEASURED on sbl -bf: :[C], :S[C] and :F[C]S(L) compile and run as :<C> does; corpus exercism_snobol4's test
             ;; harnesses go :[compiled], where this engine said 234)
-            (when-not (#{\( \< \[} o) (fail! 234 j))
+            (when-not (#{\( \< \[} o) (bad-goto! s j))
             ;; a duplicated element is 218 at its closer, once it is scanned (MEASURED on sbl -bf: "X = 1 :S(L)S(L)" is 218 at column 23, ":S(LL)S(LLL)" at 26,
             ;; ":(L)S(L)" at 22, ":S<L>S<L>" at 23, where this engine said 21, 22, 20 and 21, the opener; corpus tests/snobol4 compile_diag__p11c)
             (let [dup?   (or (seen kind) (and (= kind :G) (seq seen)) (seen :G))
@@ -181,7 +186,7 @@
               (cond
                 (= (at s k) closer) (let [n (inc k) d (at s n)]
                                       (when dup? (fail! 218 k))
-                                      (when-not (or (nil? d) (blank? d) (#{\S \s \F \f \( \<} d)) (fail! 234 n))
+                                      (when-not (or (nil? d) (blank? d) (#{\S \s \F \f \( \<} d)) (bad-goto! s n))
                                       (recur n (conj seen kind)))
                 ;; a colon or a semicolon ends the scan inside the goto too (sbl -bf: :(L:X) and :S(L :F(L)) are 227, :<L :> 228)
                 (#{\: \;} (at s k)) (fail! (if (= closer \)) 227 228) k)
