@@ -4414,9 +4414,19 @@ EQQQ
 	OUTPUT = FUNCTION(.QQQ) QQQ(\"QQQ2\")
 END
 " 2000)]
-    (is (= "QQQ1
-QQQ2
-" (:stdout r)))))
+    ;; sbl -bf's answer (corpus csnobol4_suite loaderr.out): line 2 ends "ERROR 142 -- load function does not exist"; QQQ1 and QQQ2 were CSNOBOL4's
+    (is (= :error (:exit r)))
+    (is (= "load function does not exist" (:thrown r)))))
+
+;; LOAD's prototype is checked, then its function looked for, in sbl -bf's order (manual ch. 19, LOAD; Appendix D 138 to 142). MEASURED, each statement alone:
+;; LOAD('') 138, LOAD('ZZZ') 139, LOAD('()') 140, LOAD('ZZZ(') 141, LOAD('ZZZ()','xyzzy') 142. This engine loads no native code, so every LOAD that passes is 142.
+(deftest load-checks-its-prototype-then-finds-no-function-errors-138-to-142
+  (doseq [[a code] [["''" "load first argument is null"] ["'ZZZ'" "load first argument is missing a left paren"]
+                    ["'()'" "load first argument has null function name"] ["'ZZZ('" "load first argument is missing a right paren"]
+                    ["'ZZZ()','xyzzy'" "load function does not exist"]]]
+    (let [r (run-with-timeout (str "	LOAD(" a ")\n	OUTPUT = 'ran on'\nEND\n") 2000)]
+      (is (= :error (:exit r)) a)
+      (is (= code (:thrown r)) a))))
 
 (deftest csnobol4-local
   "Budne suite: local.sno, the corpus program (built-ins in upper case) and sbl -bf's output"

@@ -534,9 +534,18 @@
                 (swap! <FUNS> assoc (opsyn-key (name-string new-arg) n) old-fn)
                 (swap! <FUNS> assoc new-name old-fn))
               ε)
-    ;; ── LOAD(fnname, externalname) — stub ─────────────────────────────────────
-    ;; Dynamic library loading is out of scope; return nil (failure) gracefully.
-    LOAD    nil
+    ;; LOAD(prototype, library) loads an external function (manual ch. 19, LOAD). This engine loads no native code, so no external function exists for it, and a
+    ;; LOAD that names one is "142 load function does not exist", after the prototype's own checks, in sbl -bf's order (MEASURED, each statement alone: LOAD('')
+    ;; 138, LOAD('ZZZ') 139, LOAD('()') 140, LOAD('ZZZ(') 141; LOAD('ZZZ()'), LOAD('ZZZ()','xyzzy') and LOAD('ZZZ(A,B)INTEGER','/usr/lib/libc.so.6') 142). It was a
+    ;; stub that failed, so csnobol4_suite loaderr ran on to its next line where sbl -bf ends at 142.
+    LOAD    (let [p  (sstr (nth args 0 ""))
+                  lp (clojure.string/index-of p "(")
+                  e  #(throw (ex-info (SNOBOL4clojure.env/error-message %) {:snobol/error %}))]
+              (cond (clojure.core/= "" p)                             (e 138)
+                    (nil? lp)                                         (e 139)
+                    (zero? (long lp))                                 (e 140)
+                    (nil? (clojure.string/index-of p ")" lp))        (e 141)
+                    :else                                             (e 142)))
     ;; UNLOAD(name) "undefines the user-defined function name ... In SPITBOL, only user-defined functions can be UNLOADed" (manual ch. 19, UNLOAD). As sbl -bf
     ;; has it: one of SPITBOL's own is "248 attempted redefinition of system function", the null string "201 UNLOAD argument is not natural variable name", and
     ;; any other name succeeds with the null string, its function (if it has one) gone, so a call is "022 undefined function called"; a variable of the name
