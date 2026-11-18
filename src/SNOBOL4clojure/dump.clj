@@ -112,9 +112,12 @@
   [lvl]
   (let [vars (variables lvl)
         sec  (fn [header lines] (concat ["" "" header ""] lines))]
+    ;; each line is cut at the page width, as every line SPITBOL writes to its listing is (MEASURED on sbl -bf: X = DUPL('b',200) dumps a 120-column line and
+    ;; the 91 after it; corpus gate_cases_snobol4 dump_matches_spitbol__dump2b)
     (str (string/join "\n"
-           (concat [""]
-                   (sec "dump of natural variables" (map (fn [[k v]] (str k " = " (value-text v))) vars))
-                   (sec "dump of keyword values" (keywords))
-                   (when (>= lvl 2) (mapcat #(object-lines vars %) (objects vars)))))
+           (mapcat (fn [^String l] (let [w (long @env/<WIDTH>)] (if (<= (count l) w) [l] (map #(apply str %) (partition-all w l)))))
+                   (concat [""]
+                           (sec "dump of natural variables" (map (fn [[k v]] (str k " = " (value-text v))) vars))
+                           (sec "dump of keyword values" (keywords))
+                           (when (>= lvl 2) (mapcat #(object-lines vars %) (objects vars))))))
          "\n\n\n\n")))

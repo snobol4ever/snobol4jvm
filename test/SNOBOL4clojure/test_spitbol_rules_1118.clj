@@ -169,3 +169,16 @@
   (let [[out] (run-sno "        C = ARRAY('1:3')\n        A = ARRAY(' 2 : 4 , 3 ')\n        &DUMP = 1\nEND\n")]
     (is (re-find #"(?m)^C = ARRAY\(1:3\) #1$" out))
     (is (re-find #"(?m)^A = ARRAY\( 2 : 4 , 3 \) #2$" out))))
+
+;; sbl's -tN sets the page width: "page N" ends two columns short of it and every listed line, error line and dump line is cut to it (manual ch. 13).
+;; MEASURED on sbl -bf; corpus gate_cases_snobol4 test_gate_sno_any_notany_span_break_breakx_of_the_null_string_or_a_pattern_raise_spitbols_error__c1, run -t400,
+;; and dump_matches_spitbol__dump2b, a 200-character value dumped on lines of 120
+(deftest the-page-width-is-the-t-switchs
+  (doseq [[args n] [[["-t80"] 78] [["-t400"] 398] [[] 118]]]
+    (let [[out rc] (run-sno "        X = SPAN('')\nEND\n" args)]
+      (is (= 231 rc))
+      (is (= [n] (map count (filter #(re-find #"page 1$" %) (clojure.string/split-lines out)))) (str args))))
+  (let [[out] (run-sno "        X = DUPL('b',200)\n        &DUMP = 1\nEND\n")
+        ls (clojure.string/split-lines out)]
+    (is (some #(= (str "X = '" (apply str (repeat 115 \b))) %) ls))
+    (is (some #(= (str (apply str (repeat 85 \b)) "'") %) ls))))

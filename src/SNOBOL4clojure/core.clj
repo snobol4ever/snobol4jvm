@@ -201,6 +201,7 @@
    -INCLUDE files resolve against the program's own directory, then SNO_LIB,
    then the current one. INPUT reads stdin."
   [& args]
+  (reset! env/<WIDTH> 120)
   (let [argv          (into [(System/getProperty "java.class.path")] args)
         ;; before the file: --engine X, -u STR (HOST(0)'s text) and sbl's own switches (-b, -f, -bf, -dNk, -sNk and their kin), which stand in the command line
         ;; HOST(2, n) reads, as they stand in sbl's, so HOST(2, n) and HOST(3) answer as sbl -bf answers for one command line (MEASURED: sbl -bf -d131072k
@@ -209,6 +210,8 @@
         [engine u args] (loop [engine "interp" u nil as args]
                           (cond (clojure.core/= "--engine" (first as))                               (recur (second as) u (nnext as))
                                 (clojure.core/= "-u" (first as))                                     (recur engine (second as) (nnext as))
+                                (and (first as) (re-matches #"-t\d+" (first as)))                    (do (reset! env/<WIDTH> (Long/parseLong (subs (first as) 2)))
+                                                                                                         (recur engine u (next as)))
                                 (and (first as) (re-matches #"-(?:[bfnelsx]+|[dsimt]\d+[kmgKMG]?)" (first as))) (recur engine u (next as))
                                 :else                                                                [engine u as]))
         [file & prog-args] args]

@@ -16,7 +16,6 @@
 ;; and every line is cut at 120 columns. A -SPACE's empty lines come before its own line, an -EJECT's or a title's new page before its own. Nothing after END is listed.
 ;; A compile error is written after the line it is found on: an empty line, file(line) : ERROR nnn -- text, an empty line; when the listing is off, the line is written
 ;; first, on the page the first error opens. The line, the empty line, the error and the empty line go to standard error as well.
-(def ^:private width 120)
 (def ^:private page-lines 55)
 
 ;; the head names this engine (project.clj's version), as sbl's names its own build
@@ -27,14 +26,15 @@
     (str (if (#{"amd64" "x86_64"} arch) "x86-64" arch) "  "
          (.format (DateTimeFormatter/ofPattern "EEE MMM ppd HH:mm:ss yyyy" Locale/US) (LocalDateTime/now)))))
 
-(defn- cut [^String l] (if (<= (count l) width) [l] (map #(apply str %) (partition-all width l))))
+(defn- cut [^String l] (let [width (long @env/<WIDTH>)] (if (<= (count l) width) [l] (map #(apply str %) (partition-all width l)))))
 
 (defn- write! [l] (doseq [p (cut l)] (println p)))
 
 (defn- page-line [^String title n]
   (let [pn (str "page " n)
-        t  (if (< (count title) 112) (str title (apply str (repeat (- 112 (count title)) \space))) title)]
-    (str (subs t 0 112) pn (when (> (count t) (+ 112 (count pn))) (subs t (+ 112 (count pn)))))))
+        c  (- (long @env/<WIDTH>) 8)
+        t  (if (< (count title) c) (str title (apply str (repeat (- c (count title)) \space))) title)]
+    (str (subs t 0 c) pn (when (> (count t) (+ c (count pn))) (subs t (+ c (count pn)))))))
 
 (defn- start-page! [st used]
   (swap! st update :page inc)

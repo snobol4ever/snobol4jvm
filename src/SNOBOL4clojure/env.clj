@@ -125,6 +125,10 @@
 (def <GTCEF> (atom 0))
 (def <ERRFT> (atom 0))   ; the fatal errors so far (sbl.min errft): at the third the program ends whatever &ERRLIMIT is
 (def <ERRSERIAL> (atom 0))   ; the errors so far that went on (sbl.min err07 sets r_cnt for each): CONTINUE goes on from the latest only
+;; the page width sbl's -tN switch sets, 120 when none is given: the listing's lines, the column of "page N" (width less 8) and the lines of a compile or an
+;; execution error's report are cut to it (manual ch. 13, -t; MEASURED on sbl -bf: -t400 puts "page 1" at columns 393 to 398 and writes a 173-column error
+;; line whole, -t80 puts it at 73 to 78 and cuts the error line at 80; corpus gate_cases_snobol4 test_gate_sno_any_notany_span_..._error__c1, run -t400)
+(def <WIDTH> (atom 120))
 (def <HOST0> (atom ""))   ; what HOST(0) returns: the -u text, or else the program's own arguments joined by blanks
 (def <ARGV>  (atom []))   ; the command line HOST(2, n) answers from: the engine's jar, then -main's arguments
 (def <ARGI>  (atom 0))    ; what HOST(3) returns: the index in <ARGV> of the program's first own argument

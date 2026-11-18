@@ -9,7 +9,6 @@
 ;; it, the place and the figures down to REGENERATIONS, and the last empty line go to standard error as well, line by line. Each line is cut at 120 columns, and
 ;; of a line cut in pieces only the last goes to standard error. A negative &STLIMIT leaves out the statement count and the time (stopr: "skip if negative"); the
 ;; rates sbl adds after a run of a millisecond or more (stmt / microsec and the rest) measure the engine's speed, not the program's, and are not written.
-(def ^:private width 120)
 
 (defn- row [label v] (str (format "%-21s" label) v))
 
@@ -39,6 +38,7 @@
   "Write the report of error code with text on *out*, and its share on *err*, as sbl -bf does."
   [code text stmts start-ns]
   (doseq [[l both?] (report-lines code text stmts start-ns)]
-    (let [pieces (if (<= (count l) width) [l] (map #(apply str %) (partition-all width l)))]
+    (let [width  (long @env/<WIDTH>)
+          pieces (if (<= (count l) width) [l] (map #(apply str %) (partition-all width l)))]
       (doseq [p pieces] (println p))
       (when both? (binding [*out* *err*] (println (last pieces)))))))
