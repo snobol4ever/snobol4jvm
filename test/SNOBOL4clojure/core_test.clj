@@ -2702,6 +2702,14 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; A real division of zero by zero is real zero; of anything else by zero it is ERROR 262 (manual Appendix D, 262). MEASURED on sbl -bf: 0 / 0.0, 0.0 / 0, -0.0 / 0
+;; and 0.0 / 0.0 are 0. (REAL); 1.5 / 0.0 is 262; 0 / 0 between integers is 014. snobol4jvm raised 262 for every real zero divisor (corpus gate_cases_snobol4
+;; test_gate_sno_real_zero_over_zero_is_real_zero_as_in_spitbol).
+(deftest a-real-division-of-zero-by-zero-is-zero
+  (is (= "0. REAL\n0.\n0.\n" (:stdout (run-with-timeout "	X = 0 / 0.0\n	OUTPUT = X ' ' DATATYPE(X)\n	OUTPUT = -0.0 / 0\n	OUTPUT = 0.0 / 0.0\nEND\n" 2000))))
+  (let [r (run-with-timeout "	X = 1.5 / 0.0\nEND\n" 2000)] (is (= "division caused real overflow" (:thrown r))))
+  (let [r (run-with-timeout "	X = 0 / 0\nEND\n" 2000)] (is (= "division caused integer overflow" (:thrown r)))))
+
 ;; ERROR 214, a bad label or a misplaced continuation, names no column, and its mark is an empty line (manual Appendix D, 214). MEASURED on sbl -bf: a line
 ;; "        X = 1 ;# fails" (a statement after the semicolon that begins with #) is "(1) : ERROR 214 -- bad label or misplaced continuation line". snobol4jvm
 ;; said (1,16) (corpus rosetta-snobol4 string-matching).

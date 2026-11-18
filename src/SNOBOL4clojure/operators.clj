@@ -322,6 +322,9 @@
                 (if (or (zero? b) (and (clojure.core/= b -1) (clojure.core/= a Long/MIN_VALUE)))
                   (throw (ex-info "division caused integer overflow" {:snobol/error 14}))
                   (quot a b))
+                ;; a real division of zero by zero is zero, and of anything else by zero 262 (MEASURED on sbl -bf: 0 / 0.0, 0.0 / 0, -0.0 / 0 and 0.0 / 0.0 are all
+                ;; 0., REAL; 1.5 / 0.0 and 1 / (0 / 0.0) are 262; corpus gate_cases_snobol4 real_zero_over_zero, where this engine raised 262 for 0 / 0.0)
+                (and (zero? (double b)) (zero? (double a))) 0.0
                 (zero? (double b)) (throw (ex-info "division caused real overflow" {:snobol/error 262}))
                 :else (finite (clojure.core// (double a) (double b)) 262 "division caused real overflow")))
     **      (let [[x y] args] (pow-fn x y))
