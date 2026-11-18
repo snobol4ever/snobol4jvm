@@ -2702,6 +2702,18 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; A source with a compile error and no END exits 1, as one with no END does, the no-END line on standard error after the error's page (manual ch. 14; MEASURED
+;; on sbl -bf: "        X = (" then "        OUTPUT = 'x'" exits 1, its stderr ending "No END statement found in source file(s)."). snobol4jvm answered 231
+;; (corpus setl4_spitbol examples/roman, three syntax errors and no END).
+(deftest a-compile-error-with-no-end-exits-1
+  (let [f (java.io.File/createTempFile "noend" ".sno") err (java.io.StringWriter.)]
+    (try
+      (spit f "        X = (\n        OUTPUT = 'x'\n")
+      (let [rc (binding [*err* err *out* (java.io.StringWriter.)] (-main (.getPath f)))]
+        (is (clojure.core/= 1 rc))
+        (is (clojure.string/ends-with? (str err) "No END statement found in source file(s).\n")))
+      (finally (.delete f)))))
+
 ;; An included file whose last line is a comment leaves its name as &FILE for the statement after the -INCLUDE; one whose comment is followed by a blank line
 ;; does not (manual ch. 14, -INCLUDE). MEASURED on sbl -bf: c1.inc ending "* c" gives c1.inc 2, then m.sno 3; c2.inc ending "* c" and a blank line gives m.sno 2.
 ;; snobol4jvm read the last line through split-lines, which drops trailing empty lines, so corpus gimpel asm_driver named rpad.inc for asm.spt's statements.
