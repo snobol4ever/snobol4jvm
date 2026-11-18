@@ -3325,6 +3325,20 @@ abcdefghijklmnopqrstuvwxyz
   (is (= "1\n" (:stdout (run-with-timeout "	&TRIM = 1\n	OUTPUT = &TRIM\nEND\n" 2000))))
   (is (= "0123456789\n" (:stdout (run-with-timeout "	OUTPUT = &DIGITS\nEND\n" 2000)))))
 
+;; snobol4jvm is SNOBOL4++ (Lon 2026-11-17 18:1x CST, in the JVM window, verbatim: "I think we should make snobol4jvm a bit more special that SPITBOL. Since
+;; SPITBOL restricts OPSYN for optimization. But Clojure will not see any of that optimization so let's do more of a SNOBOL4++ where it has all extensions and
+;; keeps the dynamic power of SNOBOL4."): unary ^ is an operator OPSYN may define, ERROR 029 until it does. sbl -bf refuses OPSYN('^','f',1) with ERROR 156
+;; (MEASURED), so the corpus entries that turn on it are declared for this engine alone (EXCLUDED.jvm.tsv); this engine had refused ^'A' at compile, ERROR 220.
+(deftest unary-caret-is-an-operator-opsyn-may-define
+  (let [r (run-with-timeout "	X = ^'A'\n	OUTPUT = 'ran on'\nEND\n" 2000)]
+    (is (= :error (:exit r)))
+    (is (= "undefined operator referenced" (:thrown r))))
+  (is (= "<YY>\n" (:stdout (run-with-timeout (str "	DEFINE('BR(X)')			:(BR_END)\n"
+                                                "BR	BR = '<' X '>'		:(RETURN)\n"
+                                                "BR_END	OPSYN('^','BR',1)\n"
+                                                "	OUTPUT = ^'YY'\n"
+                                                "END\n") 2000)))))
+
 (deftest csnobol4-dump
   "Budne suite: dump.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
   (let [out (run-files [["dump.sno" "	a = 1

@@ -720,7 +720,7 @@
 ;; Unary operators SPITBOL leaves unused, each with the name OPSYN files it
 ;; under. The emitter spells unary # as sharp-op.
 (def ^:private unused-unary-ops
-  {'! "!", '% "%", '/ "/", 'sharp-op "#", '= "=", '| "|"})
+  {'! "!", '% "%", '/ "/", 'sharp-op "#", '= "=", '| "|", (symbol "^") "^"})
 
 ;; "The following binary operations are undefined and are available for user definition using OPSYN(): & @ # % ~" (manual ch. 15, Binary Operators), each with
 ;; the name OPSYN files it under; the emitter spells them &, at-op, sharp-op, % and tilde-op.

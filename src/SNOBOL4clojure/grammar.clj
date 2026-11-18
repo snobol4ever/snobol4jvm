@@ -51,7 +51,7 @@
   ttl       ::=  uop | uop  <_  '~'  _>  ttl
   uop       ::=  ndx | '@' uop | '~' uop | '?' uop | '&' uop | '+' uop
                      | '-' uop | '*' uop | '$' uop | '.' uop | '!' uop
-                     | '%' uop | '/' uop | '#' uop | '=' uop | '|' uop
+                     | '%' uop | '/' uop | '#' uop | '=' uop | '|' uop | '^' uop
   ndx       ::=  itm | ndx <'<'> (lst | nul) <'>'> | ndx <'['> (lst | nul) <']'>
   <itm>     ::=  I | R | S | N | grp | cnd | inv
   grp       ::=  <'('> expr <')'>
