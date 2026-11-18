@@ -861,7 +861,11 @@
 ;; is made, so a loop that moves I fills a different element each time.
 (defn- assign-to [target v] (INVOKE '= target v))
 
-(defn- element-target [N] (when-some [ks (eval-operands (rest N))] (with-meta (apply list (first N) ks) (meta N))))
+;; and a container that is itself an expression, ($V)[S], is evaluated with them, to the table or array it gives (MEASURED on sbl -bf: 'xyz' REM . ($VARS_)[S], VARS_ =
+;; .V and S = 'VAR', sets V['VAR'] to xyz; corpus snolib ROUTING.tst, whose ROUTING builds REM . ($VARS_)[S], where this engine failed the match)
+(defn- element-target [N]
+  (when-some [c (if (seq? (first N)) (EVAL! (first N)) (first N))]
+    (when-some [ks (eval-operands (rest N))] (with-meta (apply list c ks) (meta N)))))
 
 ;; The operators whose result is a value and never a name: an expression made with one of them cannot be the target of an assignment.
 (def ^:private value-operators '#{= ?= ? | at-op + - sharp-op / * % ** ^ ! . tilde-op & SEQ})

@@ -284,3 +284,8 @@
     (is (= ["(1,20) : ERROR 230" "(2,21) : ERROR 230"] (errs "        X = 1  :(L)\r\nL       OUTPUT = 'l'\r\nEND\n")))
     (is (= ["(3) : ERROR 214"] (errs "        OUTPUT = 'a'\nEND\r\n\u0000\u0000\r\n")))
     (is (= "3\n" (first (run-sno "        X = 'a\rb'\n        OUTPUT = SIZE(X)\nEND\n"))))))
+
+;; A subscript whose container is itself an expression, ($V)[S], is a capture's target as V[S] is. MEASURED on sbl -bf: 'xyz' REM . ($VARS_)[S] of VARS_ = .V sets
+;; V['VAR']; corpus snolib ROUTING.tst.
+(deftest an-element-of-an-expression-container-takes-a-capture
+  (is (= "xyz\n" (first (run-sno "        V = TABLE()\n        VARS_ = .V\n        S = 'VAR'\n        'xyz' REM . ($VARS_)[S]  :F(N)\n        OUTPUT = V['VAR']  :(END)\nN       OUTPUT = 'FAIL'\nEND\n")))))
