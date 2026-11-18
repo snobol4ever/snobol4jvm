@@ -2924,14 +2924,16 @@
       (is (= "-bf -d131072k -s4096k x 5\n" (with-out-str (-main "-bf" "-d131072k" "-s4096k" (.getPath f) "x" "y"))))
       (finally (.delete f)))))
 
-;; A first line that begins #! is passed over, a statement of its own that does nothing; a #! line after the first is an error (MEASURED on sbl -bf: a program
-;; whose first line is "#! /usr/local/bin/snobol4 -b" runs, its line 5 statement 5; corpus tkslide_examples take_note, which snobol4jvm refused with 214).
+;; A first line that begins #! is no line of the program: the lines and the statements count from the one after it (MEASURED on sbl -bf: after
+;; "#! /usr/local/bin/snobol4 -b", OUTPUT = &LASTNO + 1 prints 1, and OUTPUT = &STNO then OUTPUT = &LINE print 1 and 2; corpus tkslide_examples take_note, whose
+;; ERROR 022 on the file's ninth line sbl names (8), where snobol4jvm, which kept the #! line as a statement, said (9)).
 (deftest a-first-line-that-begins-hash-bang-is-passed-over
   (let [f (java.io.File/createTempFile "hashbang" ".sno")]
     (try
       (spit f "#! /usr/local/bin/snobol4 -b\n        OUTPUT = &LASTNO + 1\nEND\n")
-      ;; sbl -bf prints 1: the #! line is a statement that never runs, so &LASTNO is 0 at the next
       (is (= "1\n" (with-out-str (-main (.getPath f)))))
+      (spit f "#! /usr/local/bin/snobol4 -b\n        OUTPUT = &STNO\n        OUTPUT = &LINE\nEND\n")
+      (is (= "1\n2\n" (with-out-str (-main (.getPath f)))))
       (finally (.delete f)))))
 
 ;; The name of a table or array element is the element, so the name of t['k'] and the name ITEM(t,'k') gives are one (manual ch. 17, the name operator; ITEM).

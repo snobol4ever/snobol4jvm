@@ -83,12 +83,6 @@
   ([src record?]
   ;; the null string is no line at all, so CODE('') compiles no statement (sbl -bf), not a blank one
   (let [chars (if (or record? (= "" (str src)) (string/ends-with? (str src) "\n")) (str src) (str src "\n"))
-        ;; a first line that begins #! is passed over, a statement of its own that does nothing, as a blank line is (MEASURED on sbl -bf: a program whose
-        ;; first line is "#! /usr/local/bin/snobol4 -b" runs, and its line 5 is statement 5; a #! line after the first is an error; corpus tkslide_examples
-        ;; take_note, which this engine refused with 214)
-        chars (if (and (not record?) (string/starts-with? chars "#!"))
-                (let [k (or (string/index-of chars "\n") (count chars))] (str (apply str (repeat k \space)) (subs chars k)))
-                chars)
         n     (count chars)
         ;; a record keeps the line ends at the end of a statement, which are no blanks
         ;; a carriage return is a character of its line, never a line end or a blank: in a statement it is "230 illegal character", a line of one is 214, and
@@ -420,6 +414,10 @@
          code-text? record?
          ;; a record with a line end in it is read as it stands: the -INCLUDE preprocessor reads lines, and would end them
          record?   (and record? (boolean (re-find #"[\r\n]" (str S))))
+         ;; a first line that begins #! is no line of the program: it is not listed, and the lines and statements count from the one after it; a #! line
+         ;; after the first is an error (MEASURED on sbl -bf: after "#! /usr/local/bin/snobol4 -b", OUTPUT = &LINE prints 1 and an error on the file's third
+         ;; line is named (2), the listing starting at the line after; corpus tkslide_examples take_note, whose 022 sbl names at line 8, the file's 9)
+         S         (if (and (not record?) (string/starts-with? (str S) "#!")) (let [k (string/index-of (str S) "\n")] (if k (subs (str S) (inc k)) "")) S)
          [expanded _ cards] (if record? [(str S) #{} []] (preprocess-includes* (str S) include-path #{}))
          raw-stmts (split-source expanded record?)
          _         (reset! <DIAGNOSTICS> (:diagnostics (meta raw-stmts)))
