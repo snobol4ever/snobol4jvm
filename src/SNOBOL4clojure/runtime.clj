@@ -186,6 +186,16 @@
              (throw (if (zero? n)
                       (ex-info (SNOBOL4clojure.env/error-message 36) {:snobol/error 36})
                       (ex-info (SNOBOL4clojure.env/error-message n) {:snobol/error n :snobol/abort true}))))
+           ;; SCONTINUE resumes after a user interrupt, and this engine takes none, so a Goto to it is always a fatal error (sbl.min l_scn): "331 goto scontinue
+           ;; with no user interrupt" while a continuation is pending (r_cnt, set by a trapped error and used up by a CONTINUE, as CONTINUE's own test above
+           ;; reads it), else "321 goto scontinue with no preceding error"; each counts in errft, so the third such ends the program whatever &ERRLIMIT is (err07).
+           ;; MEASURED on sbl -bf: a handler that arms SETEXIT again and goes :(SCONTINUE) is reached twice more with &ERRTYPE 331 and the third ends the program
+           ;; with ERROR 331, &ERRLIMIT reset to 10 or not; with no handler armed the 331's own continuation runs on to ERROR 321; csnobol4_suite setexit4 reads
+           ;; the 331s. It was 038, no such label.
+           (clojure.core/= nm "SCONTINUE")
+           (throw (fatal-error (if (and err (or (and (:resume err) (clojure.core/= (:resume err) @SNOBOL4clojure.env/<ERRSERIAL>))
+                                                (clojure.core/= (:snobol/serial (ex-data (:ex err))) @SNOBOL4clojure.env/<ERRSERIAL>)))
+                                 331 321)))
            tgt
            (do (goto! tgt) (let [a (label-addr tgt)] (when (pos? (long @&TRACE)) (fire-label! (or (second a) tgt))) [a err]))
            :else

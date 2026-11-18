@@ -2696,6 +2696,21 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; A Goto to SCONTINUE with no user interrupt is a fatal error (sbl.min l_scn): "331 goto scontinue with no user interrupt" while a trapped error's continuation
+;; is pending, else "321 goto scontinue with no preceding error", each counted in errft, so the third ends the program whatever &ERRLIMIT is. MEASURED on
+;; sbl -bf: a handler that arms SETEXIT again and goes :(SCONTINUE) prints h 251, h 331, h 331 and ends with ERROR 331; with the handler disarmed it ends at
+;; ERROR 321 after h 251. snobol4jvm had no such label, ERROR 038 (corpus csnobol4_suite setexit4).
+(deftest a-goto-to-scontinue-with-no-user-interrupt-is-fatal-331-or-321
+  (let [prog (fn [arm] (str "        SETEXIT(.H)\n        &ERRLIMIT = 10\n        X = &ZZ\n        OUTPUT = 'after'  :(END)\n"
+                            "H       OUTPUT = 'h ' &ERRTYPE\n" arm "\n                    :(SCONTINUE)\nEND\n"))
+        r1   (run-with-timeout (prog "        SETEXIT(.H)") 4000)
+        ;; a fresh engine for the second run: the first spent the errft count, which only GLOBALS resets (run-with-timeout does not)
+        r2   (do (GLOBALS) (run-with-timeout (prog "        SETEXIT()") 4000))]
+    (is (= :error (:exit r1)))
+    (is (= "goto scontinue with no user interrupt" (:thrown r1)))
+    (is (= :error (:exit r2)))
+    (is (= "goto scontinue with no preceding error" (:thrown r2)))))
+
 ;; A unit held by OUTPUT is no INPUT's, and one held by INPUT is no OUTPUT's (manual ch. 19, INPUT and OUTPUT). MEASURED on sbl -bf: OUTPUT(.A,10,'u1.txt') then
 ;; INPUT(.B,10,5) or INPUT(.B,10,'u1.txt') is "ERROR 289 -- input channel currently in use"; INPUT(.A,10,'t.txt') then OUTPUT(.B,10) is "ERROR 161 -- output
 ;; file cannot be written to". snobol4jvm opened a second channel on the unit and ran on, so corpus csnobol4_suite update passed its line 3.

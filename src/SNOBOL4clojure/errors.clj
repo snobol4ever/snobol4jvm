@@ -311,4 +311,5 @@
 327 "Calling external function – not found"
 328 "LOAD function – insufficient memory"
 329 "Requested MAXLNGTH too large"
+331 "Goto SCONTINUE with no user interrupt"
 })
