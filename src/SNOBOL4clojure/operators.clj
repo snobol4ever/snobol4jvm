@@ -23,7 +23,7 @@
             [SNOBOL4clojure.dump      :refer [dump-text]]
             [SNOBOL4clojure.grammar   :refer [parse-expression]]
             [SNOBOL4clojure.syntax    :refer [expression-end ends-in-mark?]]
-            [SNOBOL4clojure.trace     :refer [fire-value! fire-access! fire-call! fire-return! fire-keyword! trace! stoptr!]])
+            [SNOBOL4clojure.trace     :refer [fire-value! fire-element! fire-access! fire-call! fire-return! fire-keyword! trace! stoptr!]])
   (:refer-clojure :exclude [= + - * / num]))
 
 ;; ── Numeric conversion macros ─────────────────────────────────────────────────
@@ -378,10 +378,11 @@
                                   raw-container)]
                   (cond
                     (table? container)
-                    (table-set container (SNOBOL4clojure.env/table-subscript ks) r)
+                    (let [v (table-set container (SNOBOL4clojure.env/table-subscript ks) r)] (fire-element! container ks r) v)
                     ;; a subscript out of bounds fails the statement, as a read of one does (manual ch. 14, -FAIL: "...especially when array subscripts are out of bounds")
+                    ;; an element's value trace fires once it is set (trace.clj, fire-element!)
                     (array? container)
-                    (array-set container (vec ks) r)
+                    (when-some [v (array-set container (vec ks) r)] (fire-element! container ks r) v)
                     ;; DATA field setter: accessor(instance) = val assigns the field of the object in place (the instance is already evaluated)
                     (fn? container)
                     (when (container (first ks) r) r)

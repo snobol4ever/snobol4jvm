@@ -134,6 +134,20 @@
 (def <DISPNO> (atom {}))   ; statement key (the number a statement is stored under) -> the number SPITBOL gives it, which counts blank lines
 (def BLANKS   (atom 0))    ; the blank lines of the code loaded so far: they take numbers and are never run
 (def <TRACES> (atom {}))   ; the TRACE registrations: [name kind] -> options; a program's own state, reset with the rest
+(def <ETRACES> (atom []))
+;; The variable SPITBOL names an array, a table or a DATA object by (sbl.min prtnm): the first natural variable holding it in the order of its variable hash table,
+;; slot by slot, after first trying the one it found last time. A name's slot is SPITBOL's string hash (hashs: the length exclusive-or'd with the first three
+;; 8-byte words of characters, little-endian) modulo 257, this build's bucket count (MEASURED on sbl -bf: 40 pairs of names, each an array two variables hold, an
+;; element of it traced and assigned; the name each line shows fits 257 alone). Names in one slot are taken in name order here, SPITBOL's being the order they
+;; were made.
+(def <PRNMV> (atom nil))
+(defn- var-slot [^String s]
+  (let [b ^bytes (.getBytes s "ISO-8859-1") n (alength b)
+        h (reduce (fn [h w] (bit-xor h (reduce (fn [acc j] (let [i (clojure.core/+ (clojure.core/* 8 w) j)]
+                                                            (if (< i n) (bit-or acc (bit-shift-left (bit-and 0xff (long (aget b i))) (clojure.core/* 8 j))) acc)))
+                                               0 (range 8))))
+                  (long n) (range (min 3 (quot (clojure.core/+ n 7) 8))))]
+    (mod (bit-and Long/MAX_VALUE h) 257)))   ; the element traces, TRACE(.A[2], 'VALUE'): their container by identity, subscripts and text (trace.clj)
 (def <OPSYN> (atom {}))
 
 ;; ── Runtime statement table (used by compiler + runtime) ─────────────────────
@@ -345,6 +359,8 @@
    (reset! <ARGI>     0)
    (reset! <PRIMS-READ> #{})
    (reset! <NAMES> #{})
+   (reset! <ETRACES> [])
+   (reset! <PRNMV> nil)
    (reset! &RTNTYPE   ε)
    (reset! &ERRTYPE   0)
    (reset! &ERRTEXT   ε)
@@ -554,6 +570,16 @@
       (val v)
       (let [resolved (when (and (re-matches #"[A-Z][A-Z0-9]*" (name sym)) (not (no-function sym))) (ns-resolve (find-ns 'SNOBOL4clojure.core) sym))]
         (if (instance? clojure.lang.Var resolved) (var-get resolved) ($$ N))))))
+
+(defn holder-name
+  "The name of the natural variable SPITBOL names the object v by (<PRNMV> above), a string, or nil when no variable holds it."
+  [v]
+  (let [last @<PRNMV>]
+    (if (and last (identical? v (get @<VARS> last)))
+      (name last)
+      (when-let [k (first (sort-by (fn [k] [(var-slot (name k)) (name k)]) (keep (fn [[k x]] (when (identical? x v) k)) @<VARS>)))]
+        (reset! <PRNMV> k)
+        (name k)))))
 
 (defn $$ [N]
   (let [sym (symbol (name N))]

@@ -47,6 +47,17 @@
 
 (defn- reg-key [name kind] [(str name) kind])
 
+;; A trace of an element, TRACE(.A[2], 'VALUE'), is of that element of the array or table A held when the name was made: its entries are kept apart, each with
+;; its container (compared by identity), its subscripts and its text as SPITBOL writes it, A<2> or A<2,5> or T<'k'> (MEASURED on sbl -bf: corpus tests/snobol4
+;; ladder__rung23_trace_element, A[2] = 'x' then A[1] = 'y' then A[2] = 'z' writes "****4*******  A<2> = 'x'" and "****6*******  A<2> = 'z'", each costing 1
+;; of &TRACE; rung23_trace_element_two_dimensional writes "A<2,5> = 7"; this engine registered the name's text and never fired it)
+(def ^:private elements SNOBOL4clojure.env/<ETRACES>)
+(defn- element-of [name]
+  (when (instance? NAME name)
+    (let [n (.n ^NAME name)]
+      (when-let [c (and (seq? n) (:container (meta n)))]
+        [c (vec (rest n)) (str (first n) "<" (clojure.string/join "," (map #(if (string? %) (str "'" % "'") (str %)) (rest n))) ">")]))))
+
 ;; ── Public registration API ──────────────────────────────────────�
 
 (defn trace!
@@ -65,21 +76,29 @@
      ;; this engine registered the name and never fired it (corpus csnobol4_suite t: TRACE('stcount', 'k'))
      (when (and (some #{:keyword} kinds) (not (#{"ERRTYPE" "FNCLEVEL" "STCOUNT"} (str name))))
        (throw (ex-info "trace first argument is not appropriate name" {:snobol/error 198})))
-     (doseq [kind kinds]
-       (swap! registry assoc (reg-key name kind) {:label label :fn user-fn})))
+     (if-let [[c ks text] (element-of name)]
+       (doseq [kind kinds]
+         (swap! elements (fn [es] (conj (vec (remove #(and (identical? c (:c %)) (= ks (:ks %)) (= kind (:kind %))) es))
+                                        {:c c :ks ks :kind kind :text text :label label :fn user-fn}))))
+       (doseq [kind kinds]
+         (swap! registry assoc (reg-key name kind) {:label label :fn user-fn}))))
    nil))
 
 (defn stoptr!
   "Remove a trace registration. Called by INVOKE's STOPTR branch."
   [name type]
-  (doseq [kind (trace-kinds type)]
-    (swap! registry dissoc (reg-key name kind)))
+  (if-let [[c ks _] (element-of name)]
+    (let [kinds (set (trace-kinds type))]
+      (swap! elements (fn [es] (vec (remove #(and (identical? c (:c %)) (= ks (:ks %)) (kinds (:kind %))) es)))))
+    (doseq [kind (trace-kinds type)]
+      (swap! registry dissoc (reg-key name kind))))
   nil)
 
 (defn clear-all-traces!
   "Remove every trace registration. Resets &TRACE to 0."
   []
   (reset! registry {})
+  (reset! elements [])
   (reset! &TRACE 0)
   nil)
 
@@ -163,6 +182,20 @@
       (call-trace-fn! f sym entry)
       (emit-line! (str (apply str (repeat @&FNCLEVEL \i)) " " sym " = " (trace-val new-val))))
     (:label entry)))
+
+(defn fire-element!
+  "Fire the VALUE trace of the element of container c at subscripts ks, just assigned new-val (operators.clj, the element assignment), as fire-value! does for a
+   variable; nothing when no element trace is registered."
+  [c ks new-val]
+  (when-let [e (and (seq @elements) (first (filter #(and (= :value (:kind %)) (identical? c (:c %)) (= (vec ks) (:ks %))) @elements)))]
+    (if-let [f (and (pos? @&TRACE) (trace-fn e))]
+      (call-trace-fn! f (:text e) e)
+      ;; the element is named by the variable that holds its container now, as SPITBOL names it (env/holder-name: sbl -bf writes B<1> once B alone holds the
+      ;; array traced as A[1]), else by the name it was traced by
+      (emit-line! (str (apply str (repeat @&FNCLEVEL \i)) " "
+                       (if-let [h (SNOBOL4clojure.env/holder-name c)] (str h (subs (:text e) (.indexOf ^String (:text e) "<"))) (:text e))
+                       " = " (trace-val new-val))))
+    (:label e)))
 
 (defn fire-access!
   "Fire the ACCESS trace of the variable `sym`, whose value `v` a statement has just fetched: \"Produces a trace every time the named item is referenced. If you say

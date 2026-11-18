@@ -2702,6 +2702,18 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; A VALUE trace of an element, TRACE(.A[2], 'VALUE'), fires when that element of that array or table is assigned, through any variable, and the line names
+;; it by the variable SPITBOL finds holding the container, the first in its variable hash table (manual ch. 19, TRACE; sbl.min prtnm). MEASURED on sbl -bf: this
+;; program's lines; snobol4jvm wrote none (corpus tests/snobol4 ladder__rung23_trace_element and its two-dimensional twin).
+(deftest an-element-trace-fires-named-by-its-holder
+  (GLOBALS)
+  (is (clojure.core/= (str "****4*******  T<'k'> = 1\n****8*******  A<2,5> = 7\n****12******  A<1> = 'via b'\n****14******  B<1> = 'b again'\n"
+                           "****18****** i T<'k'> = 'in f'\ntrace=15\n")
+         (:stdout (run-with-timeout (str "\t&TRACE = 20\n\tT = TABLE()\n\tTRACE(.T['k'], 'VALUE')\n\tT['k'] = 1\n\tT['j'] = 2\n\tA = ARRAY('3,6')\n"
+                                         "\tTRACE(.A[2,5], 'VALUE')\n\tA[2,5] = 7\n\tA = ARRAY(3)\n\tB = A\n\tTRACE(.A[1], 'VALUE')\n\tB[1] = 'via b'\n"
+                                         "\tA = ARRAY(3)\n\tB[1] = 'b again'\n\tSTOPTR(.B[1], 'VALUE')\n\tB[1] = 'stopped'\n\tDEFINE('F()')  :(FE)\n"
+                                         "F\tT['k'] = 'in f'  :(RETURN)\nFE\tF()\n\tOUTPUT = 'trace=' &TRACE\nEND\n") 3000)))))
+
 ;; PROTOTYPE takes an array or a table; anything else is ERROR 164 (manual ch. 19, PROTOTYPE; Appendix D 164). MEASURED on sbl -bf: PROTOTYPE(''), ('abc'), (3),
 ;; (LEN(1)) and of a DATA object are 164; of TABLE() 11, of ARRAY('2,3') 2,3. snobol4jvm answered the null string (corpus tests/snobol4 scrip_test_1113_table).
 (deftest prototype-of-no-array-or-table-is-164
