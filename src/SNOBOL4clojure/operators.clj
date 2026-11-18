@@ -473,7 +473,12 @@
                                 (restore-var! (symbol k) v))
                               ;; Restore the caller's result variable
                               (restore-var! f-sym f-saved)
-                              ;; the statement that called the function is again the one last executed
+                              ;; the function's own last statement is the one last executed, and the statement that called it is again the current one (MEASURED on
+                              ;; sbl -bf: OUTPUT = F() &LASTNO &LASTLINE, F's body ending at statement 3, line 3, prints 3 and 3 where this engine printed 2 and 2,
+                              ;; the statement before F's last; csnobol4_suite setexit4 reads &LASTNO 18 in the statement its STCOUNT trace function returned to)
+                              (reset! SNOBOL4clojure.env/&LASTNO @&STNO)
+                              (reset! SNOBOL4clojure.env/&LASTLINE @&LINE)
+                              (reset! SNOBOL4clojure.env/&LASTFILE @&FILE)
                               (reset! &STNO stno-saved)
                               (reset! &FILE file-saved)
                               (reset! &LINE line-saved)

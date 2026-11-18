@@ -2696,6 +2696,14 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; After a function returns, its own last statement is the one last executed: &LASTNO and &LASTLINE name it, &STNO the caller's (manual ch. 16, &LASTNO).
+;; MEASURED on sbl -bf: F's body ending at statement 3 (line 3), OUTPUT = F() ' ' &LASTNO ' ' &LASTLINE ' ' &STNO at statement 5 prints "f 3 3 5"; snobol4jvm
+;; printed "f 2 2 5", the statement before F's last, and corpus csnobol4_suite setexit4 read @S13 where sbl -bf reads @S18 after its STCOUNT trace function.
+(deftest the-last-statement-of-a-returned-function-is-the-last-executed
+  (is (= "x\nf 3 3 5\n"
+         (:stdout (run-with-timeout (str "        DEFINE('F()')  :(F_END)\nF       F = 'f'\n        X = 1  :(RETURN)\n"
+                                         "F_END   OUTPUT = 'x'\n        OUTPUT = F() ' ' &LASTNO ' ' &LASTLINE ' ' &STNO  :(END)\nEND\n") 2000)))))
+
 ;; A Goto to SCONTINUE with no user interrupt is a fatal error (sbl.min l_scn): "331 goto scontinue with no user interrupt" while a trapped error's continuation
 ;; is pending, else "321 goto scontinue with no preceding error", each counted in errft, so the third ends the program whatever &ERRLIMIT is. MEASURED on
 ;; sbl -bf: a handler that arms SETEXIT again and goes :(SCONTINUE) prints h 251, h 331, h 331 and ends with ERROR 331; with the handler disarmed it ends at
