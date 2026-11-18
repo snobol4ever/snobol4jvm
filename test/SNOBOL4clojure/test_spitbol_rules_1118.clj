@@ -81,3 +81,11 @@
     (is (re-find #"\(2\) : ERROR 056 -- span evaluated argument is not a string" out))
     (is (not (re-find #"(?m)^after$" out))))
   (is (= "n\n" (first (run-sno "        S2 = 'x'\n        'abc' ? *(1 + S2)  :S(Y)F(N)\nY       OUTPUT = 'y'  :(END)\nN       OUTPUT = 'n'\nEND\n")))))
+
+;; Under &ERRLIMIT with a SETEXIT label armed, a compile error in CODE's text is raised as an error and the label takes it; with none armed CODE fails.
+;; MEASURED on sbl -bf; corpus gate_cases_snobol4 a_goto_field_takes_a_blank_before_its_paren_and_refuses_an_empty_field__ce
+(deftest a-code-compile-error-goes-to-the-setexit-label
+  (is (= "trapped 219\nran 219 9\nno label 226 8\n"
+         (first (run-sno (str "        &ERRLIMIT = 10\n        SETEXIT('h')\n        C = CODE(' X = 1 :')   :S(OK)\n        OUTPUT = 'ran ' &ERRTYPE ' ' &ERRLIMIT   :(N)\n"
+              "OK      OUTPUT = 'fell'  :(END)\nh       OUTPUT = 'trapped ' &ERRTYPE   :(CONTINUE)\nN       C = CODE(' X = (')   :S(OK)\n        OUTPUT = 'no label "
+              "' &ERRTYPE ' ' &ERRLIMIT\nEND\n"))))))

@@ -733,13 +733,16 @@
                 ;; Compile src and load statements into the running label/code tables.
                 ;; Returns the entry-point label string (success) or nil (failure).
                 ;; Does NOT execute — caller uses a computed goto to invoke it.
-                (try
-                  (let [entry (compile-f src)]
+                (let [entry (try (compile-f src) (catch Exception e (throw (ex-info (.getMessage e) {:snobol/signal :error}))))]
                     (if (map? entry)
-                      (compile-failed! (:error entry) (SNOBOL4clojure.env/error-message (:error entry)))
-                      (when (some? entry) (SNOBOL4clojure.env/->CodeBlock entry))))
-                  (catch Exception e
-                    (throw (ex-info (.getMessage e) {:snobol/signal :error})))))
+                      ;; under &ERRLIMIT with a SETEXIT label armed, the compile error is raised as an error is and the label takes it (MEASURED on sbl -bf:
+                      ;; &ERRLIMIT = 10, SETEXIT('h'), CODE(' X = 1 :') goes to h with &ERRTYPE 219, and :(CONTINUE) fails the CODE statement, &ERRLIMIT 9;
+                      ;; 226 and 227 alike; at &ERRLIMIT 0, or with no label armed, CODE fails with &ERRTYPE set; corpus gate_cases_snobol4
+                      ;; a_goto_field_takes_a_blank_before_its_paren_and_refuses_an_empty_field__ce)
+                      (if (and (pos? (long @SNOBOL4clojure.env/&ERRLIMIT)) @SNOBOL4clojure.env/<SETEXIT>)
+                        (throw (ex-info (SNOBOL4clojure.env/error-message (:error entry)) {:snobol/error (:error entry)}))
+                        (compile-failed! (:error entry) (SNOBOL4clojure.env/error-message (:error entry))))
+                      (when (some? entry) (SNOBOL4clojure.env/->CodeBlock entry)))))
             (let [raw-f (if (symbol? op) ($$fn op) op)   ; op is the container itself when it came from a subscript
                   ;; NAME indirect reference — dereference to actual array/table
                   f (if (instance? NAME raw-f)
