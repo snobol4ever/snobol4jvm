@@ -144,6 +144,11 @@
   "CONVERT(x, type) — coerce x to the named SNOBOL4 type.
    Returns nil (failure) if the conversion is not defined."
   ;; "Data type names may be lower case if case-folding is active" (manual ch. 19, CONVERT): while &CASE is 0, as sbl -bf runs, only the capitals name a type
+  ;; The type is a string: the null string, a pattern, an array or any object that is no string, number or name is "074 convert second argument is not a string"
+  ;; (Appendix D; MEASURED on sbl -bf: CONVERT('1', ''), CONVERT('1', LEN(1)) and CONVERT('1', ARRAY(2)) are 74, CONVERT('1', 'FOO') and CONVERT('1', .Q) fail with
+  ;; no error; corpus gate_cases_snobol4 a_builtin_called_short_or_over_its_arity_pads_with_null_and_drops_extras__cnv, where this engine failed with none)
+  (when-not (or (and (string? t) (seq t)) (number? t) (instance? SNOBOL4clojure.env.NAME t))
+    (throw (ex-info (env/error-message 74) {:snobol/error 74})))
   (let [from (clojure.string/upper-case (DATATYPE x))
         to   (if (zero? (long @env/&CASE)) (str t) (clojure.string/upper-case (str t)))]
     (cond

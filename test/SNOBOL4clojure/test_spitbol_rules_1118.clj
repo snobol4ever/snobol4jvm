@@ -58,3 +58,11 @@
          (first (run-sno (str "        T = TABLE()\n        K = ARRAY(12)\n        I = 1\nL1      K[I] = ARRAY(1)\n        T[K[I]] = I\n        I = LT(I, 12) I + 1              :S("
               "L1)\n        B = SORT(T)\n        I = 1\nL2      OUT = OUT B[I,2] \" \"\n        I = LT(I, 12) I + 1              :S(L2)\n        OUTPUT = OUT\n"
               "END\n"))))))
+
+;; CONVERT's second argument is a string: the null string, a pattern or an array is "074 convert second argument is not a string" (Appendix D). MEASURED on sbl -bf;
+;; corpus gate_cases_snobol4 a_builtin_called_short_or_over_its_arity_pads_with_null_and_drops_extras__cnv
+(deftest convert-takes-a-string-type-else-error-74
+  (is (= "a 74\nb 74\nc 74\nd 1\ne 1\n"
+         (first (run-sno (str "        &ERRLIMIT = 10\n        X = CONVERT('1', '')\n        OUTPUT = 'a ' &ERRTYPE\n        X = CONVERT('1', LEN(1))\n        OUTPUT = 'b ' &ERRTYP"
+              "E\n        X = CONVERT('1', ARRAY(2))\n        OUTPUT = 'c ' &ERRTYPE\n        &ERRTYPE = 1\n        X = CONVERT('1', 'FOO')\n        OUTPUT = 'd ' &"
+              "ERRTYPE\n        X = CONVERT('1', .Q)\n        OUTPUT = 'e ' &ERRTYPE\nEND\n"))))))
