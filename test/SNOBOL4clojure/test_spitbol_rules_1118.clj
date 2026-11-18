@@ -258,3 +258,11 @@
     (is (= ["(1) : ERROR 214"] (errs "#   a; b\n        OUTPUT = 'n'\nEND\n")))
     (is (= ["(1,15) : ERROR 224"] (errs "HERE=\"$(cd \"x\")\"; M=\"a\"\nEND\n")))
     (is (= ["(1,10) : ERROR 233"] (errs "        M=1\nEND\n")))))
+
+;; sbl's -D# sets &DUMP to # before the first statement, and a program that sets &DUMP itself wins. MEASURED on sbl -bf: -D1 dumps a program of X = 1, -D2
+;; dumps &DUMP = 2, -D1 of a program whose first statement is &DUMP = 0 dumps nothing; corpus csnobol4_suite collect and loop, silent entries graded by -D1.
+(deftest the-d-switch-sets-dump-before-the-first-statement
+  (is (re-find #"(?m)^X = 1$" (first (run-sno "        X = 1\nEND\n" ["-D1"]))))
+  (is (re-find #"(?m)^&DUMP = 2$" (first (run-sno "        X = 1\nEND\n" ["-D2"]))))
+  (is (not (re-find #"dump of" (first (run-sno "        &DUMP = 0\n        X = 1\nEND\n" ["-D1"])))))
+  (is (not (re-find #"dump of" (first (run-sno "        X = 1\nEND\n"))))))

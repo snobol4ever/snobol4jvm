@@ -195,6 +195,8 @@
 ;; The listing file, sbl's -o=file: SCRIP_SNO_LIST_SINK, the name the harness gives a port for it, unless this is bound
 (def ^:dynamic *list-sink* nil)
 
+(def ^:private dump-switch (atom nil))   ; the -D# of the command line, set as &DUMP after the run's GLOBALS
+
 (defn- noexecute? [^String src]
   (reduce (fn [no line]
             (reduce (fn [no c] (cond (re-find #"^-NOEXECUTE(?:\s|$)" c) true (re-find #"^-EXECUTE(?:\s|$)" c) false :else no))
@@ -208,6 +210,7 @@
    then the current one. INPUT reads stdin."
   [& args]
   (reset! env/<WIDTH> 120)
+  (reset! dump-switch nil)
   (let [argv          (into [(System/getProperty "java.class.path")] args)
         ;; before the file: --engine X, -u STR (HOST(0)'s text) and sbl's own switches (-b, -f, -bf, -dNk, -sNk and their kin), which stand in the command line
         ;; HOST(2, n) reads, as they stand in sbl's, so HOST(2, n) and HOST(3) answer as sbl -bf answers for one command line (MEASURED: sbl -bf -d131072k
@@ -217,6 +220,11 @@
                           (cond (clojure.core/= "--engine" (first as))                               (recur (second as) u (nnext as))
                                 (clojure.core/= "-u" (first as))                                     (recur engine (second as) (nnext as))
                                 (and (first as) (re-matches #"-t\d+" (first as)))                    (do (reset! env/<WIDTH> (Long/parseLong (subs (first as) 2)))
+                                                                                                         (recur engine u (next as)))
+                                ;; sbl's -D# sets &DUMP to # before the first statement, and a program that sets &DUMP itself wins (MEASURED on sbl -bf: -D1 dumps
+                                ;; a program of X = 1, -D2 dumps &DUMP = 2, -D1 of a program whose first statement is &DUMP = 0 dumps nothing; the harness grades a
+                                ;; silent entry so, its ref cut with sbl -bf -D1: csnobol4_suite collect and loop, which this engine read as a file name)
+                                (and (first as) (re-matches #"-D\d+" (first as)))                    (do (reset! dump-switch (Long/parseLong (subs (first as) 2)))
                                                                                                          (recur engine u (next as)))
                                 (and (first as) (re-matches #"-(?:[bfnelsx]+|[dsimt]\d+[kmgKMG]?)" (first as))) (recur engine u (next as))
                                 :else                                                                [engine u as]))
@@ -234,6 +242,7 @@
             listed (fn [f] (if sink (binding [*out* sink] (f) (flush)) (f)))
             rc (case engine
         "interp" (do (env/GLOBALS)
+                     (when-some [d @dump-switch] (reset! env/&DUMP d))
                      (reset! env/<HOST0> (or u (clojure.string/join " " (remove #{"--"} prog-args))))
                      (reset! env/<ARGV> argv)
                      (reset! env/<ARGI> (clojure.core/- (count argv) (count prog-args)))
