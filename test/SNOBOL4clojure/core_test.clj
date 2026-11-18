@@ -2702,6 +2702,25 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; The END statement's operand is its entry label: nothing, or a label the program defines, else ERROR 215 at the operand (manual ch. 14, The END Statement).
+;; MEASURED on sbl -bf: "END     NOPE", "END     :(NOWHERE)" and "END     X = (" are "(n,9) : ERROR 215 -- syntax error: undefined or erroneous entry label" and nothing
+;; runs; "END     START" with START defined starts there. snobol4jvm ran the first two and read the third as 226 (corpus tests/snobol4 compile_diag__p30, p31).
+(deftest the-end-statement-takes-a-defined-entry-label-or-is-215
+  (doseq [end ["END     NOPE" "END     :(NOWHERE)" "END     X = ("]]
+    (let [f (java.io.File/createTempFile "ent" ".sno")]
+      (try
+        (spit f (str "        OUTPUT = 'ran'\n" end "\n"))
+        (let [o (java.io.StringWriter.) rc (binding [*out* o] (-main (.getPath f)))]
+          (is (= 231 rc) end)
+          (is (re-find #"\(2,9\) : ERROR 215 -- syntax error: undefined or erroneous entry label" (str o)) end)
+          (is (not (re-find #"(?m)^ran$" (str o))) end))
+        (finally (.delete f)))))
+  (let [f (java.io.File/createTempFile "ent" ".sno")]
+    (try
+      (spit f "        OUTPUT = 'one'  :(END)\nSTART   OUTPUT = 'start'\nEND     START\n")
+      (is (= "start\n" (with-out-str (-main (.getPath f)))))
+      (finally (.delete f)))))
+
 ;; An integer literal is a 64-bit integer: past 9223372036854775807 it is ERROR 231 at the item's start (manual Appendix D, 231). MEASURED on sbl -bf:
 ;; X = 9223372036854775807 prints it; X = 9223372036854775808 and X = 99999999999999999999999 are "(1,13) : ERROR 231"; snobol4jvm ran them (compile_diag__p13c).
 (deftest an-integer-past-64-bits-is-231-at-its-start

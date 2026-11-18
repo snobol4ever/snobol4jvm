@@ -392,6 +392,14 @@
                  (let [label  (:label code)
                        body   (:body  code)
                        goto   (:goto  code)
+                   ;; the END statement's operand is its entry label: nothing, or a label the program defines; anything else is "215 syntax error: undefined or
+                   ;; erroneous entry label" at the operand, and the END stands (manual ch. 14, The END Statement; MEASURED on sbl -bf: "END     NOPE",
+                   ;; "END     :(NOWHERE)" and "END     X = (" are 215 at column 9, where this engine ran the first two and read the third as 226 with no END;
+                   ;; corpus tests/snobol4 compile_diag__p30, p31)
+                   [_ e-kw e-sp e-op] (re-find #"^(END|end)([ \t]+)(\S.*?)[ \t]*$" stmt)
+                   stmt   (if (and e-op (not (and (re-matches #"[A-Za-z0-9][A-Za-z0-9._]*" e-op) (contains? NOS (keyword e-op)))))
+                            (do (swap! <DIAGNOSTICS> conj [pline 215 (inc (count (str e-kw e-sp))) NO]) e-kw)
+                            stmt)
                        ;; a label the program's compile has defined already, or a system label, is "217 syntax error: duplicate label"; the first definition
                        ;; stands (sbl.min cmp11, vrlbl not stndl outside a CODE call; sbl -bf: a second L, or a label ABORT, CONTINUE, SCONTINUE, RETURN, FRETURN
                        ;; or NRETURN is 217, and a CODE text may define L again)
