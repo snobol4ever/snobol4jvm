@@ -455,10 +455,17 @@
 ;; argument ARB takes its argument, $'FENCE' = 'q' and 'x' ? LEN(1) . ARB assign).
 (def protected-variables '#{ABORT ARB BAL FAIL FENCE REM SUCCEED})
 
+;; An output-associated variable's value is the one a read of it finds, <ASSOC-LAST>: a call binds a parameter, a local or the result so, without I/O, and its
+;; body reads what was bound (sbl.min b_pfc sets vrval; MEASURED on sbl -bf: OUTPUT(.V, 7, 'out.txt'), V = 'first', then F('arg') of DEFINE('F(V)') reads V as
+;; 'arg' inside and writes nothing until V = 'last'; corpus gate_cases_snobol4 a_call_saves_binds_and_restores_an_io_associated_name_without_io__outparam)
+(defn output-associated? [sym] (clojure.core/= :output (:type (get @<CHANNELS> sym))))
+
 (defn snobol-set!
   "Assign val to the SNOBOL4 user variable named by sym."
   [sym val]
-  (swap! <VARS> assoc (symbol (name sym)) val)
+  (let [s (symbol (name sym))]
+    (swap! <VARS> assoc s val)
+    (when (output-associated? s) (swap! <ASSOC-LAST> assoc s val)))
   val)
 
 (defn protected-store!

@@ -66,3 +66,10 @@
          (first (run-sno (str "        &ERRLIMIT = 10\n        X = CONVERT('1', '')\n        OUTPUT = 'a ' &ERRTYPE\n        X = CONVERT('1', LEN(1))\n        OUTPUT = 'b ' &ERRTYP"
               "E\n        X = CONVERT('1', ARRAY(2))\n        OUTPUT = 'c ' &ERRTYPE\n        &ERRTYPE = 1\n        X = CONVERT('1', 'FOO')\n        OUTPUT = 'd ' &"
               "ERRTYPE\n        X = CONVERT('1', .Q)\n        OUTPUT = 'e ' &ERRTYPE\nEND\n"))))))
+
+;; A call binds a parameter that is output-associated without I/O, and its body reads what was bound (sbl.min b_pfc). MEASURED on sbl -bf; corpus gate_cases_snobol4
+;; a_call_saves_binds_and_restores_an_io_associated_name_without_io__outparam
+(deftest a-call-binds-an-output-associated-name-without-io
+  (is (= "got arg\n"
+         (first (run-sno (str "        OUTPUT(.V, 7, '@OUTFILE@')\n        V = 'first'\n        DEFINE('F(V)')                          :(F_END)\nF       F = 'got ' V              "
+              "              :(RETURN)\nF_END\n        OUTPUT = F('arg')\n        V = 'last'\n        ENDFILE(7)\nEND\n"))))))

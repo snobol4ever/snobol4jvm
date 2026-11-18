@@ -274,7 +274,12 @@
 
 ;; A variable put back as its caller had it: set to the value it had, or unset again when it had none.
 (defn- restore-var! [sym v]
-  (if (nil? v) (swap! SNOBOL4clojure.env/<VARS> dissoc sym) (snobol-set! sym v)))
+  (if (nil? v)
+    (do (swap! SNOBOL4clojure.env/<VARS> dissoc sym) (swap! SNOBOL4clojure.env/<ASSOC-LAST> dissoc sym))
+    (snobol-set! sym v)))
+
+;; what a call saves of a variable: an output-associated one's value is the one a read finds (env/output-associated?)
+(defn- saved-value [sym] (if (SNOBOL4clojure.env/output-associated? sym) (get @SNOBOL4clojure.env/<ASSOC-LAST> sym) (reference sym)))
 
 (defn INVOKE [op & args]
   ;; A program's own DATA function wins over the engine's arm of the same
@@ -458,8 +463,8 @@
                         ;; leave the function object, or its own result, in the caller's.
                         ;; What is saved is the program's own variable (nil: it was not set), never the engine's built-in of that name that $$ would
                         ;; find in the core namespace, so the restore leaves the variable as the caller had it.
-                        (let [saved   (zipmap all-saved (map #(reference (symbol %)) all-saved))
-                              f-saved (reference f-sym)
+                        (let [saved   (zipmap all-saved (map #(saved-value (symbol %)) all-saved))
+                              f-saved (saved-value f-sym)
                               stno-saved @&STNO
                               file-saved @&FILE
                               line-saved @&LINE]
