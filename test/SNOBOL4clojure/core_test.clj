@@ -2702,6 +2702,14 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; The name of a table or array element is the element, so the name of t['k'] and the name ITEM(t,'k') gives are one (manual ch. 17, the name operator; ITEM).
+;; MEASURED on sbl -bf: IDENT(.ITEM(t,'k'), .t['k']) succeeds; DIFFER(.t['k'], .t['j']) and DIFFER(.t['k'], .t2['k']) succeed. snobol4jvm failed the first
+;; (corpus gate_cases_snobol4 test_gate_sno_ident_of_two_names_of_one_table_or_array_element_succeeds_and_of_two_elements_fails).
+(deftest the-name-of-an-element-is-the-element
+  (is (= "same\ndiff\nother\n"
+         (:stdout (run-with-timeout (str "	t = TABLE()\n	t2 = TABLE()\n	OUTPUT = IDENT(.ITEM(t,'k'), .t['k']) 'same'\n"
+                                         "	OUTPUT = DIFFER(.t['k'], .t['j']) 'diff'\n	OUTPUT = DIFFER(.t['k'], .t2['k']) 'other'\nEND\n") 2000)))))
+
 ;; A real division of zero by zero is real zero; of anything else by zero it is ERROR 262 (manual Appendix D, 262). MEASURED on sbl -bf: 0 / 0.0, 0.0 / 0, -0.0 / 0
 ;; and 0.0 / 0.0 are 0. (REAL); 1.5 / 0.0 is 262; 0 / 0 between integers is 014. snobol4jvm raised 262 for every real zero divisor (corpus gate_cases_snobol4
 ;; test_gate_sno_real_zero_over_zero_is_real_zero_as_in_spitbol).

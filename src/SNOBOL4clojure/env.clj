@@ -167,12 +167,17 @@
 ;; and DIFFER read them: .A is .A and is not .B or the string "A". As text a
 ;; NAME is the name of its variable, which is what OUTPUT, SIZE and a
 ;; concatenation read.
+;; The identity of a name of an element is the element, the table or array it was made from and its subscripts, never the variable that held it, which only
+;; spells it: the name of t['k'] carries its table as :container, and ITEM(t,'k') names the table itself (MEASURED on sbl -bf: IDENT(.ITEM(t,'k'), .t['k'])
+;; succeeds; corpus gate_cases_snobol4 test_gate_sno_ident_of_two_names_of_one_table_or_array_element_succeeds, which this engine failed)
+(defn- name-identity [n]
+  (if-let [c (and (seq? n) (:container (meta n)))] (cons c (rest n)) n))
 (deftype NAME [^:unsynchronized-mutable n] &NAME
   (n [this]  n)
   (n [this _] (set! n _))
   Object
-  (equals   [this o] (and (instance? &NAME o) (clojure.core/= n (.n ^&NAME o))))
-  (hashCode [this]   (hash n))
+  (equals   [this o] (and (instance? &NAME o) (clojure.core/= (name-identity n) (name-identity (.n ^&NAME o)))))
+  (hashCode [this]   (hash (name-identity n)))
   (toString [this]   (str n)))
 
 ;; The name of an expression, .*E for an E that is no variable: a pseudo-variable, a new one each time, whose value is E evaluated when it is read and which is
