@@ -227,7 +227,10 @@
                     ;; ending "* c" and a blank line does not; corpus gimpel asm_driver, whose rpad.inc ends so, where this engine named rpad.inc for the
                     ;; statements of asm.spt after it)
                     last-line           (let [ls (string/split text #"\r?\n" -1)] (last (if (and (next ls) (= "" (peek ls))) (pop ls) ls)))
-                    stale?              (boolean (and last-line (string/starts-with? last-line "*")))]
+                    ;; and so does one whose last line ends in a semicolon, alone or before a comment (MEASURED on sbl -bf: an include ending "X = 1 ;" or
+                    ;; "X = 1 ;* c" leaves its name as &FILE for the END after it, one ending "X = 1 ; Y = 2" or "X = 1" does not; corpus rosetta-snobol4
+                    ;; substring-top-and-tail, whose last line ends ";* strip both first and last characters")
+                    stale?              (boolean (and last-line (or (string/starts-with? last-line "*") (re-find #";[ \t]*(\*[^'\"]*)?$" last-line))))]
                 (recur (rest lines)
                        (into out (concat [(str "-FILE-ENTER \"" (string/trim fname) "\"")] (string/split body #"\n") [(str "-FILE-LEAVE" (when stale? " STALE"))]))
                        seen'

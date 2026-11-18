@@ -394,3 +394,20 @@
 (deftest an-assignment-through-an-undefined-function-is-22
   (doseq [[s want] [["        F(1) = 2" "22"] ["        X = 3\n        X(1) = 2" "22"] ["        X = 3\n        X<1> = 2" "235"] ["        X[1] = 2" "235"]]]
     (is (= (str want "\n") (first (run-sno (str "        &ERRLIMIT = 1\n" s "\n        OUTPUT = &ERRTYPE\nEND\n")))) s)))
+
+;; An include whose last line ends in a semicolon, alone or before a comment, leaves its name as &FILE for the statement after it, as one ending in a comment line
+;; does. MEASURED on sbl -bf: a driver's END after an include ending "X = 1 ;* c" dumps &FILE the include's name, after one ending "X = 1 ; Y = 2" the driver's;
+;; corpus rosetta-snobol4 substring-top-and-tail_driver.
+(deftest an-include-ending-in-a-semicolon-leaves-its-name-as-file
+  (let [d   (.toFile (java.nio.file.Files/createTempDirectory "incsemi" (make-array java.nio.file.attribute.FileAttribute 0)))
+        run (fn [last-line]
+              (spit (java.io.File. d "inc.sno") last-line)
+              (spit (java.io.File. d "drv.sno") "-INCLUDE \"inc.sno\"\nEND\n")
+              (let [out (with-out-str (binding [*err* (java.io.StringWriter.)] (-main "-D1" (.getPath (java.io.File. d "drv.sno")))))]
+                (some-> (re-find #"(?m)^&FILE = '([^']*)'$" out) second (java.io.File.) (.getName))))]
+    (try
+      (is (= "inc.sno" (run "        X = 1 ;* c\n")))
+      (is (= "inc.sno" (run "        X = 1 ;\n")))
+      (is (= "drv.sno" (run "        X = 1 ; Y = 2\n")))
+      (is (= "drv.sno" (run "        X = 1\n")))
+      (finally (doseq [f (reverse (file-seq d))] (.delete f))))))
