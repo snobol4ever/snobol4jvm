@@ -89,3 +89,11 @@
          (first (run-sno (str "        &ERRLIMIT = 10\n        SETEXIT('h')\n        C = CODE(' X = 1 :')   :S(OK)\n        OUTPUT = 'ran ' &ERRTYPE ' ' &ERRLIMIT   :(N)\n"
               "OK      OUTPUT = 'fell'  :(END)\nh       OUTPUT = 'trapped ' &ERRTYPE   :(CONTINUE)\nN       C = CODE(' X = (')   :S(OK)\n        OUTPUT = 'no label "
               "' &ERRTYPE ' ' &ERRLIMIT\nEND\n"))))))
+
+;; The run ends with the exit code &CODE holds, modulo 256 and 0 when negative, however it ends (manual ch. 7, &CODE). MEASURED on sbl -bf: 3 exits 3, after an
+;; execution error too, 300 exits 44, -5 exits 0; corpus gate_cases_snobol4 test_gate_harness_road_lib_reads_the_per_process_verdict__code
+(deftest the-exit-code-is-code-modulo-256
+  (is (= 3 (second (run-sno "        &CODE = 3\nEND\n"))))
+  (is (= 44 (second (run-sno "        &CODE = 300\nEND\n"))))
+  (is (= 5 (second (run-sno "        &CODE = 5\n        A = 'a'\n        X = 1 + A\nEND\n"))))
+  (is (nil? (second (run-sno "        &CODE = 256\nEND\n")))))

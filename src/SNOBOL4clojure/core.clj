@@ -248,6 +248,7 @@
                          ;; an execution error that ends the program (and the statement limit, "244 Statement count exceeds value of STLIMIT keyword") is
                          ;; reported as sbl -bf reports it, with &ERRTYPE and &ERRTEXT set, and the run ends there, exit code 0 as sbl's; the termination
                          ;; dump &DUMP asks for is written after it, however the program ends
+                         (do
                          (let [t0 (System/nanoTime)]
                            (try (rt/RUN entry)
                                 (catch clojure.lang.ExceptionInfo e
@@ -270,7 +271,11 @@
                                     (reset! env/&ERRTYPE 246)
                                     (reset! env/&ERRTEXT text)
                                     (listed #(fatal/report! 246 text @env/&STCOUNT t0))))
-                                (finally (when (pos? (long @env/&DUMP)) (listed #(print (dump/dump-text @env/&DUMP))))))))))
+                                (finally (when (pos? (long @env/&DUMP)) (listed #(print (dump/dump-text @env/&DUMP)))))))
+                         ;; the run ends with the exit code &CODE holds, however it ends, modulo 256 and 0 when negative (manual ch. 7, &CODE: "the end-of-job code";
+                         ;; MEASURED on sbl -bf: &CODE = 3 exits 3, after an execution error or the statement limit too; 300 exits 44, 256 and -5 exit 0; corpus
+                         ;; gate_cases_snobol4 test_gate_harness_road_lib_reads_the_per_process_verdict__code)
+                         (let [c (long @env/&CODE) c (if (neg? c) 0 (mod c 256))] (when (pos? c) c))))))
         "vm"     (print (vm/run-program! src)))]
         (flush)
         (when sink (.close ^java.io.Writer sink))
