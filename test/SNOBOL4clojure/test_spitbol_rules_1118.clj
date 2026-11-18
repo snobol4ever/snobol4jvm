@@ -97,3 +97,10 @@
   (is (= 44 (second (run-sno "        &CODE = 300\nEND\n"))))
   (is (= 5 (second (run-sno "        &CODE = 5\n        A = 'a'\n        X = 1 + A\nEND\n"))))
   (is (nil? (second (run-sno "        &CODE = 256\nEND\n")))))
+
+;; Unary / is no operator until OPSYN makes it one: it is not folded, and its 029 comes as it runs. MEASURED on sbl -bf; corpus gate_cases_snobol4
+;; a_unary_and_a_binary_opsyn_of_one_operator_are_two_functions__ops
+(deftest unary-slash-is-undefined-until-it-runs
+  (is (= "slash u<a>\n"
+         (first (run-sno (str "        DEFINE('U(X)')                          :(U.END)\nU       U = 'u<' X '>'                          :(RETURN)\nU.END   OPSYN('/', .U, 1)\n"
+              "        OUTPUT = 'slash ' /'a'\nEND\n"))))))

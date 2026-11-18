@@ -346,7 +346,10 @@
           :else
           (let [parts (vec (map-indexed (fn [i a] (when (names i) (name-required! a)) (fold a)) args))]
             (if (and (every? first parts)
-                     (or (and (folded-operators op) (<= 1 (count args) 2))
+                     ;; unary / is no operator of SPITBOL's until OPSYN makes it one, so it is not folded and its 029 comes as it runs (MEASURED on sbl -bf:
+                     ;; X = /'a' writes the line before it and ends at ERROR 029; OPSYN('/', .U, 1) then /'a' calls U; corpus gate_cases_snobol4
+                     ;; a_unary_and_a_binary_opsyn_of_one_operator_are_two_functions__ops, which this engine refused at compile time)
+                     (or (and (folded-operators op) (<= 1 (count args) 2) (not (and (= '/ op) (= 1 (count args)))))
                          (and (= '| op) (<= 2 (count args)))
                          (and (folded-functions op) (not (:subscript (meta n))))))
               (let [v (eval! n)] (if (nil? v) [false nil] [true v]))
