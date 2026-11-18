@@ -163,3 +163,9 @@
   (is (= "2147483648.5 FAIL\n2147483648. FAIL\n2147483647.5 2147483647\n2147483649.5 2147483649\n-2147483648.5 -2147483648\n2147483648.5 FAIL\n"
          (first (run-sno (str "        DEFINE('C(R)')  :(CE)\nC       OUTPUT = R ' ' (CONVERT(R, 'INTEGER') , 'FAIL')  :(RETURN)\nCE      C(2147483648.5)\n        C(2147483648.0)\n"
               "        C(2147483647.5)\n        C(2147483649.5)\n        C(-2147483648.5)\n        C('2147483648.5')\nEND\n"))))))
+
+;; The dump names an array by its prototype as ARRAY was given it (manual ch. 7, &DUMP). MEASURED on sbl -bf; corpus gate_cases_snobol4 dump_matches_spitbol__dump2b
+(deftest a-dump-names-an-array-by-its-prototype
+  (let [[out] (run-sno "        C = ARRAY('1:3')\n        A = ARRAY(' 2 : 4 , 3 ')\n        &DUMP = 1\nEND\n")]
+    (is (re-find #"(?m)^C = ARRAY\(1:3\) #1$" out))
+    (is (re-find #"(?m)^A = ARRAY\( 2 : 4 , 3 \) #2$" out))))

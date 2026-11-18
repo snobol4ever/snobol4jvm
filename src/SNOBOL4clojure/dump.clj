@@ -23,7 +23,9 @@
     (integer? v) (str v)
     (double? v)  (env/sstr v)
     (instance? NAME v)    (name-text v)
-    (env/array? v)        (str "ARRAY(" (dims-text (:dims v)) ") #" (:serial v))
+    ;; an array by its prototype as ARRAY was given it (MEASURED on sbl -bf: ARRAY('1:3') dumps ARRAY(1:3), ARRAY(' 2 : 4 , 3 ') ARRAY( 2 : 4 , 3 ), ARRAY(2.9)
+    ;; ARRAY(2); corpus gate_cases_snobol4 dump_matches_spitbol__dump2b)
+    (env/array? v)        (str "ARRAY(" (or (:proto v) (dims-text (:dims v))) ") #" (:serial v))
     (env/table? v)        (str "TABLE(" (:size (meta v) 11) ") #" (:serial (meta v)))
     (instance? DataObj v) (str (.type-name ^DataObj v) " #" (.serial ^DataObj v))
     (symbol? (:defer-var (meta v))) (str "*" (:defer-var (meta v)))   ; *NAME for a variable, EXPRESSION for anything larger
