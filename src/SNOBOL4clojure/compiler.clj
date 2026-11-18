@@ -415,6 +415,8 @@
 (defn- end-entry [codes]
   (let [b (first (or (get codes :END) (get codes :end)))]
     (when (symbol? b)
+                                                  ;; a 231 the emitter finds stands where the scan puts it, the numeric item's start
+                                                  (when (= :compile (:reason code)) (let [se (syntax-error stmt)] (when (= 231 (:error se)) se)))
       (let [k (keyword (name b))] (when (@<STNO> k) k)))))
 
 ;; -- CODE — compile and load into the global statement store ------------------

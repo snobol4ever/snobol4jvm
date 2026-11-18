@@ -121,7 +121,10 @@
      :dgo       (fn [x]      (list 'DIRECT x))
      :N         (fn [n]      (symbol n))
      :S         (fn [s]      (subs s 1 (subtract (count s) 1)))
-     :I         edn/read-string
+     ;; an integer literal is a 64-bit integer; one past 9223372036854775807 is "231 Syntax error: Invalid numeric item", a compile error (MEASURED on sbl -bf:
+     ;; X = 9223372036854775807 prints it, X = 9223372036854775808 and X = 99999999999999999999999 are 231 at the item; corpus tests/snobol4 compile_diag__p13c)
+     :I         (fn [s] (let [v (edn/read-string s)]
+                          (if (instance? Long v) v (throw (ex-info "syntax error: invalid numeric item" {:snobol/error 231 :snobol/compile true})))))
      ;; a real literal reads as SPITBOL reads it (env/parse-real); one too large for a real is "231 Syntax error: Invalid numeric item" (Appendix D), a compile error
      :R         (fn [s] (or (parse-real s) (throw (ex-info "syntax error: invalid numeric item" {:snobol/error 231 :snobol/compile true}))))}
     ast))

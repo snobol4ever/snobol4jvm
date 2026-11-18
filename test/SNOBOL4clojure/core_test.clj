@@ -2702,6 +2702,20 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; An integer literal is a 64-bit integer: past 9223372036854775807 it is ERROR 231 at the item's start (manual Appendix D, 231). MEASURED on sbl -bf:
+;; X = 9223372036854775807 prints it; X = 9223372036854775808 and X = 99999999999999999999999 are "(1,13) : ERROR 231"; snobol4jvm ran them (compile_diag__p13c).
+(deftest an-integer-past-64-bits-is-231-at-its-start
+  (let [f (java.io.File/createTempFile "big" ".sno")]
+    (try
+      (spit f "        X = 9223372036854775807\n        OUTPUT = X\nEND\n")
+      (is (= "9223372036854775807\n" (with-out-str (-main (.getPath f)))))
+      (doseq [n ["9223372036854775808" "99999999999999999999999"]]
+        (spit f (str "        X = " n "\nEND\n"))
+        (let [o (java.io.StringWriter.) rc (binding [*out* o] (-main (.getPath f)))]
+          (is (= 231 rc) n)
+          (is (re-find #"\(1,13\) : ERROR 231 -- syntax error: invalid numeric item" (str o)) n)))
+      (finally (.delete f)))))
+
 ;; A listing line ends at its last character that is not a blank or a tab. MEASURED on sbl -bf: "        X = 1 ? " (a blank at its end) refused at compile lists
 ;; as "1               X = 1 ?"; snobol4jvm kept the blank (corpus tests/snobol4 compile_diag__p35).
 (deftest a-listing-line-ends-at-its-last-nonblank-character

@@ -26,6 +26,10 @@
 (defn- number-end [s i]
   (let [digits (fn [j] (if (digit? (at s j)) (recur (inc j)) j))
         j      (digits i)
+        ;; an integer past 64 bits is invalid too, at the item's start (sbl -bf: X = 9223372036854775808 is 231 at column 13)
+        _      (when (and (not (#{\. \e \E \d \D} (at s j))) (> (- j i) 18)
+                          (try (Long/parseLong (subs s i j)) false (catch NumberFormatException _ true)))
+                 (fail! 231 i))
         j      (if (= \. (at s j)) (digits (inc j)) j)
         j      (if (#{\e \E \d \D} (at s j))
                  (let [k (if (#{\+ \-} (at s (inc j))) (+ j 2) (inc j))]
