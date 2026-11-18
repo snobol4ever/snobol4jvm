@@ -9,7 +9,7 @@ snobol4jvm is a SNOBOL4/SPITBOL implementation for the JVM in Clojure. The Leini
 - **Extensions are allowed.** Where `sbl -bf` ends in an error caused only by a SPITBOL restriction that CSNOBOL4 or SNOBOL4 lifts, snobol4jvm runs on. Examples: OPSYN of any operator, unary `^` among them; CSNOBOL4's `&DIGITS`; `FUNCTION`, `LABEL` and `VDIFFER`.
 - **Such an entry is declared per engine.** Its SPITBOL ref stands, and it leaves snobol4jvm's denominator alone through `EXCLUDED.jvm.tsv` beside its package, class `SNOBOL4PP_EXTENSION_KEPT_BY_LON`, with the oracle's answer. SCRIP's rows never read it.
 - **I/O and the host are exactly SPITBOL's:** `INPUT`, `OUTPUT`, `TERMINAL`, `HOST`.
-- **No case folding, ever.** Lon, the same hour: *"We WILL NEVER support case-folding. We will always have upper-case built-in keywords and functions."* Built-in keywords, functions and control cards are upper case only, and `&trim` or a lower-case `-include` is answered as `sbl -bf` answers it. The `-CASE` and `&CASE` folding still in `compiler.clj` is owed for removal.
+- **No case folding, ever.** Lon, the same hour: *"We WILL NEVER support case-folding. We will always have upper-case built-in keywords and functions."* Built-in keywords, functions and control cards are upper case only, and `&trim` or a lower-case `-include` is answered as `sbl -bf` answers it. `-CASE` and `&CASE` fold nothing (1e740ad).
 
 The oracle is `/home/resources/x64/bin/sbl -bf prog.sno`:
 
