@@ -215,3 +215,12 @@
   (is (= "OZAB\nyyz\n"
          (first (run-sno (str "        OUTPUT = REPLACE('lazy', 'abcdefghijklmzopqrstuvwxyz', 'ZYXWVUTSRQPONMLKJIHGFEDCBA')\n        OUTPUT = REPLACE('aab', 'aab', 'xyz')\n"
               "END\n"))))))
+
+;; A return at function level 0 is "242 function return from level zero": the label SETEXIT armed takes it under &ERRLIMIT, else it ends the program whatever
+;; &ERRLIMIT holds. MEASURED on sbl -bf; corpus gate_cases_snobol4 test_gate_errlimit_survival_is_measured_per_code__e242
+(deftest a-return-at-level-zero-is-error-242
+  (let [[out] (run-sno "        &ERRLIMIT = 10\n        OUTPUT = 'B'  :(RETURN)\n        OUTPUT = 'C'\nEND\n")]
+    (is (re-find #"\A[BR]?B\n" (str "R" out)))
+    (is (re-find #"\(2\) : ERROR 242 -- function return from level zero" out))
+    (is (not (re-find #"(?m)^C$" out))))
+  (is (= "B\nh 242\n" (first (run-sno "        &ERRLIMIT = 10\n        SETEXIT('H')\n        OUTPUT = 'B'  :(RETURN)\n        OUTPUT = 'C'  :(END)\nH       OUTPUT = 'h ' &ERRTYPE\nEND\n")))))

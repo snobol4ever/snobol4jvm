@@ -31,7 +31,16 @@
 ;; The system labels a SETEXIT handler may be, which act at once (run* enter); SCONTINUE is not yet one a Goto takes
 (def ^:private system-labels #{"CONTINUE" "ABORT" "RETURN" "FRETURN" "NRETURN" "END" "end"})
 
+;; A return at function level 0 is "242 function return from level zero": the label SETEXIT armed takes it under &ERRLIMIT, and with none armed it ends the program
+;; whatever &ERRLIMIT holds (MEASURED on sbl -bf: &ERRLIMIT = 10 then :(RETURN), :(FRETURN) or :(NRETURN) goes to SETEXIT's H with &ERRTYPE 242; with no SETEXIT
+;; the run ends at ERROR 242; corpus gate_cases_snobol4 test_gate_errlimit_survival_is_measured_per_code__e242, which this engine ended quietly)
+(defn- level-zero-return! []
+  (when (zero? (long @SNOBOL4clojure.env/&FNCLEVEL))
+    (throw (ex-info (SNOBOL4clojure.env/error-message 242)
+                    (if (and (pos? (long @&ERRLIMIT)) @SNOBOL4clojure.env/<SETEXIT>) {:snobol/error 242} {:snobol/error 242 :snobol/abort true})))))
+
 (defn- dispatch-special! [target]
+  (when (#{"RETURN" "FRETURN" "NRETURN"} (clojure.string/upper-case (name target))) (level-zero-return!))
   (case (clojure.string/upper-case (name target))
     "RETURN"  (snobol-return!)
     "FRETURN" (snobol-freturn!)

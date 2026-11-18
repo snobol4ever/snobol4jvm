@@ -278,44 +278,46 @@ END")))))
 END")))))
 
 ;; ── ARG ──────────────────────────────────────────────────────────────────────
+;; Each program goes past the function body to its call: a body run at level 0 ends at its :(RETURN), "242 function return from level zero" (MEASURED on
+;; sbl -bf: DEFINE('F(X,Y)') falling into F prints X and ends at ERROR 242, before its call)
 
 (deftest arg_first_param
   "ARG('F',1) returns name of first parameter"
   (is (= "X\n" (:stdout (prog "
-        DEFINE('F(X,Y)')
+        DEFINE('F(X,Y)')  :(FE)
 F       OUTPUT = ARG('F',1)
         :(RETURN)
-        F('a','b')
+FE      F('a','b')
 END")))))
 
 (deftest arg_second_param
   "ARG('F',2) returns name of second parameter"
   (is (= "Y\n" (:stdout (prog "
-        DEFINE('F(X,Y)')
+        DEFINE('F(X,Y)')  :(FE)
 F       OUTPUT = ARG('F',2)
         :(RETURN)
-        F('a','b')
+FE      F('a','b')
 END")))))
 
 (deftest arg_out_of_range
   "ARG('F',99) fails (returns nil → statement failure)"
   (is (= "no\n" (:stdout (prog "
-        DEFINE('F(X)')
+        DEFINE('F(X)')  :(FE)
 F       ARG('F',99) :S(YES)F(NO)
 YES     OUTPUT = 'yes'
         :(RETURN)
 NO      OUTPUT = 'no'
         :(RETURN)
-        F('a')
+FE      F('a')
 END")))))
 
 (deftest arg_single_param
   "ARG with single-param function"
   (is (= "N\n" (:stdout (prog "
-        DEFINE('DOUBLE(N)')
+        DEFINE('DOUBLE(N)')  :(FE)
 DOUBLE  OUTPUT = ARG('DOUBLE',1)
         :(RETURN)
-        DOUBLE(5)
+FE      DOUBLE(5)
 END")))))
 
 ;; ── LOCAL ────────────────────────────────────────────────────────────────────
@@ -323,43 +325,43 @@ END")))))
 (deftest local_first
   "LOCAL('F',1) returns name of first local variable"
   (is (= "L1\n" (:stdout (prog "
-        DEFINE('F(X)L1,L2')
+        DEFINE('F(X)L1,L2')  :(FE)
 F       OUTPUT = LOCAL('F',1)
         :(RETURN)
-        F('a')
+FE      F('a')
 END")))))
 
 (deftest local_second
   "LOCAL('F',2) returns name of second local variable"
   (is (= "L2\n" (:stdout (prog "
-        DEFINE('F(X)L1,L2')
+        DEFINE('F(X)L1,L2')  :(FE)
 F       OUTPUT = LOCAL('F',2)
         :(RETURN)
-        F('a')
+FE      F('a')
 END")))))
 
 (deftest local_out_of_range
   "LOCAL('F',99) fails when out of range"
   (is (= "no\n" (:stdout (prog "
-        DEFINE('F(X)L1')
+        DEFINE('F(X)L1')  :(FE)
 F       LOCAL('F',99) :S(YES)F(NO)
 YES     OUTPUT = 'yes'
         :(RETURN)
 NO      OUTPUT = 'no'
         :(RETURN)
-        F('a')
+FE      F('a')
 END")))))
 
 (deftest local_no_locals
   "LOCAL on function with no locals fails"
   (is (= "no\n" (:stdout (prog "
-        DEFINE('F(X)')
+        DEFINE('F(X)')  :(FE)
 F       LOCAL('F',1) :S(YES)F(NO)
 YES     OUTPUT = 'yes'
         :(RETURN)
 NO      OUTPUT = 'no'
         :(RETURN)
-        F('a')
+FE      F('a')
 END")))))
 
 ;; ── LGT (string greater-than) ─────────────────────────────────────────────────
