@@ -280,6 +280,7 @@
 287 "Value assigned to keyword MAXLNGTH is too small"
 288 "EXIT second argument is not a string"
 289 "Input channel currently in use"
+290 "Output channel currently in use"
 291 "SET first argument is not a suitable name"
 292 "SET first argument is null"
 293 "Inappropriate second argument to SET"

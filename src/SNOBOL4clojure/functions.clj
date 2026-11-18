@@ -570,6 +570,13 @@
       (if (clojure.core/= type :input)
         (throw (ex-info "input channel currently in use" {:snobol/error 289}))
         (throw (ex-info "output file cannot be written to" {:snobol/error 161}))))
+    ;; and a unit already open in this direction takes no second file: a file argument that is not null is "289 input channel currently in use", "290 output
+    ;; channel currently in use" (MEASURED on sbl -bf: INPUT(.X,5,'in5.txt') then INPUT(.Y,5,'[-f0]'), INPUT(.Y,5,'in5.txt') or INPUT(.X,5,'[-f0]') is 289,
+    ;; INPUT(.Y,5) and INPUT(.Y,5,'') share the unit; OUTPUT(.Y,6,'o2.txt') on an open 6 is 290; corpus gate_cases_snobol4 input_honours_the_f_and_l_file_options__reassoc)
+    (when (and held (not (null-arg? filename)))
+      (if (clojure.core/= type :input)
+        (throw (ex-info "input channel currently in use" {:snobol/error 289}))
+        (throw (ex-info "output channel currently in use" {:snobol/error 290}))))
     (cond
       (null-arg? unit)                                       (if (null-arg? filename) [0 nil nil] (bad))
       (or (not (clojure.string/blank? nm)) (contains? opts \f)) [(channel-key unit) filename nil]

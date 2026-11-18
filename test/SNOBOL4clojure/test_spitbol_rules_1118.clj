@@ -182,3 +182,11 @@
         ls (clojure.string/split-lines out)]
     (is (some #(= (str "X = '" (apply str (repeat 115 \b))) %) ls))
     (is (some #(= (str (apply str (repeat 85 \b)) "'") %) ls))))
+
+;; A unit already open in a direction takes no second file: 289 for INPUT, 290 for OUTPUT; a null file argument shares it. MEASURED on sbl -bf; corpus gate_cases_snobol4
+;; input_honours_the_f_and_l_file_options__reassoc
+(deftest a-unit-open-in-one-direction-takes-no-second-file
+  (is (= "fails 290\nshared\nfails3 289\n"
+         (first (run-sno (str "        &ERRLIMIT = 5\n        OUTPUT(.X, 6, '@OUTFILE@')\n        OUTPUT(.Y, 6, '@OUTFILE@')  :F(F1)\n        OUTPUT = 'ok1'  :(N)\n"
+              "F1      OUTPUT = 'fails ' &ERRTYPE\nN       OUTPUT(.Y, 6)  :F(F2)\n        OUTPUT = 'shared'  :(M)\nF2      OUTPUT = 'fails2 ' &ERRTYPE\n"
+              "M       INPUT(.Z, 6, '@OUTFILE@')  :F(F3)\n        OUTPUT = 'ok3'  :(END)\nF3      OUTPUT = 'fails3 ' &ERRTYPE\nEND\n"))))))
