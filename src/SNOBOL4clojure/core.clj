@@ -251,7 +251,9 @@
                          (let [t0 (System/nanoTime)]
                            (try (rt/RUN entry)
                                 (catch clojure.lang.ExceptionInfo e
-                                  (let [{n :snobol/error sig :snobol/signal steps :steps} (ex-data e)
+                                  (let [{n :snobol/error sig :snobol/signal steps :steps lvl :fnclevel} (ex-data e)
+                                        ;; the program ends at the function level the error or the limit left (operators, the DEFINE wrapper)
+                                        _    (when lvl (reset! env/&FNCLEVEL lvl))
                                         ;; error 0, which &ERRTYPE = 0 signals, ends the program as "036 goto abort with no preceding error" (sbl -bf)
                                         n    (if (and n (zero? (long n))) 36 n)
                                         code (or n (when (clojure.core/= :step-limit sig) 244))]

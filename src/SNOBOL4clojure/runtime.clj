@@ -281,7 +281,9 @@
         (if k
           (throw e)
           (case (get (ex-data e) :snobol/signal)
-            :end        (if (pos? (long @&FNCLEVEL)) (throw e) (do (when-not (:snobol/closing (ex-data e)) (end-statement!)) nil))   ; program end, from any level
+            :end        (if (pos? (long @&FNCLEVEL)) (throw e)
+                          (do (when-some [l (:fnclevel (ex-data e))] (reset! &FNCLEVEL l))   ; END inside a function ends the program at that level (sbl -bf)
+                              (when-not (:snobol/closing (ex-data e)) (end-statement!)) nil))   ; program end, from any level
             :return     nil          ; bubble up to DEFINE wrapper
             :step-limit (throw e)    ; propagate — caught by test-helpers/harness
             :freturn    (throw e)    ; bubble up to DEFINE wrapper

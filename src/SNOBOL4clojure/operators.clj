@@ -478,9 +478,15 @@
                                           (when run-fn (binding [SNOBOL4clojure.env/*fp* d SNOBOL4clojure.env/*flprt* d] ((var-get run-fn) entry)))
                                           :return   ; normal fall-through = return
                                           ;; only the three returns end a call; END, the step limit and an error go on up (END in a function ends the program)
+                                          ;; what goes on up carries the function level it left, the innermost's, which &FNCLEVEL reads again if it ends the program:
+                                          ;; sbl -bf's dump and report show the level the program ended at (MEASURED: an error, END and the statement limit inside a
+                                          ;; function each dump &FNCLEVEL = 1; corpus setl4_spitbol sbl-sonnets and concord, ERROR 041 at level 1, where this engine
+                                          ;; dumped 0), while an error EVAL or a match catches leaves the level restored
                                           (catch clojure.lang.ExceptionInfo e
                                             (let [sig (:snobol/signal (ex-data e))]
-                                              (if (#{:return :freturn :nreturn} sig) sig (throw e))))
+                                              (if (#{:return :freturn :nreturn} sig)
+                                                sig
+                                                (throw (if (contains? (ex-data e) :fnclevel) e (ex-info (ex-message e) (assoc (ex-data e) :fnclevel @&FNCLEVEL) e))))))
                                           (finally (fire-keyword! "FNCLEVEL" (swap! &FNCLEVEL dec))))]
                             ;; Collect result before restoring
                             (let [result ($$ f-sym)]

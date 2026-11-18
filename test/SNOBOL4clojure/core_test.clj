@@ -2702,6 +2702,21 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; A program that ends inside a function, by an error, by END or by the statement limit, ends at that function level, which its dump shows (manual ch. 7,
+;; &FNCLEVEL). MEASURED on sbl -bf: each of the three dumps &FNCLEVEL = 1; an error EVAL catches leaves the level 0. snobol4jvm dumped 0 for the three
+;; (corpus setl4_spitbol sbl-sonnets and concord, ERROR 041 at level 1).
+(deftest a-program-ends-at-the-function-level-it-ends-in
+  (doseq [[body want] [["F       X = 1 / Z\n        :(RETURN)\nFE      Z = 0\n        F()\n" "&FNCLEVEL = 1"]
+                       ["F       :(END)\nFE      F()\n" "&FNCLEVEL = 1"]
+                       ["F       X = X + 1  :(F)\nFE      &STLIMIT = 10\n        F()\n" "&FNCLEVEL = 1"]
+                       ["F       X = 1 / Z  :(RETURN)\nFE      Z = 0\n        Y = EVAL('F()')\n" "&FNCLEVEL = 0"]]]
+    (let [f (java.io.File/createTempFile "fnclevel" ".sno")]
+      (try
+        (spit f (str "        &DUMP = 1\n        DEFINE('F()')  :(FE)\n" body "END\n"))
+        (let [out (binding [*err* (java.io.StringWriter.)] (with-out-str (-main (.getPath f))))]
+          (is (some #{want} (clojure.string/split-lines out)) body))
+        (finally (.delete f))))))
+
 ;; &DUMP = 3 "adds statement labels and all null-valued variables" (manual ch. 7, &DUMP): every name the program spoke, a DEFINE's and a DATA's included, each
 ;; label's first character too, and INPUT, OUTPUT and TERMINAL; a goto's S and F are no names. MEASURED on sbl -bf, this program's dump; snobol4jvm listed X
 ;; alone (corpus setl4_spitbol examples/sonnets/sbl-sonnets and concord).
