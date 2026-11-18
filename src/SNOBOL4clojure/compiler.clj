@@ -189,7 +189,11 @@
               (let [text                (slurp found :encoding "ISO-8859-1")
                     ;; the included file's own directory joins the search path
                     [body seen' inner]  (preprocess-includes* text (distinct (cons (.getParent found) search-path)) (conj seen (string/trim fname)))
-                    last-line           (last (string/split-lines text))
+                    ;; the last line as the file has it, a blank line after a comment included: split-lines drops trailing empty lines, so a file whose comment is
+                    ;; followed by a blank line read stale (MEASURED on sbl -bf: an include ending "* c" leaves its name as &FILE for the next statement, one
+                    ;; ending "* c" and a blank line does not; corpus gimpel asm_driver, whose rpad.inc ends so, where this engine named rpad.inc for the
+                    ;; statements of asm.spt after it)
+                    last-line           (let [ls (string/split text #"\r?\n" -1)] (last (if (and (next ls) (= "" (peek ls))) (pop ls) ls)))
                     stale?              (boolean (and last-line (string/starts-with? last-line "*")))]
                 (recur (rest lines)
                        (into out (concat [(str "-FILE-ENTER \"" (string/trim fname) "\"")] (string/split-lines body) [(str "-FILE-LEAVE" (when stale? " STALE"))]))

@@ -2702,6 +2702,20 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; An included file whose last line is a comment leaves its name as &FILE for the statement after the -INCLUDE; one whose comment is followed by a blank line
+;; does not (manual ch. 14, -INCLUDE). MEASURED on sbl -bf: c1.inc ending "* c" gives c1.inc 2, then m.sno 3; c2.inc ending "* c" and a blank line gives m.sno 2.
+;; snobol4jvm read the last line through split-lines, which drops trailing empty lines, so corpus gimpel asm_driver named rpad.inc for asm.spt's statements.
+(deftest an-include-ending-in-a-blank-line-leaves-no-stale-file-name
+  (let [d (doto (java.io.File. (str (System/getProperty "java.io.tmpdir") "/incstale-" (System/nanoTime))) .mkdirs)
+        m (java.io.File. d "m.sno")]
+    (try
+      (spit (java.io.File. d "c1.inc") "        C = 1\n* last is a comment\n")
+      (spit (java.io.File. d "c2.inc") "        C = 1\n* comment then blank\n\n")
+      (doseq [[inc want] [["c1.inc" "c1.inc 2\nm.sno 3\n"] ["c2.inc" "m.sno 2\nm.sno 3\n"]]]
+        (spit m (str "-INCLUDE '" inc "'\n        OUTPUT = &FILE ' ' &LINE\n        OUTPUT = &FILE ' ' &LINE\nEND\n"))
+        (is (clojure.core/= want (clojure.string/replace (with-out-str (-main (.getPath m))) (str (.getPath d) "/") "")) inc))
+      (finally (doseq [f (.listFiles d)] (.delete f)) (.delete d)))))
+
 ;; DETACH removes a variable's association "without closing or disturbing the channel or file in any way" (manual ch. 8, DETACH). MEASURED on sbl -bf:
 ;; OUTPUT(.X,10,'f'); X = 'a'; DETACH(.X); ENDFILE(10) runs on and f holds a; OUTPUT(.Z,10) after the DETACH writes to f. snobol4jvm closed the unit at the
 ;; DETACH, so the ENDFILE was 098 (corpus gimpel asm_driver, whose asm.spt does REWIND(10), DETACH(.DISK), ENDFILE(10)).
