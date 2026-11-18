@@ -193,7 +193,12 @@
             (and (= \= (at s k)) (or (nil? e) (blank? e)))
             (do (when (= kind :literal) (fail! 212 k)) (replacement k))
             (and (= j k) (at s j) (not= \: (at s j)))
-            (if (#{\) \] \> \,} (at s j)) (stray! (at s j) j) (fail! 220 j))
+            ;; a character no element may hold is 230 here as anywhere, before the missing operator (MEASURED on sbl -bf: "A B\\C = 1", a label and then B and a
+            ;; backslash, is 230 at column 4, where this engine said 220; corpus tests/snobol4 compile_diag__p33); an operator, a quote or a bracket is 220
+            (let [c (at s j)]
+              (cond (#{\) \] \> \,} c) (stray! c j)
+                    (not (or (operator-char? c) (letter? c) (digit? c) (#{\' \" \( \< \[ \= \;} c))) (fail! 230 j)
+                    :else (fail! 220 j)))
             :else
             ;; the pattern, after a blank or the binary ? that makes the match explicit
             (let [k (if (and (= \? (at s k)) (or (nil? e) (blank? e))) (inc k) k)

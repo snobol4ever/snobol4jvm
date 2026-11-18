@@ -202,3 +202,8 @@
   (doseq [[src col] [["        :(END" 11] ["        :(LONGLABEL" 11] ["        X = 1 :S(A" 18] ["        X = 1 :F($V" 19] ["        X = 1 :(L:X)" 18]]]
     (is (= {:error 227 :column col} (select-keys (syntax-error src) [:error :column])) src)))
 
+;; A character no element may hold right after the subject is 230, not the missing operator 220. MEASURED on sbl -bf: "A B\C = 1" is 230 at column 4 (the
+;; backslash); "        X = Y\Z" is 230 at 14. snobol4jvm said 220 for the first (corpus tests/snobol4 compile_diag__p33).
+(deftest an-illegal-character-after-the-subject-is-230
+  (is (= {:error 230 :column 4} (select-keys (syntax-error "A B\\C = 1") [:error :column])))
+  (is (= {:error 230 :column 14} (select-keys (syntax-error "        X = Y\\Z") [:error :column]))))
