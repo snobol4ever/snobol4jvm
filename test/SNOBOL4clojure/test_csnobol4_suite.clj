@@ -3817,32 +3817,33 @@ include.sno:7
 " out))))
 
 (deftest csnobol4-include2
-  "Budne suite: include2.sno"
+  "Budne suite: include2.sno, with sbl -bf's answer"
   (let [r (run-with-timeout "-include 'aa.sno'
 end
 " 2000)]
-    (is (= "aa
-" (:stdout r)))))
+    ;; sbl -bf prints nothing, as snobol4jvm, which never folds case (Lon 2026-11-17 18:2x CST): a control card is upper case, so -include includes nothing (manual ch. 14; the corpus omits
+    ;; the entry as an empty answer, csnobol4_suite ALL.omit); aa and bb were CSNOBOL4's answer
+    (is (= "" (:stdout r)))))
 
 (deftest csnobol4-include3
-  "Budne suite: include3.sno"
+  "Budne suite: include3.sno, with sbl -bf's answer"
   (let [r (run-with-timeout "-include 'aa.sno'
 -include 'bb.sno'
 end
 " 2000)]
-    (is (= "aa
-bb
-" (:stdout r)))))
+    ;; sbl -bf prints nothing, as snobol4jvm, which never folds case (Lon 2026-11-17 18:2x CST): a control card is upper case, so -include includes nothing (manual ch. 14; the corpus omits
+    ;; the entry as an empty answer, csnobol4_suite ALL.omit); aa and bb were CSNOBOL4's answer
+    (is (= "" (:stdout r)))))
 
 (deftest csnobol4-include4
-  "Budne suite: include4.sno"
+  "Budne suite: include4.sno, with sbl -bf's answer"
   (let [r (run-with-timeout "-include 'aa.sno'
 -include 'bb.sno'
 end
 " 2000)]
-    (is (= "aa
-bb
-" (:stdout r)))))
+    ;; sbl -bf prints nothing, as snobol4jvm, which never folds case (Lon 2026-11-17 18:2x CST): a control card is upper case, so -include includes nothing (manual ch. 14; the corpus omits
+    ;; the entry as an empty answer, csnobol4_suite ALL.omit); aa and bb were CSNOBOL4's answer
+    (is (= "" (:stdout r)))))
 
 (deftest csnobol4-ind
   "Budne suite: ind.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
@@ -3936,34 +3937,10 @@ e.loadump
 *	OUTPUT = JSON_ENCODE(ARRAY('1:10'))
 END
 " 2000)]
-    (is (= "\"hello world\"
-\"\\b\\t\\n\\f\\r\\\"\\\\\"
-\"\\u0000\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007\\b\\t\\n\\u000b\\f\\r\\u000e\\u000f\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017\\u0018\\u0019\\u001a\\u001b\\u001c\\u001d\\u001e\\u001f\"
-OK: 1
-OK: -1
-OK: 1.
-OK: 2.0
-OK: 3e2
-OK: 1.234e3
-OK: -1234e-3
-OK: null
-OK: \"foo\"
-OK: [\"foo\"]
-OK: [null]
-OK: [1,2,3]
-OK: {\"a\":\"hello\",\"z\":\"goodbye\"}
-OK: [{\"a\":1.,\"b\":-2},{\"c\":3,\"d\":[4,5,6]}]
-OK: {}
-OK: \"\\b\\t\\n\\f\\r\\\"\\\\\"
-OK: \"hello\\nworld\"
-OK: \"hello\\u000Aworld\"
-OK: \"\\u0000\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007\\b\\t\\n\\u000b\\f\\r\\u000e\\u000f\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017\\u0018\\u0019\\u001a\\u001b\\u001c\\u001d\\u001e\\u001f\"
-OK: \"hello world\"
-OK: \"Καλημέρα κόσμε\"
-OK: \"こんにちは 世界\"
-OK: \"👍😊🥺😉😍😘😚😜😂😝😳😁😣😢😭😰🥰🥴😏🍆🍑\"
-OK: \"\\U0001F44D\"
-" (:stdout r)))))
+    ;; sbl -bf's answer (corpus csnobol4_suite json1.out): the first line is -include in lower case, which is no card (manual ch. 14; snobol4jvm never folds case, Lon 2026-11-17), so json.sno is not included
+    ;; and line 16's json.escape ends "ERROR 022 -- undefined function called"; the JSON lines were CSNOBOL4's answer
+    (is (= :error (:exit r)))
+    (is (= "undefined function called" (:thrown r)))))
 
 (deftest csnobol4-keytrace
   "Budne suite: keytrace.sno"

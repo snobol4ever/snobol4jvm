@@ -2166,6 +2166,20 @@
 ;; A file name is included once, and "SPITBOL remembers only the 'trimmed' names of files included so far, so the comparison with the blank-padded name will fail, and
 ;; the file will be included again" (SPITBOL manual ch. 14, -INCLUDE): a name written with a blank after it is included every time. The engine kept the padded name and so
 ;; skipped the second padded include. The oracle, sbl -bf, wrote exactly this output.
+;; A control card is a card in column 1, its name in upper case: snobol4jvm never folds case (Lon 2026-11-17 18:2x CST, in the JVM window). As sbl -bf has it, MEASURED on sbl -bf with there.inc beside the program:
+;; -include 'there.inc', -Include 'there.inc' and " -INCLUDE 'there.inc'" each print only "main"; -INCLUDE 'there.inc' prints "in inc" first. corpus
+;; csnobol4_suite json1 begins -include 'json.sno', and its ref is the run without json.sno.
+(deftest an-include-card-is-upper-case-in-column-one
+  (let [dir (.toFile (java.nio.file.Files/createTempDirectory "inccase" (make-array java.nio.file.attribute.FileAttribute 0)))]
+    (try
+      (spit (str dir "/there.inc") "	OUTPUT = 'in inc'\n")
+      (doseq [[card want] [["-include 'there.inc'" "main\n"] ["-Include 'there.inc'" "main\n"] [" -INCLUDE 'there.inc'" "main\n"]
+                           ["-INCLUDE 'there.inc'" "in inc\nmain\n"]]]
+        (let [main (str dir "/m" (Math/abs (hash card)) ".sno")]
+          (spit main (str card "\n	OUTPUT = 'main'\nEND\n"))
+          (is (= want (with-out-str (-main main))) card)))
+      (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))
+
 (deftest a-blank-padded-include-name-includes-the-file-every-time
   (let [dir  (.toFile (java.nio.file.Files/createTempDirectory "srcpos" (make-array java.nio.file.attribute.FileAttribute 0)))
         main (str dir "/inc_main.sno")]
@@ -2682,6 +2696,16 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; A null first argument is HOST(), whatever follows it, and never HOST(0). MEASURED on sbl -bf: HOST(''), HOST('',), HOST('','') and HOST('','x') each answer
+;; the identity; with Y unset, BITS = HOST(Y) is that string and EQ(BITS,64) ends ERROR 101 (corpus csnobol4_suite float2, its BITS = HOST(HOST_REAL_BITS)).
+(deftest a-null-first-argument-of-host-is-host-of-no-argument
+  (let [id (str (SNOBOL4clojure.functions/HOST))]
+    (doseq [args [[""] ["" ""] ["" "x"]]]
+      (is (= id (str (apply SNOBOL4clojure.functions/HOST args))) (pr-str args))))
+  (let [r (run-with-timeout "	BITS = HOST(Y)\n	EQ(BITS,64)\n	OUTPUT = 'ran on'\nEND\n" 2000)]
+    (is (= :error (:exit r)))
+    (is (= "eq first argument is not numeric" (:thrown r)))))
+
 ;; HOST(0) is the text of the -u option and, "If -u was not specified, ... the concatenation of all command line arguments" (SPITBOL manual ch. 19, HOST): sbl -bf joins
 ;; the arguments after the program file with blanks ([a b c]) and gives the -u text when there is one ([X Y]). The engine kept no arguments, so aisnobol HSORT, which opens
 ;; the file HOST(0) names, could not read its input.
@@ -2696,16 +2720,6 @@
 
 ;; Binary $ and . associate to the left (SPITBOL manual ch. 15, Binary operators: $ left 12, . left 12): P $ X $ Y is (P $ X) $ Y and assigns what P matched to X and
 ;; to Y. The grammar built P $ (X $ Y), whose capture target is no variable, and raised ERROR 235 (aisnobol KALAH's REM $ OUTPUT $ SHADOW). The oracle, sbl -bf, wrote
-;; A null first argument is HOST(), whatever follows it, and never HOST(0). MEASURED on sbl -bf: HOST(''), HOST('',), HOST('','') and HOST('','x') each answer
-;; the identity; with Y unset, BITS = HOST(Y) is that string and EQ(BITS,64) ends ERROR 101 (corpus csnobol4_suite float2, its BITS = HOST(HOST_REAL_BITS)).
-(deftest a-null-first-argument-of-host-is-host-of-no-argument
-  (let [id (str (SNOBOL4clojure.functions/HOST))]
-    (doseq [args [[""] ["" ""] ["" "x"]]]
-      (is (= id (str (apply SNOBOL4clojure.functions/HOST args))) (pr-str args))))
-  (let [r (run-with-timeout "	BITS = HOST(Y)\n	EQ(BITS,64)\n	OUTPUT = 'ran on'\nEND\n" 2000)]
-    (is (= :error (:exit r)))
-    (is (= "eq first argument is not numeric" (:thrown r)))))
-
 ;; exactly this output.
 (deftest binary-dollar-and-dot-associate-to-the-left
   (let [f (java.io.File/createTempFile "gen" ".sno")]

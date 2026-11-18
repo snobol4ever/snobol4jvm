@@ -143,7 +143,10 @@
 (defn- preprocess-includes*
   "preprocess-includes, returning [expanded-source seen cards], cards the -INCLUDE lines as written, one for each -FILE-ENTER card in order, which the listing prints."
   [src search-path seen]
-  (let [include-re #"(?i)^\s*-include\s+['\"]([^'\"]+)['\"]"]
+  ;; A control card is a card in column 1, its name in upper case: snobol4jvm never folds case (Lon 2026-11-17 18:2x CST, in the JVM window, verbatim: "We WILL
+  ;; NEVER support case-folding. We will always have upper-case built-in keywords and functions."). MEASURED on sbl -bf the same: -include 'f', -Include 'f' and
+  ;; " -INCLUDE 'f'" include nothing and raise nothing, -INCLUDE 'f' includes f; so csnobol4_suite json1, whose first line is -include 'json.sno', runs without it.
+  (let [include-re #"^-INCLUDE\s+['\"]([^'\"]+)['\"]"]
     (loop [lines (string/split-lines src) out [] seen seen cards []]
       (if-let [line (first lines)]
         (if-let [[_ fname] (re-find include-re line)]

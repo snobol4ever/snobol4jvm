@@ -40,8 +40,10 @@
     (is (.contains expanded "does_not_exist.inc")
         "Comment should name the missing file")))
 
-(deftest include_preprocess_case_insensitive
-  "-include (lowercase) is also recognised"
+;; snobol4jvm never folds case (Lon 2026-11-17 18:2x CST, in the JVM window, verbatim: "We WILL NEVER support case-folding. We will always have upper-case
+;; built-in keywords and functions."): a control card is upper case, so -include is no card and includes nothing, as sbl -bf reads it (MEASURED).
+(deftest include_preprocess_lower_case_is_no_card
+  "-include (lower case) is no card: the file is not spliced in"
   (let [dir (doto (io/file (System/getProperty "java.io.tmpdir")
                            (str "snobol4test_" (System/currentTimeMillis)))
               .mkdirs)
@@ -51,7 +53,8 @@
       (let [expanded (preprocess-includes
                        (str "-include 'low.inc'\nEND\n")
                        [(.getAbsolutePath dir)])]
-        (is (.contains expanded "lower case include")))
+        (is (not (.contains expanded "lower case include")))
+        (is (.contains expanded "-include 'low.inc'")))
       (finally (.delete inc) (.delete dir)))))
 
 ;; ── Two-file include smoke test ───────────────────────────────────────────────
