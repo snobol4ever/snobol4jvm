@@ -832,8 +832,12 @@
 
 ;; A call that returned a name (NRETURN) is a NameResult. Used as a value it is the value of the variable or element it names; used as the target of an assignment
 ;; or a capture it is that variable or element.
+;; A keyword's name, (& K), is the keyword's value (MEASURED on sbl -bf: K() of K = .&MAXLNGTH :(NRETURN) reads 16777216; corpus gate_cases_snobol4
+;; an_nreturn_fix_up_is_emitted_by_the_box_and_agrees_with_sbl_in_a_value_and_a_name_context__n, where this engine called & as a function, 022).
 (defn- name-value [target]
-  (if (symbol? target) ($$ target) (apply INVOKE (or (:container (meta target)) (first target)) (rest target))))
+  (cond (symbol? target)                                                           ($$ target)
+        (and (list? target) (equal (first target) '&) (clojure.core/= 2 (count target))) (EVAL! target)
+        :else (apply INVOKE (or (:container (meta target)) (first target)) (rest target))))
 
 (defn- deref-result [r]
   (if (instance? SNOBOL4clojure.env.NameResult r) (name-value (:target r)) r))

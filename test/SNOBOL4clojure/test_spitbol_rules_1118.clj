@@ -123,3 +123,10 @@
               "C22     'ab' ? FENCE(t)                 :(ok)\nC23     'ab' ? *t                       :(ok)\nC24     'ab' ? t . x                    :(ok)\n"
               "C25     'ab' ? a $ x                    :(ok)\nC26     x = ('ab' ? t . y)              :(ok)\nC27     :(END)\nok      OUTPUT = i ' ok'               "
               " :(nxt)\nerrh    OUTPUT = i ' ERROR ' &ERRTYPE   :(nxt)\nEND\n"))))))
+
+;; A function that returns a keyword's name by NRETURN gives the keyword's value. MEASURED on sbl -bf; corpus gate_cases_snobol4
+;; an_nreturn_fix_up_is_emitted_by_the_box_and_agrees_with_sbl_in_a_value_and_a_name_context__n
+(deftest an-nreturn-of-a-keywords-name-reads-the-keyword
+  (is (= "K value 16777216\n"
+         (first (run-sno (str "        DEFINE('K()')                           :(K.E)\nK       K = .&MAXLNGTH                          :(NRETURN)\nK.E     Y = K()\n"
+              "        OUTPUT = 'K value ' Y\nEND\n"))))))
