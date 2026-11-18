@@ -182,3 +182,10 @@
 (deftest the-scan-names-the-error-sbl-names
   (doseq [[stmt n] sbl-errors]
     (is (= n (:error (syntax-error stmt))) stmt)))
+
+;; An operator with no operand after it is 221 at the operator itself when a blank follows it, and at the next column before a closer or the statement's end.
+;; MEASURED on sbl -bf: "L       = 'X'" (1,9), "L  =  'X'" (1,4), "OUTPUT = 'X'" (1,8): a label, then a body beginning with =; and
+;; "        X = (1 +)" (1,17) (the compiled program also reports "        X = *" at (1,13), as sbl -bf does). snobol4jvm said 10, 5 and 9 for the first three (corpus tests/snobol4 compile_diag__p01 and kin, whose listing caret moved with it).
+(deftest a-missing-operand-before-a-blank-is-221-at-the-operator
+  (doseq [[src col] [["L       = 'X'" 9] ["L  =  'X'" 4] ["OUTPUT = 'X'" 8] ["        X = (1 +)" 17]]]
+    (is (= {:error 221 :column col} (select-keys (syntax-error src) [:error :column])) src)))

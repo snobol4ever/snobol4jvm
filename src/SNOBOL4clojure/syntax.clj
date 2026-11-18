@@ -53,8 +53,11 @@
   (let [c (at s i)]
     (cond
       (nil? c)                         (fail! 221 i)
+      ;; an operator with no operand after it: before a blank the error stands at the operator itself, before a closer or the end at the character after it
+      ;; (MEASURED on sbl -bf: "L       = 'X'" and "L  =  'X'", a label then a body that begins with =, are 221 at the = (columns 9 and 4), where this engine
+      ;; said 10 and 5; "        X = *" and "        X = (1 +)" are 221 after the operator, columns 13 and 17, as here; the rungs compile_diag__p01, p30 and kin)
       (and (operator-char? c) (let [d (at s (inc i))] (or (nil? d) (blank? d) (#{\) \] \> \, \: \;} d))))
-      (fail! 221 (inc i))
+      (fail! 221 (if (blank? (at s (inc i))) i (inc i)))
       ;; .X names X and &K a keyword: what follows is a name, never a literal or another name (sbl -bf: .5, ..X and &1 are "212 value used where name is required")
       (#{\. \&} c)
       (let [d (at s (inc i))]
