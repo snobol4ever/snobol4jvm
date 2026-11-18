@@ -4,12 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 snobol4jvm is a SNOBOL4/SPITBOL implementation for the JVM in Clojure. The Leiningen project is `SNOBOL4clojure 0.2.0`, on Clojure 1.10.3 with instaparse. Every namespace lives under `SNOBOL4clojure.*`.
 
-**It behaves like SPITBOL, not CSNOBOL4.** Lon ruled this on 2026-10-23: *"The snobol4jvm will act like SPITBOL, not CSNOBOL4."* The oracle is `/home/resources/x64/bin/sbl -bf prog.sno`:
+**It is SNOBOL4++: SPITBOL's semantics with every extension, and no SPITBOL restriction made for speed.** Lon ruled this on 2026-11-17 18:1x CST, in the JVM window: *"I think we should make snobol4jvm a bit more special that SPITBOL. Since SPITBOL restricts OPSYN for optimization. But Clojure will not see any of that optimization so let's do more of a SNOBOL4++ where it has all extensions and keeps the dynamic power of SNOBOL4. Have the INPUT and HOST be just like SPITBOL."* It amends his word of 2026-10-23 (*"The snobol4jvm will act like SPITBOL, not CSNOBOL4."*), which stands everywhere the ruling does not reach. Asked, he chose:
+
+- **Extensions are allowed.** Where `sbl -bf` ends in an error caused only by a SPITBOL restriction that CSNOBOL4 or SNOBOL4 lifts, snobol4jvm runs on. Examples: OPSYN of any operator, unary `^` among them; CSNOBOL4's `&DIGITS`; `FUNCTION`, `LABEL` and `VDIFFER`.
+- **Such an entry is declared per engine.** Its SPITBOL ref stands, and it leaves snobol4jvm's denominator alone through `EXCLUDED.jvm.tsv` beside its package, class `SNOBOL4PP_EXTENSION_KEPT_BY_LON`, with the oracle's answer. SCRIP's rows never read it.
+- **I/O and the host are exactly SPITBOL's:** `INPUT`, `OUTPUT`, `TERMINAL`, `HOST`.
+- **No case folding, ever.** Lon, the same hour: *"We WILL NEVER support case-folding. We will always have upper-case built-in keywords and functions."* Built-in keywords, functions and control cards are upper case only, and `&trim` or a lower-case `-include` is answered as `sbl -bf` answers it. The `-CASE` and `&CASE` folding still in `compiler.clj` is owed for removal.
+
+The oracle is `/home/resources/x64/bin/sbl -bf prog.sno`:
 
 - `-b` drops the signon;
 - `-f` leaves source case alone, as this engine does and as the corpus refs were cut.
 
-Where the engine and the oracle disagree, the oracle wins unless Lon rules otherwise. Old code and tests still carry CSNOBOL4 or Catspaw dialect (for example `t_io_channels` and the Budne programs in `test_csnobol4_suite`). Where the two dialects differ, implement SPITBOL and set the test's expectation to what `sbl -bf` prints. Before changing a construct, read its section of the SPITBOL manual (`/home/claude_ceo/.tools/docs/spitbol-manual-v3.7.txt`; Appendix D lists the errors).
+Where the engine and the oracle disagree, the oracle wins unless the difference is an extension the rulings above keep. Old code and tests still carry CSNOBOL4 or Catspaw dialect (for example `t_io_channels` and the Budne programs in `test_csnobol4_suite`). Where the two dialects differ, the test's expectation is what `sbl -bf` prints, unless snobol4jvm keeps the CSNOBOL4 extension. Before changing a construct, read its section of the SPITBOL manual (`/home/claude_ceo/.tools/docs/spitbol-manual-v3.7.txt`; Appendix D lists the errors).
 
 ## Commands
 
