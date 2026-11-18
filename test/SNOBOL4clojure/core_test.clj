@@ -2702,6 +2702,18 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; A call copies no argument when no trace is armed: the call trace's line, which quotes each argument whole, is built only when it is written (manual ch. 19,
+;; TRACE). snobol4jvm built it on every call, so each call quoted its arguments whole, and corpus mikebeer_snobol
+;; bench/recursion ran the JVM out of heap in trace-val.
+(deftest a-call-builds-no-trace-line-when-no-trace-is-armed
+  (GLOBALS)
+  (let [n (atom 0)
+        r (with-redefs [SNOBOL4clojure.trace/trace-val (fn [_] (swap! n inc) "")]
+            (run-with-timeout (str "        DEFINE('F(S)')  :(FE)\nF       F = SIZE(S)  :(RETURN)\nFE      X = DUPL('a', 4000)\n"
+                                   "L       N = LT(N, 300) N + 1  :F(D)\n        T = T + F(X)  :(L)\nD       OUTPUT = T\nEND\n") 8000))]
+    (is (clojure.core/= "1200000\n" (:stdout r)))
+    (is (clojure.core/= 0 @n) "trace-val called with no trace armed")))
+
 ;; ARG and LOCAL of a name no DEFINE made are ERROR 063 and 135; a second argument that converts to no integer is 062 and 134 (manual ch. 19, ARG, LOCAL; Appendix
 ;; D). MEASURED on sbl -bf: ARG('FIB',1) 063, ARG('SIZE',1) 063, LOCAL('FIB',1) 135, ARG('F','x') 062, LOCAL('F','x') 134; ARG('F','2') is B, ARG('F',0) fails.
 ;; snobol4jvm failed each error silently (corpus mikebeer_snobol tests/features) and crashed on ARG('F','x').

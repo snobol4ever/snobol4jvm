@@ -202,9 +202,11 @@
 (defn- function-line!
   "A call or return line of the function `fname`. It is written when the function is registered for `kind` and &TRACE is above 0 (and costs 1 of &TRACE),
    or else when &FTRACE is above 0 (and costs 1 of &FTRACE). Four asterisks and the statement number, a blank, one i for each function level the caller is
-   inside, a blank, then the text."
+   inside, a blank, then the text. The text is a thunk, built only when the line is written: a call's text quotes each argument whole, so building it on
+   every call copied every string argument of every call (MEASURED: corpus mikebeer_snobol bench/recursion, whose PERM doubles its string argument each level,
+   ran the JVM out of heap in trace-val, with no trace armed, where sbl -bf ends at ERROR 205)."
   [fname kind text]
-  (let [line  #(trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " " text)
+  (let [line  #(trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " " (text))
         entry (@registry (reg-key fname kind))]
     (cond
       (and entry (pos? @&TRACE)) (if-let [f (trace-fn entry)] (call-trace-fn! f fname entry) (do (swap! &TRACE dec) (line)))
@@ -214,14 +216,14 @@
   "Fire the call trace of user function `fname`, whose parameters hold `args`. Called from the DEFINE wrapper before the body runs, at the caller's
    function level and with the number of the calling statement."
   [fname args]
-  (function-line! fname :call (str fname "(" (clojure.string/join "," (map trace-val args)) ")")))
+  (function-line! fname :call #(str fname "(" (clojure.string/join "," (map trace-val args)) ")")))
 
 (defn fire-return!
   "Fire the return trace of user function `fname` returning `val`. signal is :return :freturn or :nreturn. Called from the DEFINE wrapper once the level is
    the caller's again and while the number of the returning statement is still &STNO."
   [fname val signal]
   (function-line! fname :return
-                  (case signal
+                  #(case signal
                     :freturn  (str "FRETURN " fname)
                     :nreturn  (str "NRETURN " fname " = " (trace-val val))
                     (str "RETURN " fname " = " (trace-val val)))))
