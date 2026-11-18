@@ -186,7 +186,11 @@
   ;; NEVER support case-folding. We will always have upper-case built-in keywords and functions."). MEASURED on sbl -bf the same: -include 'f', -Include 'f' and
   ;; " -INCLUDE 'f'" include nothing and raise nothing, -INCLUDE 'f' includes f; so csnobol4_suite json1, whose first line is -include 'json.sno', runs without it.
   (let [include-re #"^-INCLUDE\s+['\"]([^'\"]+)['\"]"]
-    (loop [lines (string/split-lines src) out [] seen seen cards []]
+    ;; ph counts the includes that could not be opened: SPITBOL reads the lines after such a card as inside the file it never opened, its listing at depth 1, and
+    ;; the first END after it closes that file, ending no program, so a later END is the program's or there is none (MEASURED on sbl -bf: a statement, a missing
+    ;; -INCLUDE, a statement, END is the 285 page, then "No END statement found in source file(s).", exit 1; with a second END it is rc 231; corpus tests/snobol4
+    ;; compile_diag__p15, which lists "2    1          Z = )"). That END becomes the card -DEPTH-LEAVE, on its own line, so no line moves.
+    (loop [lines (string/split-lines src) out [] seen seen cards [] ph 0]
       (if-let [line (first lines)]
         (if-let [[_ fname] (re-find include-re line)]
           (let [found (some (fn [dir]
@@ -198,11 +202,11 @@
               ;; -INCLUDE 'nosuch.inc' is "(1,10) : ERROR 285 -- include file cannot be opened", the column the quote's, and nothing runs; corpus rosetta-snobol4
               ;; call-a-function-in-a-shared-library and include-a-file, which this engine ran on)
               (nil? found)
-              (recur (rest lines) (conj out line) seen cards)
+              (recur (rest lines) (conj out line) seen cards (inc ph))
               ;; "SPITBOL remembers only the 'trimmed' names of files included so far, so the comparison with the blank-padded name will fail, and the file will be
               ;; included again" (manual ch. 14, -INCLUDE): the name as written is looked up among the trimmed names
               (seen fname)
-              (recur (rest lines) (conj out (str "* -INCLUDE skipped (already included): " fname)) seen cards)
+              (recur (rest lines) (conj out (str "* -INCLUDE skipped (already included): " fname)) seen cards ph)
               :else
               (let [text                (slurp found :encoding "ISO-8859-1")
                     ;; the included file's own directory joins the search path
@@ -216,8 +220,11 @@
                 (recur (rest lines)
                        (into out (concat [(str "-FILE-ENTER \"" (string/trim fname) "\"")] (string/split-lines body) [(str "-FILE-LEAVE" (when stale? " STALE"))]))
                        seen'
-                       (into (conj cards line) inner)))))
-          (recur (rest lines) (conj out line) seen cards))
+                       (into (conj cards line) inner)
+                       ph))))
+          (if (and (pos? ph) (re-find #"^(END|end)([ \t;]|$)" line))
+            (recur (rest lines) (conj out "-DEPTH-LEAVE") seen cards (dec ph))
+            (recur (rest lines) (conj out line) seen cards ph)))
         [(string/join "\n" out) seen cards]))))
 
 ;; The source position a card changes. A -LINE card sets the number and file of the line that follows it; a -FILE-ENTER card (written by preprocess-includes in place of the

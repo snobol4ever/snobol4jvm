@@ -2702,6 +2702,24 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; After an -INCLUDE that cannot be opened SPITBOL reads on as inside that file: the card is listed with no statement number, the lines after it at depth 1,
+;; and the first END closes the file, ending no program (manual ch. 14, -INCLUDE). MEASURED on sbl -bf: a statement, a missing -INCLUDE, a statement, END is
+;; the 285 page then "No END statement found in source file(s).", exit 1; with a second END, 231. snobol4jvm numbered the card, listed no depth and answered
+;; 231 to both (corpus tests/snobol4 compile_diag__p15).
+(deftest after-an-include-that-cannot-be-opened-the-first-end-closes-it
+  (doseq [[src rc] [["        OUTPUT = 'a'\n-INCLUDE 'nonexistent.inc'\n        Z = )\nEND\n" 1]
+                    ["        OUTPUT = 'a'\n-INCLUDE 'nonexistent.inc'\n        Z = )\nEND\n        OUTPUT = 'c'\nEND\n" 231]]]
+    (let [f (java.io.File/createTempFile "badinc" ".sno") err (java.io.StringWriter.)]
+      (try
+        (spit f src)
+        (let [r (binding [*err* err *out* (java.io.StringWriter.)] (-main (.getPath f)))
+              ls (set (clojure.string/split-lines (str err)))]
+          (is (clojure.core/= rc r) src)
+          (is (contains? ls "        -INCLUDE 'nonexistent.inc'") src)
+          (is (contains? ls "2    1          Z = )") src)
+          (is (clojure.core/= (clojure.core/= rc 1) (contains? ls "No END statement found in source file(s).")) src))
+        (finally (.delete f))))))
+
 ;; The marker line under a listed statement carries no include depth: its field is blank whatever the depth (MEASURED on sbl -bf: "2    1          Z = )"
 ;; is marked "                    !"; snobol4jvm wrote "     1              !"; corpus tests/snobol4 compile_diag__p37, an error in an included file).
 (deftest the-marker-line-carries-no-include-depth
@@ -2896,14 +2914,16 @@
   (is (= "at L\n" (:stdout (run-with-timeout "        X = 1:(L)\n        OUTPUT = 'not here'\nL       OUTPUT = 'at L'\nEND\n" 2000)))))
 
 ;; An -INCLUDE whose file cannot be opened is ERROR 285 at the quote, and nothing runs (manual Appendix D, 285). MEASURED on sbl -bf: "-INCLUDE 'nosuch.inc'"
-;; then OUTPUT = 'ran' is "(1,10) : ERROR 285 -- include file cannot be opened", rc 231. snobol4jvm made the card a comment and ran (corpus rosetta-snobol4
+;; then OUTPUT = 'ran' is "(1,10) : ERROR 285 -- include file cannot be opened", and its END closes the file it could not open, so "No END statement found",
+;; rc 1 (the rc 231 this comment first said was measured wrongly; re-measured with the streams apart on the day of
+;; after-an-include-that-cannot-be-opened-the-first-end-closes-it). snobol4jvm made the card a comment and ran (corpus rosetta-snobol4
 ;; call-a-function-in-a-shared-library, include-a-file).
 (deftest an-include-file-that-cannot-be-opened-is-285
   (let [f (java.io.File/createTempFile "inc" ".sno")]
     (try
       (spit f "-INCLUDE 'nosuch.inc'\n        OUTPUT = 'ran'\nEND\n")
       (let [o (java.io.StringWriter.) rc (binding [*out* o *err* (java.io.StringWriter.)] (-main (.getPath f)))]
-        (is (= 231 rc))
+        (is (= 1 rc))
         (is (re-find #"\(1,10\) : ERROR 285 -- include file cannot be opened" (str o)))
         (is (not (re-find #"(?m)^ran$" (str o)))))
       (finally (.delete f)))))

@@ -98,6 +98,9 @@
               ctl (string/starts-with? l "-")
               shown (fn [line] (when (and (:on @st) (or (not ctl) (:print @st))) (list-line! st (numbered n depth line))))]
           (cond
+            ;; the END that closes an include that could not be opened (compiler, preprocess-includes*): the depth it opened ends
+            (string/starts-with? l "-DEPTH-LEAVE")
+            (recur (inc i) (rest ls) (max 0 (dec depth)) places file (inc fline) cards)
             (string/starts-with? l "-FILE-LEAVE")
             (let [[f fl] (peek places)] (recur (inc i) (rest ls) (dec depth) (pop places) f fl cards))
             (string/starts-with? l "-FILE-ENTER")
@@ -128,7 +131,8 @@
               ;; a line with several errors is listed once, before the first, and a later error has an empty line in its place, on both streams (MEASURED on sbl -bf:
               ;; "        X = ) ; Y = ( ; Z = 1 +" lists the line, then 224's mark and message, then 226's; corpus tests/snobol4 compile_diag__p22)
               (doseq [[k [_ code col]] (map-indexed vector (get errs i))]
-                (let [stmt (numbered (some-> (first (rsubseq starts <= i)) val) depth l)
+                ;; a control card is no statement and carries no number (MEASURED on sbl -bf: a -INCLUDE that cannot be opened is listed with none)
+                (let [stmt (numbered (when-not ctl (some-> (first (rsubseq starts <= i)) val)) depth l)
                       mark (if col
                              ;; the field, then the run to the column, never trimmed: numbered drops a line's trailing blanks, and the run is all blanks
                              ;; the field is blank, the include depth not shown on the marker's line (MEASURED on sbl -bf: corpus tests/snobol4 compile_diag__p37,
@@ -144,6 +148,8 @@
                   (swap! st update :on-page + 3)
                   (binding [*out* *err*] (doseq [x [(if (zero? (long k)) stmt "") mark msg ""]] (write! x)))))
               ;; the listing ends with the END line
+              ;; an -INCLUDE card still standing names a file that could not be opened, and SPITBOL lists the lines after it one level deeper (compiler,
+              ;; preprocess-includes*)
               (when-not (and n (re-find (if fold #"(?i)^END(\s|$)" #"^(END|end)(\s|$)") l))
-                (recur (inc i) (rest ls) depth places file fline cards)))))))
+                (recur (inc i) (rest ls) (if (and ctl (re-find #"^-INCLUDE\s+['\"]" l)) (inc depth) depth) places file fline cards)))))))
     (flush)))
