@@ -255,7 +255,9 @@
             (reset! &LASTNO @&STNO)
             (reset! &LASTFILE @&FILE)
             (reset! &LASTLINE @&LINE)
-            (let [[f l] (get @<POS> (first current) ["" 0])] (reset! &FILE f) (reset! &LINE l) (reset! SNOBOL4clojure.env/<STMT-LINE> l))
+            ;; a statement with no place in a file, the one closing a CODE block, keeps the file and the line before it (MEASURED on sbl -bf: a program that ends
+            ;; in its CODE block's closing statement dumps &FILE its own name and &LINE 3, the block's line; corpus rosetta-snobol4 runtime-evaluation-2)
+            (when-some [[f l] (get @<POS> (first current))] (reset! &FILE f) (reset! &LINE l) (reset! SNOBOL4clojure.env/<STMT-LINE> l))
             (reset! &STNO (get @<DISPNO> (first current) (first current)))
             ;; a negative &STLIMIT is unlimited execution, and &STCOUNT stops counting; 0 is no limit too, as sbl -bf counts (its countdown starts at the limit,
             ;; sbl.min stgcc, so at 0 the check is never reached), and &STCOUNT goes on

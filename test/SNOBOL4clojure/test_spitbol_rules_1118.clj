@@ -372,3 +372,10 @@
                             "        OUTPUT = 'a'\n        :(SCONTINUE)\nEND\n"))]
     (is (re-find #"\(6\) : ERROR 321" out))
     (is (re-find #"in line +6\n" out))))
+
+;; The statement closing a CODE block keeps the file and the line before it. MEASURED on sbl -bf: a program that ends in its CODE block's closing statement dumps
+;; &FILE its own name and &LINE 3, the block's line; corpus rosetta-snobol4 runtime-evaluation-2.
+(deftest a-code-blocks-closing-statement-keeps-the-file-and-line
+  (let [[out] (run-sno "        C = CODE(' OUTPUT = \"x\"')  :S<C>\nEND\n" ["-D1"])]
+    (is (re-find #"(?m)^&LINE = 3$" out))
+    (is (not (re-find #"(?m)^&FILE = ''$" out)))))
