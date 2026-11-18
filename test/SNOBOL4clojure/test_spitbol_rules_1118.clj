@@ -233,3 +233,11 @@
     (is (some #(= "        -LIST,-EJECT" %) ls))
     (is (some #(re-matches #"x,-LIST +page 2" %) ls))
     (is (some #(= "        -TITLE x,-LIST" %) ls))))
+
+;; -NOEXECUTE compiles the program and does not run it, exit code 231; a later -EXECUTE runs it (manual ch. 14). MEASURED on sbl -bf; corpus gate_cases_snobol4
+;; test_gate_snobol4_noexecute_matches_sbl__noex_list
+(deftest noexecute-compiles-and-does-not-run
+  (let [[out rc] (run-sno "-NOEXECUTE\n        OUTPUT = 'x'\nEND\n")]
+    (is (= 231 rc))
+    (is (not (re-find #"(?m)^x$" out))))
+  (is (= ["x\n" nil] (run-sno "-NOEXECUTE\n-EXECUTE\n        OUTPUT = 'x'\nEND\n"))))

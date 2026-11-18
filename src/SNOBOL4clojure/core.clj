@@ -195,6 +195,12 @@
 ;; The listing file, sbl's -o=file: SCRIP_SNO_LIST_SINK, the name the harness gives a port for it, unless this is bound
 (def ^:dynamic *list-sink* nil)
 
+(defn- noexecute? [^String src]
+  (reduce (fn [no line]
+            (reduce (fn [no c] (cond (re-find #"^-NOEXECUTE(?:\s|$)" c) true (re-find #"^-EXECUTE(?:\s|$)" c) false :else no))
+                    no (when (clojure.string/starts-with? line "-") (map #(if (clojure.string/starts-with? % "-") % (str "-" %)) (clojure.string/split line #",-")))))
+          false (clojure.string/split-lines src)))
+
 (defn -main
   "SNOBOL4/Clojure — run a .sno file: [--engine interp|vm] <file.sno>.
    The default engine is the Stage 1 interpreter, the one the test suite runs.
@@ -246,6 +252,11 @@
                          ;; setl4_spitbol examples/roman, with three syntax errors and no END, exits 1)
                          (do (binding [*out* *err*] (println "No END statement found in source file(s).") (flush)) 1)
                          (seq @env/<DIAGNOSTICS>)
+                         231
+                         ;; "-NOEXECUTE ... the program is compiled but not executed" (manual ch. 14), and a later -EXECUTE runs it again: the listing is written and
+                         ;; the exit code is 231, as for a compile error (MEASURED on sbl -bf: "-NOEXECUTE" then OUTPUT = 'x' writes nothing and exits 231, with
+                         ;; -EXECUTE after it prints x and exits 0; corpus gate_cases_snobol4 test_gate_snobol4_noexecute_matches_sbl__noex_list)
+                         (noexecute? src)
                          231
                          :else
                          ;; an execution error that ends the program (and the statement limit, "244 Statement count exceeds value of STLIMIT keyword") is
