@@ -189,6 +189,7 @@
 (deftest a-missing-operand-before-a-blank-is-221-at-the-operator
   (doseq [[src col] [["L       = 'X'" 9] ["L  =  'X'" 4] ["OUTPUT = 'X'" 8] ["        X = (1 +)" 17]]]
     (is (= {:error 221 :column col} (select-keys (syntax-error src) [:error :column])) src)))
+
 ;; An invalid numeric item is 231 at the item's first character. MEASURED on sbl -bf: X = 12ABC, 1.2.3, 1E, 1.5E+, 1- 1 and 3.14X, each after eight blanks, are
 ;; 231 at column 13; snobol4jvm said 15, 16, 14, 16, 14 and 17, the character that spoiled the item (corpus tests/snobol4 compile_diag__p13, p13b).
 (deftest an-invalid-numeric-item-is-231-at-its-first-character
