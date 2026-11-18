@@ -205,6 +205,13 @@
 ;; Its names hold a hyphen, which no SNOBOL4 name does, so a call written in the program (tilde(X), at(X)) is never one of these operators (CEO-2028).
 (def ^:private op-spelling {'at-op "@", 'sharp-op "#", 'tilde-op "~"})
 
+(defn- arg-or-local [[fname n] k e1 t1 e2 t2]
+  (let [meta (get @<FDEFS> (name-string fname))
+        _    (when-not meta (throw (ex-info t1 {:snobol/error e1})))
+        i    (let [v (SNOBOL4clojure.env/num n)] (if (and (number? v) (not (and (double? v) (Double/isNaN v)))) (long v) (throw (ex-info t2 {:snobol/error e2}))))]
+    (when-some [p (when (pos? i) (nth (k meta) (dec i) nil))]
+      (NAME. (symbol p)))))
+
 ;; ── INVOKE ────────────────────────────────────────────────────────────────────
 (declare EVAL! compile-expression compile-failed! deferred? expression-of unused-unary-ops unused-binary-ops name-of)
 
@@ -650,15 +657,13 @@
     LGT       (LGT    (first args) (second args))
     ;; ARG(fname, n) — nth parameter name of function fname (1-based), as a NAME
     ;; (CEO-1861: sbl -bf returns one; the manual's string is not followed)
-    ARG       (let [[fname n] args
-                    meta (get @<FDEFS> (name-string fname))]
-                (when-some [p (when meta (nth (:params meta) (dec (long n)) nil))]
-                  (NAME. (symbol p))))
+    ;; ARG and LOCAL of a name that is no function a DEFINE made are "063 arg first argument is not program function name" and "135 local first arg is not a
+    ;; program function name"; a second argument that is no integer, and converts to none, is 062 and 134; an integer out of range fails (MEASURED on sbl -bf:
+    ;; ARG('FIB',1), ARG('SIZE',1) and ARG('',1) are 063, LOCAL('FIB',1) 135, ARG('F','x') 062, LOCAL('F','x') 134; ARG('F','2') and ARG('F',2.5) are B;
+    ;; ARG('F',0) and ARG('F',-1) fail; corpus mikebeer_snobol tests/features, ARG('FIB',1), where this engine failed silently)
+    ARG       (arg-or-local args :params 63 "ARG first argument is not program function name" 62 "ARG second argument is not integer")
     ;; LOCAL(fname, n) — nth local variable name of function fname (1-based), as a NAME
-    LOCAL     (let [[fname n] args
-                    meta (get @<FDEFS> (name-string fname))]
-                (when-some [p (when meta (nth (:locals meta) (dec (long n)) nil))]
-                  (NAME. (symbol p))))
+    LOCAL     (arg-or-local args :locals 135 "LOCAL first arg is not a program function name" 134 "LOCAL second argument is not integer")
     ;; ── Named I/O channel registration ───────────────────────────────────────
     ;; INPUT(name, channel, file) and OUTPUT(name, channel, file) (manual ch. 19, INPUT): what the channel and the file argument name is functions/association.
     ;; sbl -bf reads three arguments; a fourth, CSNOBOL4's and Catspaw's file name (INPUT(.V, unit, len, 'file')), is not read.

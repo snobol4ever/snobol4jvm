@@ -2702,6 +2702,17 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; ARG and LOCAL of a name no DEFINE made are ERROR 063 and 135; a second argument that converts to no integer is 062 and 134 (manual ch. 19, ARG, LOCAL; Appendix
+;; D). MEASURED on sbl -bf: ARG('FIB',1) 063, ARG('SIZE',1) 063, LOCAL('FIB',1) 135, ARG('F','x') 062, LOCAL('F','x') 134; ARG('F','2') is B, ARG('F',0) fails.
+;; snobol4jvm failed each error silently (corpus mikebeer_snobol tests/features) and crashed on ARG('F','x').
+(deftest arg-and-local-of-no-program-function-are-errors
+  (doseq [[c want] [["ARG('FIB',1)" 63] ["ARG('SIZE',1)" 63] ["LOCAL('FIB',1)" 135] ["ARG('F','x')" 62] ["LOCAL('F','x')" 134]
+                    ["ARG('F','2')" "[B]"] ["LOCAL('F',1)" "[L]"] ["ARG('F',0)" "failed"]]]
+    (GLOBALS)
+    (let [r (run-with-timeout (str "        &ERRLIMIT = 1\n        DEFINE('F(A,B)L')\n        OUTPUT = '[' " c " ']'  :S(END)F(N)\n"
+                                   "N       OUTPUT = DIFFER(&ERRTYPE, 0) &ERRTYPE  :S(END)\n        OUTPUT = 'failed'\nEND\n") 2000)]
+      (is (clojure.core/= (str want "\n") (:stdout r)) c))))
+
 ;; SNOBOL4++ (Lon 2026-11-17 18:1x CST): OPSYN may redefine any operator, the ones SPITBOL defines among them, as CSNOBOL4 lets it; sbl -bf answers 156.
 ;; MEASURED on CSNOBOL4 -b: after OPSYN('+','ADD',2), 1 + 2 calls ADD; OPSYN('^','ADD',2) redefines ** and ^; OPSYN('-','NEG',1) makes -3 call NEG, and so for
 ;; unary * and ?. corpus vanilla diff and cbrooker_snobol diff, which begin OPSYN("+","ADD",2), now print what CSNOBOL4 prints.
