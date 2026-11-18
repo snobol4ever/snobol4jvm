@@ -149,9 +149,11 @@
         (when c
           (let [[kind j] (case c (\S \s) [:S (inc i)] (\F \f) [:F (inc i)] [:G i])
                 o        (at s j)]
-            (when-not (#{\( \<} o) (fail! 234 j))
+            ;; a direct goto is :<C> or :[C] (MEASURED on sbl -bf: :[C], :S[C] and :F[C]S(L) compile and run as :<C> does; corpus exercism_snobol4's test
+            ;; harnesses go :[compiled], where this engine said 234)
+            (when-not (#{\( \< \[} o) (fail! 234 j))
             (when (or (seen kind) (and (= kind :G) (seq seen)) (seen :G)) (fail! 218 j))
-            (let [closer (if (= o \() \) \>)
+            (let [closer (case o \( \) \< \> \[ \])
                   k      (skip-blanks s (inc j))
                   _      (when (= (at s k) closer) (fail! 212 k))
                   k      (try (expression s k {:closer closer :goto true})

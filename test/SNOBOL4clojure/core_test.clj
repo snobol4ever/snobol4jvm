@@ -2702,6 +2702,13 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; A direct goto is :<C> or :[C] (manual ch. 9, Direct Gotos; sbl -bf takes the brackets as the angles). MEASURED on sbl -bf: C = CODE(' OUTPUT = "in code"
+;; :(BACK)') then :[C] prints "in code" and goes on at BACK; :S[C] and :F[C]S(L) compile. snobol4jvm refused the brackets, 234 goto field incorrect (corpus
+;; exercism_snobol4, whose test harnesses go :[compiled]).
+(deftest a-direct-goto-takes-square-brackets-as-angles
+  (is (= "in code\nback\n"
+         (:stdout (run-with-timeout (str "        C = CODE(' OUTPUT = \"in code\" :(BACK)')\n        :[C]\nBACK    OUTPUT = 'back'\nEND\n") 3000)))))
+
 ;; A statement that does not compile still defines its label, read before its body, so a later statement of that label is a duplicate (manual Appendix D, 217).
 ;; MEASURED on sbl -bf: "A B\\C = 1" then "A" is 230 at (1,4) and "(2) : ERROR 217 -- syntax error: duplicate label". snobol4jvm defined no A at line 1 and
 ;; reported nothing for line 2 (corpus tests/snobol4 compile_diag__p33).

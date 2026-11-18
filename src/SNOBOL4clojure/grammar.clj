@@ -23,7 +23,7 @@
   sjmp      ::=  <'S' | 's'> target
   fjmp      ::=  <'F' | 'f'> target
  <target>   ::=  <'('> expr <')'> | dgo
-  dgo       ::=  <'<'> expr <'>'>
+  dgo       ::=  <'<'> expr <'>'> | <'['> expr <']'>
   comment   ::=  <'*'> #'.*' <eol>
   control   ::=  <'-'> #'[^;\\n]*' <eos>
   eos       ::=  '\\n' | ';'
