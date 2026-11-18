@@ -41,6 +41,22 @@
 
 ;; The list inside ( ) or < > or [ ], its elements separated by commas, any of them empty. Returns the index after the closer. A colon or a semicolon ends the
 ;; scan inside it as the end does (sbl -bf: (4 :(L)) and F(4 :(L)) are "226 missing right paren", A<4 :(L)> and A[4 :(L)] "229 missing right array bracket").
+;; Where the statement ends inside an open list, the error stands at the start of the last token scanned: a literal at its opening quote, a name or a number at
+;; its first character, a name with the ( or [ that opens its call or subscript at the name, any other character at itself (MEASURED on sbl -bf: "X = F('a'" is 226
+;; at the quote, column 15; "X = F(YYY" and "X = F(12345" at 15; "X = F('ab'   " at 15; "X = F(" at 13, the F; "X = A['ab'" 229 at 15; "X = F(G(1)" at the
+;; closing paren, 18; "X = (" at 13; where this engine said the last character, 17, 17, 19, 18, 14, 18; and "F(" then "+ 'a'" and "+ 'b'" is 226 at (3,3), the
+;; quote; corpus setl4_spitbol sonnets-1). A colon or a semicolon that ends the scan is the error's place itself.
+(defn- last-token-start [^String s i]
+  (let [j (loop [j (dec i)] (if (and (>= j 0) (blank? (at s j))) (recur (dec j)) j))
+        c (at s j)
+        back (fn [k] (loop [k k] (if (and (pos? k) (name-char? (at s (dec k)))) (recur (dec k)) k)))]
+    (cond
+      (neg? j)                                         i
+      (#{\' \"} c)                                    (let [k (.lastIndexOf s (str c) (int (dec j)))] (if (neg? k) j k))
+      (and (#{\( \[ \<} c) (pos? j) (name-char? (at s (dec j)))) (back (dec j))
+      (name-char? c)                                   (back j)
+      :else                                            j)))
+
 (defn- element-list [s i closer]
   (loop [i i]
     (let [i (expression s i {:closer closer})
@@ -48,7 +64,8 @@
       (cond
         (= c \,)                              (recur (inc i))
         (= c closer)                          (inc i)
-        (or (nil? c) (#{\: \;} c))            (fail! (if (= closer \)) 226 229) i)
+        (nil? c)                              (fail! (if (= closer \)) 226 229) (last-token-start s i))
+        (#{\: \;} c)                          (fail! (if (= closer \)) 226 229) i)
         (= c \))                              (fail! 224 i)
         (#{\] \>} c)                          (fail! 225 i)
         :else                                 (fail! 220 i)))))

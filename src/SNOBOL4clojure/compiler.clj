@@ -390,7 +390,10 @@
      (let [src-lines (string/split-lines (str expanded)) placed (atom {})
            offset (fn [pline ^String stmt]
                     (let [line (get src-lines (dec (long pline))) from (get @placed pline 0)
-                          k    (when (and line (string? stmt)) (string/index-of line stmt from))]
+                          ;; a statement continued past its line stands in it as far as the line goes: the line's tail from k begins the statement
+                          k    (when (and line (string? stmt))
+                                 (or (string/index-of line stmt from)
+                                     (first (filter #(string/starts-with? stmt (subs line %)) (range from (count line))))))]
                       (if k (do (swap! placed assoc pline (+ (long k) (count stmt))) k) 0)))]
      (loop [stmts raw-stmts NO 1 CODES {} NOS {} LABELS {} blanks 0 before [] fold false
             poss [] pos {:file (str file) :bp 1 :bl 1 :stack []}]
@@ -444,7 +447,16 @@
                      (when-not (#{\+ \.} (first stmt))
                        ;; 214, a bad label or a misplaced continuation, names no column (MEASURED on sbl -bf: "X = 1 ;# fails" is "(5) : ERROR 214" with an empty line
                        ;; for its mark, where this engine said (5,60); corpus rosetta-snobol4 string-matching)
-                       (swap! <DIAGNOSTICS> conj (if dup? [pline 217 nil NO] [pline n (when (and col (not= 214 n)) (+ (long (offset pline command)) (min (long col) (max 1 (count stmt))))) NO])))
+                       ;; a column past the end of the statement's first line falls on a continuation line, which the statement joins one for one (its mark a blank):
+                       ;; the error names that line and the column within it, as sbl -bf names them (MEASURED: "        X = F(" then "+ 'a'" and "+ 'b'" is 226 at
+                       ;; (3,3), and "+ 'b' )" as the second line 224 at (2,7); corpus setl4_spitbol sonnets-1, a 226 at (229,3) that this engine put at (225,303))
+                       (let [at (fn [c] (loop [l (long pline) c (long c)]
+                                          (let [len (count (get src-lines (dec l) "")) nxt (get src-lines l)]
+                                            (if (and (> c len) nxt (#{\+ \.} (first nxt))) (recur (inc l) (- c len)) [l c]))))
+                             [dl dc] (if (and col (not= 214 n) (not dup?))
+                                       (at (+ (long (offset pline command)) (min (long col) (max 1 (count stmt)))))
+                                       [pline nil])]
+                         (swap! <DIAGNOSTICS> conj (if dup? [pline 217 nil NO] [dl n dc NO]))))
                      (recur (rest stmts) (inc NO) (assoc CODES NO (error-node code)) (if (and lkey (not dup?)) (assoc NOS lkey NO) NOS)
                             (if (and lkey (not dup?)) (assoc LABELS NO lkey) LABELS) blanks (conj before blanks) fold (conj poss here) pos'')))
                  (let [label  (:label code)

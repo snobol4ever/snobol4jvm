@@ -4,7 +4,9 @@
 ;; so no row holds the semicolon that separates two.
 (ns SNOBOL4clojure.test-syntax
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.syntax :refer [syntax-error]]))
+            [SNOBOL4clojure.syntax :refer [syntax-error]]
+            [SNOBOL4clojure.env]
+            [SNOBOL4clojure.compiler]))
 
 (def ^:private sbl-errors
   [[" X = (" 226]
@@ -208,3 +210,15 @@
 (deftest an-illegal-character-after-the-subject-is-230
   (is (= {:error 230 :column 4} (select-keys (syntax-error "A B\\C = 1") [:error :column])))
   (is (= {:error 230 :column 14} (select-keys (syntax-error "        X = Y\\Z") [:error :column]))))
+
+;; Where a statement ends inside an open list, 226 or 229 stands at the start of the last token, and a column past the statement's first line falls on the
+;; continuation line it is in (manual Appendix D; MEASURED on sbl -bf: "X = F('a'" 226 at (1,15); "X = F(" at (1,13); "X = A['ab'" 229 at (1,15); "X = F(G(1)"
+;; at (1,18); "        X = F(" then "+ 'a'" and "+ 'b'" at (3,3); "        X = 'a' ;  Y = (" then "+ 'b'" at (2,3); corpus setl4_spitbol sonnets-1, a 226
+;; at (229,3) that snobol4jvm put at (225,303)).
+(deftest an-open-list-at-the-end-is-named-at-its-last-token
+  (doseq [[src want] [["        X = F('a'\nEND\n" [1 226 15]] ["        X = F(\nEND\n" [1 226 13]] ["        X = A['ab'\nEND\n" [1 229 15]]
+                      ["        X = F(G(1)\nEND\n" [1 226 18]] ["        X = F(\n+ 'a'\n+ 'b'\nEND\n" [3 226 3]]
+                      ["        X = 'a' ;  Y = (\n+ 'b'\nEND\n" [2 226 3]]]]
+    (SNOBOL4clojure.env/GLOBALS)
+    (SNOBOL4clojure.compiler/CODE src)
+    (is (clojure.core/= want (vec (take 3 (first @SNOBOL4clojure.env/<DIAGNOSTICS>)))) src)))
