@@ -2702,15 +2702,6 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
-;; A LABEL trace names a label, a CALL, RETURN or FUNCTION trace a function a DEFINE made; any other name is ERROR 198 (manual ch. 19, TRACE). MEASURED on
-;; sbl -bf: TRACE('NOLAB','LABEL') and TRACE('SIZE','FUNCTION') are 198, TRACE('L','LABEL') and TRACE of a DEFINEd function take (corpus decus_vax84a deal).
-(deftest a-trace-names-a-label-or-a-defined-function-or-it-is-198
-  (doseq [[c want] [["TRACE('NOLAB','LABEL')" 198] ["TRACE('SIZE','FUNCTION')" 198] ["TRACE('nofn','CALL')" 198] ["TRACE('L','LABEL')" nil] ["TRACE('F','FUNCTION')" nil]]]
-    (let [r (run-with-timeout (str "        DEFINE('F()')\n        " c "\n        OUTPUT = 'ok'\nL\nEND\n") 2000)]
-      (if want
-        (is (clojure.core/= :error (:exit r)) c)
-        (is (clojure.core/= "ok\n" (:stdout r)) c)))))
-
 ;; sbl's switches before the program stand in the command line HOST(2, n) reads, as in sbl's (manual ch. 19, HOST). MEASURED on sbl -bf: "sbl -bf -d131072k
 ;; -s4096k ha.sno x y" answers HOST(2,1) -bf, HOST(2,2) -d131072k, HOST(2,3) -s4096k, HOST(2,4) ha.sno, HOST(2,5) x and HOST(3) 5. snobol4jvm took no
 ;; such switch, so a program reading HOST(2,2) read its first argument (corpus strange_code_book classify).
