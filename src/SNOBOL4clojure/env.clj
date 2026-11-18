@@ -818,6 +818,9 @@
 (defmethod DATATYPE "class java.lang.Character"                   [_] "STRING")
 (defmethod DATATYPE "class java.lang.String"                      [_] "STRING")
 (defmethod DATATYPE "class java.lang.Long"                        [_] "INTEGER")
+;; an int a Java call answers is an INTEGER too (SIZE's count was one: CONVERT(SIZE(s), 'STRING') threw where sbl -bf answers the digits; corpus
+;; gate_cases_snobol4 substr_indexes_bytes_as_the_pattern_cursor_does__census)
+(defmethod DATATYPE "class java.lang.Integer"                     [_] "INTEGER")
 (defmethod DATATYPE "class java.lang.Double"                      [_] "REAL")
 (defmethod DATATYPE "class [Ljava.lang.Object;"                   [_] "ARRAY")
 (defmethod DATATYPE "class [LLjava.lang.Object;"                  [_] "ARRAY")

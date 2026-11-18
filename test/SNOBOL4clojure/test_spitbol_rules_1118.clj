@@ -203,3 +203,8 @@
          (first (run-sno (str "        OUTPUT = SIZE(TRIM('abc' CHAR(9)))\n        OUTPUT = SIZE(TRIM('abc ' CHAR(9) ' '))\n        OUTPUT = SIZE(TRIM('abc' CHAR(13)))\n"
               "        OUTPUT = SIZE(TRIM('abc' CHAR(10)))\n        OUTPUT = SIZE(TRIM('abc' CHAR(11)))\n        OUTPUT = SIZE(TRIM('abc' CHAR(12)))\n"
               "END\n"))))))
+
+;; SIZE answers an INTEGER that converts as any integer does. MEASURED on sbl -bf; corpus gate_cases_snobol4 substr_indexes_bytes_as_the_pattern_cursor_does__census
+(deftest size-answers-an-integer
+  (is (= "INTEGER\n2\n"
+         (first (run-sno "        OUTPUT = DATATYPE(SIZE('abc'))\n        OUTPUT = SIZE(CONVERT(SIZE('abcdefghijkl'), 'STRING'))\nEND\n")))))

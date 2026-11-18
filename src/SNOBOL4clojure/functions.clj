@@ -60,7 +60,7 @@
 ;; LPAD(P, 3, T) 144, SIZE(LEN(1)) 189, TRIM(TABLE()) 200).
 (defn- str-arg ^String [x n] (env/gtstg x n))
 
-(defn SIZE    [s]         (count (str-arg s 189)))
+(defn SIZE    [s]         (long (count (str-arg s 189))))
 (defn REPLACE [s1 s2 s3]
   ;; Replace chars in s1: each char of s2 mapped to corresponding char of s3. The third and second arguments convert first, then a second argument that is null or
   ;; not as long as the third is "171 null or unequally long 2nd, 3rd args to replace", before the first converts (sbl.min s_rpl: srpl6; sbl -bf: REPLACE('abc',
