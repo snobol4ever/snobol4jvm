@@ -29,9 +29,11 @@
         j      (if (= \. (at s j)) (digits (inc j)) j)
         j      (if (#{\e \E \d \D} (at s j))
                  (let [k (if (#{\+ \-} (at s (inc j))) (+ j 2) (inc j))]
-                   (if (digit? (at s k)) (digits k) (fail! 231 j)))
+                   (if (digit? (at s k)) (digits k) (fail! 231 i)))
                  j)]
-    (if (or (name-char? (at s j)) (= \- (at s j))) (fail! 231 j) j)))
+    ;; the error stands at the numeric item's first character (MEASURED on sbl -bf: X = 12ABC, 1.2.3, 1E, 1.5E+, 1- 1 and 3.14X each 231 at column 13, the item's
+    ;; start, where this engine said 15, 16, 14, 16, 14 and 17, the character that spoiled it; corpus tests/snobol4 compile_diag__p13, p13b)
+    (if (or (name-char? (at s j)) (= \- (at s j))) (fail! 231 i) j)))
 
 ;; The list inside ( ) or < > or [ ], its elements separated by commas, any of them empty. Returns the index after the closer. A colon or a semicolon ends the
 ;; scan inside it as the end does (sbl -bf: (4 :(L)) and F(4 :(L)) are "226 missing right paren", A<4 :(L)> and A[4 :(L)] "229 missing right array bracket").
