@@ -78,7 +78,13 @@
     (when-not (neg? n)
       (if (#{"PATTERN" "EXPRESSION"} (env/DATATYPE x))
         (if (zero? n) (list 'LEN# 0) (apply list 'SEQ (repeat n x)))
-        (let [s (str-arg x 91)] (apply str (repeat n s)))))))
+        ;; a count past 2**24 fails, whatever &MAXLNGTH is, and a string longer than &MAXLNGTH is 205 (MEASURED on sbl -bf: DUPL('', 16777217) and
+        ;; DUPL('a', 16777217) fail at &MAXLNGTH 1024 and at its default, DUPL('', 16777216) is null; DUPL('a', 1025) at &MAXLNGTH 1024 and DUPL('ab', 8388609)
+        ;; at the default are "205 string length exceeds value of maxlngth keyword", DUPL('ab', 8388608) is 16777216 long)
+        (let [s (str-arg x 91) m (long @env/&MAXLNGTH)]
+          (cond (clojure.core/> n 16777216)                          nil
+                (clojure.core/> (clojure.core/* n (count s)) m)      (throw (ex-info "string length exceeds value of maxlngth keyword" {:snobol/error 205}))
+                :else                                                (apply str (repeat n s))))))))
 (defn TRIM    [s]     (clojure.string/trimr (str-arg s 200)))
 (defn REVERSE [s]     (apply str (clojure.string/reverse (str-arg s 177))))
 (defn LPAD

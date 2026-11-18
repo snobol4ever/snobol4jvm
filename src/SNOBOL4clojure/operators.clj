@@ -242,7 +242,12 @@
         (every? #(or (string? %) (number? %) (instance? NAME %)) parts)
         (if (and (clojure.core/= 1 (count parts)) (< 1 (count (rest r))))
           (first parts)                      ; one part left after the nulls: it, as it was
-          (apply str (map sstr parts)))
+          ;; a string longer than &MAXLNGTH is "205 string length exceeds value of maxlngth keyword" (manual ch. 7, &MAXLNGTH; MEASURED on sbl -bf: X =
+          ;; DUPL('a', &MAXLNGTH) then X 'b' is 205; corpus mikebeer_snobol bench/recursion, whose PERM doubles its string each level, ends at 205 on sbl)
+          (let [t (apply str (map sstr parts))]
+            (if (clojure.core/> (count t) (long @SNOBOL4clojure.env/&MAXLNGTH))
+              (throw (ex-info "string length exceeds value of maxlngth keyword" {:snobol/error 205}))
+              t)))
         (clojure.core/= (count parts) (count (rest r))) r
         (empty? (rest parts))                        (first parts)
         :else                                        (apply list 'SEQ parts)))
@@ -410,6 +415,9 @@
                       result (str (subs subject 0 start)
                                   repl
                                   (subs subject end))]
+                  ;; a subject made longer than &MAXLNGTH is 205 (MEASURED on sbl -bf: X = DUPL('a', &MAXLNGTH) then X 'a' = 'bb')
+                  (when (clojure.core/> (count result) (long @SNOBOL4clojure.env/&MAXLNGTH))
+                    (throw (ex-info "string length exceeds value of maxlngth keyword" {:snobol/error 205})))
                   (INVOKE '= n result)       ; assigned as any assignment is: a value trace fires, OUTPUT writes
                   result)))
     DEFINE  (let [[proto entry-arg] args

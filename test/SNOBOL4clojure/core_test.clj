@@ -2702,6 +2702,17 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; A string longer than &MAXLNGTH is ERROR 205, made by a concatenation, a replacement or DUPL; a DUPL count past &MAXLNGTH fails (manual ch. 7, &MAXLNGTH;
+;; Appendix D 205). MEASURED on sbl -bf with &MAXLNGTH 1024: X = DUPL('a', 1024) then X 'b', 'b' X, X 'a' = 'bb', DUPL('ab', 513) and DUPL('a', 1025) are 205;
+;; DUPL('a', 16777217), a count past 2**24, fails. snobol4jvm made each string, so corpus mikebeer_snobol bench/recursion grew its string until the JVM ran out of heap.
+(deftest a-string-longer-than-maxlngth-is-205
+  (doseq [[c want] [["Y = X 'b'" 205] ["Y = 'b' X" 205] ["X 'a' = 'bb'" 205] ["Y = DUPL('ab', 513)" 205] ["Y = DUPL('a', 1025)" 205] ["Y = DUPL('a', 16777217)" "failed"]
+                    ["Y = DUPL('ab', 512)" "ok"]]]
+    (GLOBALS)
+    (let [r (run-with-timeout (str "        &ERRLIMIT = 1\n        &MAXLNGTH = 1024\n        X = DUPL('a', 1024)\n        " c "  :S(Y)F(N)\n"
+                                   "Y       OUTPUT = 'ok'  :(END)\nN       OUTPUT = DIFFER(&ERRTYPE, 0) &ERRTYPE  :S(END)\n        OUTPUT = 'failed'\nEND\n") 2000)]
+      (is (clojure.core/= (str want "\n") (:stdout r)) c))))
+
 ;; A call copies no argument when no trace is armed: the call trace's line, which quotes each argument whole, is built only when it is written (manual ch. 19,
 ;; TRACE). snobol4jvm built it on every call, so each call quoted its arguments whole, and corpus mikebeer_snobol
 ;; bench/recursion ran the JVM out of heap in trace-val.
