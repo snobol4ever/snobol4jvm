@@ -304,3 +304,12 @@
   (is (= ["b\n" 3] (run-sno "        &CODE = 7\n        &DUMP = 1\n        OUTPUT = 'b'\n        EXIT('exit 3')\n        OUTPUT = 'after'\nEND\n")))
   (is (= ["b\n" nil] (run-sno "        OUTPUT = 'b'\n        EXIT(-3)\n        OUTPUT = 'after'\nEND\n")))
   (is (re-find #"\(2\) : ERROR 105 -- exit action not available in this implementation" (first (run-sno "        OUTPUT = 'b'\n        EXIT(5)\nEND\n")))))
+
+;; An operator that a blank follows where an operand should be is 221, and 233 when it stands right after another unary operator. MEASURED on sbl -bf: Y = - X 221
+;; at 13, Y = 'a' && b 233 at 18, Y = .. X 233 at 14, Y = ..X 212; corpus gate_cases_snobol4 test_gate_s4e_donewhen_runs_the_whole_criterion__w.
+(deftest a-second-unary-operator-before-a-blank-is-233
+  (let [errs (fn [src] (vec (re-seq #"\(\d+(?:,\d+)?\) : ERROR \d+" (first (run-sno src)))))]
+    (is (= ["(1,13) : ERROR 221"] (errs "        Y = - X\nEND\n")))
+    (is (= ["(1,18) : ERROR 233"] (errs "        Y = 'a' && b\nEND\n")))
+    (is (= ["(1,14) : ERROR 233"] (errs "        Y = .. X\nEND\n")))
+    (is (= ["(1) : ERROR 212"] (errs "        Y = ..X\nEND\n")))))

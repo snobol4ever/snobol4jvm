@@ -72,6 +72,14 @@
 
 ;; An operand: unary operators, then a primary, then its subscripts. Returns [index-after kind], kind :literal for a string or number standing alone, :name for a
 ;; variable, and :value for anything else.
+(declare operand)
+;; an operator that a blank follows where an operand should be is 221, and 233 when it stands right after another unary operator (MEASURED on sbl -bf: "Y = - X"
+;; and "Y = & X" are 221 at the operator, "Y = 'a' && b", "Y = .. X" and "Y = 'a' -- b" 233 at the second; corpus gate_cases_snobol4
+;; test_gate_s4e_donewhen_runs_the_whole_criterion__w, a shell script's "cd "$HERE/../.." && pwd", where this engine said 212)
+(defn- operand-after-unary [s i]
+  (let [c (at s i)]
+    (if (and (operator-char? c) (blank? (at s (inc i)))) (fail! 233 i) (operand s i))))
+
 (defn- operand [s i]
   (let [c (at s i)]
     (cond
@@ -84,10 +92,10 @@
       ;; .X names X and &K a keyword: what follows is a name, never a literal or another name (sbl -bf: .5, ..X and &1 are "212 value used where name is required")
       (#{\. \&} c)
       (let [d (at s (inc i))]
-        (if (or (letter? d) (and (= c \.) (#{\$ \( \*} d)))
-          [(first (operand s (inc i))) :value]
-          (fail! 212 (inc i))))
-      (operator-char? c)               [(first (operand s (inc i))) :value]
+        (cond (or (letter? d) (and (= c \.) (#{\$ \( \*} d)))   [(first (operand s (inc i))) :value]
+              (and (operator-char? d) (blank? (at s (+ i 2))))       (fail! 233 (inc i))
+              :else                                                  (fail! 212 (inc i))))
+      (operator-char? c)               [(first (operand-after-unary s (inc i))) :value]
       :else
       (let [[j kind]
             (cond
