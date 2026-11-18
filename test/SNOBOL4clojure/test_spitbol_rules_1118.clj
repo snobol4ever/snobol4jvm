@@ -146,3 +146,13 @@
   (is (= "PATTERN\n[QR]\n[QR]\n"
          (first (run-sno (str "        P = CONVERT('QR', 'PATTERN')\n        OUTPUT = DATATYPE(P)\n        'xxQRyy' P . M\n        OUTPUT = '[' M ']'\n        'QRST' LEN(2) . C6\n"
               "        'xxQRyy' CONVERT(C6, 'PATTERN') . M2\n        OUTPUT = '[' M2 ']'\nEND\n"))))))
+
+;; A numeric string reads as sbl.min gtnum reads it: an exponent marker with no digits is the exponent 0 when a blank follows it, and a sign that only blanks
+;; follow is 0. MEASURED on sbl -bf; corpus gate_cases_snobol4 convert_reads_a_numeric_string_as_spitbol_gtnum_does__w
+(deftest a-numeric-string-reads-as-gtnum-reads-it
+  (is (= (str "[1e ] I:1 R:1. N:REAL 1.\n[1e+ ] I:1 R:1. N:REAL 1.\n[1d ] I:1 R:1. N:REAL 1.\n[1e] I:FAIL R:FAIL N:FAIL\n[1e 2] I:FAIL R:FAIL N:FAIL\n"
+              "[- ] I:0 R:0. N:INTEGER 0\n[ - ] I:0 R:0. N:INTEGER 0\n[+ ] I:0 R:0. N:INTEGER 0\n[-] I:FAIL R:FAIL N:FAIL\n[- 5] I:FAIL R:FAIL N:FAIL\n")
+         (first (run-sno (str "        DEFINE('C(S)')  :(CE)\nC       OUT = '[' S ']'\n        OUT = OUT ' I:' (CONVERT(S, 'INTEGER') , 'FAIL')\n        OUT = OUT ' R:' (CONVERT(S,"
+              " 'REAL') , 'FAIL')\n        X = CONVERT(S, 'NUMERIC')   :F(CN)\n        OUT = OUT ' N:' DATATYPE(X) ' ' X  :(CO)\nCN      OUT = OUT ' N:FAIL'\n"
+              "CO      OUTPUT = OUT  :(RETURN)\nCE      C('1e ')\n        C('1e+ ')\n        C('1d ')\n        C('1e')\n        C('1e 2')\n        C('- ')\n"
+              "        C(' - ')\n        C('+ ')\n        C('-')\n        C('- 5')\nEND\n"))))))

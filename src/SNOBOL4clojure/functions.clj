@@ -17,13 +17,12 @@
   [x]
   (let [t (clojure.string/trim (str x))]
     (cond
-      (clojure.core/= t "") 0.0
+      (or (clojure.core/= t "") (env/sign-then-blanks? x)) 0.0
       ;; an integer's digits are an integer first (one too large for 64 bits is no number), anything else a real as gtnum reads it
       (re-matches #"[+-]?\d+" t)
       (try (double (Long/parseLong t)) (catch NumberFormatException _ nil))
-      (re-matches #"[+-]?(\d+\.?\d*|\.\d+)([eEdD][+-]?\d+)?" t)
-      (env/parse-real t)
-      :else nil)))
+      ;; anything else is gtnum's to read, untrimmed: a blank after an exponent marker makes it the exponent 0 (env/parse-real)
+      :else (env/parse-real (str x)))))
 
 (defn- real->integer
   "The integer a real becomes: truncated toward zero. A real outside the
@@ -46,7 +45,7 @@
     :else        (let [t (clojure.string/trim (str x))]
                    (if (re-matches #"[+-]?\d+" t)
                      (try (Long/parseLong t) (catch NumberFormatException _ nil))
-                     (when-some [d (string->real t)] (real->integer d))))))
+                     (when-some [d (string->real x)] (real->integer d))))))
 
 (defn- int-arg [x err]
   (if-some [n (integer-of x)] n (throw (ex-info "argument is not integer" {:snobol/error err}))))
@@ -167,9 +166,9 @@
       ;; as a real and converted as one. nil propagates as failure.
       (and (clojure.core/= from "STRING") (clojure.core/= to "INTEGER"))
       (let [t (clojure.string/trim (str x))]
-        (if (re-matches #"[+-]?\d+" t)
+        (if (env/sign-then-blanks? x) 0 (if (re-matches #"[+-]?\d+" t)
           (try (Long/parseLong t) (catch NumberFormatException _ nil))
-          (when-some [d (string->real t)] (real->integer d))))
+          (when-some [d (string->real x)] (real->integer d)))))
 
       (and (clojure.core/= from "STRING") (clojure.core/= to "REAL"))
       (string->real x)

@@ -238,7 +238,9 @@
    no digits, neither a point nor an exponent, or a step overflows. The digits before the point are an integer while it fits in 64 bits, the rest go in as r*10 + digit, and the
    value is scaled by steps of 10**10 and then a powers-of-ten table entry, each step rounded."
   [s]
-  (when-let [[_ sg ^String ip point ex] (re-matches #"\s*([+-]?)(\d*)(?:\.(\d*))?(?:[eEdD]([+-]?\d+))?\s*" (str s))]
+  ;; an exponent marker with no digits is the exponent 0 when a blank follows it (MEASURED on sbl -bf: CONVERT('1e ', 'REAL'), '1e+ ', '1e- ', '1d ' and '1.e '
+  ;; are 1., where '1e', '1e+' and '1e 2' fail; corpus gate_cases_snobol4 convert_reads_a_numeric_string_as_spitbol_gtnum_does__w)
+  (when-let [[_ sg ^String ip point ex] (re-matches #"\s*([+-]?)(\d*)(?:\.(\d*))?(?:[eEdD]([+-]?\d+|[+-]?(?=\s)))?\s*" (str s))]
     (let [^String fp (or point "")
           ;; the integer part, gathered negative as cvm does, until a digit would overflow it
           [n i] (loop [i 0 n 0]
@@ -249,7 +251,7 @@
                     [n i]))
           digit (fn [^double r ^Character c] (clojure.core/+ (clojure.core/* r 10.0) (double (clojure.core/- (int c) 48))))
           r     (reduce digit (clojure.core/- (double n)) (concat (subs ip i) fp))
-          sc    (try (clojure.core/- (.length fp) (Long/parseLong (or ex "0"))) (catch NumberFormatException _ nil))]
+          sc    (try (clojure.core/- (.length fp) (Long/parseLong (if (or (nil? ex) (re-matches #"[+-]?" ex)) "0" ex))) (catch NumberFormatException _ nil))]
       (when (and sc (pos? (clojure.core/+ (.length ip) (.length fp))) (or point ex))
         (let [r (loop [r (double r) sc (long sc)]
                   (cond
@@ -262,8 +264,14 @@
           (when-not (Double/isInfinite r) (if (clojure.core/= "-" sg) (clojure.core/- r) r)))))))
 
 ;; ── Numeric conversion ────────────────────────────────────────────────────────
+;; A sign that only blanks follow is the integer 0, a quirk of sbl.min gtnum, which ends the number at the blank with no digit read; a bare sign fails (MEASURED
+;; on sbl -bf: CONVERT('- ', 'INTEGER'), CONVERT(' - ', ...) and CONVERT('+ ', ...) are 0, NUMERIC an INTEGER and REAL 0.; '-', '+', ' -' and '- 5' fail;
+;; corpus gate_cases_snobol4 convert_reads_a_numeric_string_as_spitbol_gtnum_does__w)
+(defn sign-then-blanks? [x] (and (string? x) (boolean (re-matches #"[ \t]*[+-][ \t]+" x))))
+
 (defn num [x]
   (cond
+    (sign-then-blanks? x) 0
     (nil? x)     0                        ; unset variable = 0 in arithmetic context
     (double? x)  x
     (integer? x) x                        ; preserve integer type
@@ -273,7 +281,7 @@
              ;; an integer that fits, else a real as gtnum reads one; anything else is not numeric (##NaN, the operator's error), as sbl -bf has it
              (or (try (Long/parseLong s)
                    (catch NumberFormatException _ nil))
-                 (parse-real s)
+                 (parse-real (str x))   ; untrimmed: a blank after an exponent marker is what makes it the exponent 0 (parse-real)
                  ##NaN)))))
 
 (defn  ncvt [x] (list 'num x))
