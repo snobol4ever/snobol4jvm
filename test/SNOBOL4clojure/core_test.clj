@@ -2696,6 +2696,15 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; A TABLE takes one subscript; more is ERROR 237 (manual Appendix D). MEASURED on sbl -bf, each alone: X = T[1,2], T[1,2] = 3 and X = ITEM(T,1,2), T a TABLE,
+;; each end "ERROR 237 -- table referenced with more than one subscript". snobol4jvm read the first key and dropped the rest, so corpus spitbol_x64_tests
+;; demos/kwic2, whose CAPTURE stays a table when SORT of an empty table fails, read CAPTURE[I = I + 1, 2] for ever.
+(deftest a-table-with-more-than-one-subscript-is-error-237
+  (doseq [stmt ["	X = T[1,2]" "	T[1,2] = 3" "	X = ITEM(T,1,2)"]]
+    (let [r (run-with-timeout (str "	T = TABLE()\n" stmt "\n	OUTPUT = 'ran on'\nEND\n") 2000)]
+      (is (= :error (:exit r)) stmt)
+      (is (= "table referenced with more than one subscript" (:thrown r)) stmt))))
+
 ;; A subscript of an assignment's target that fails fails the statement, and nothing is stored (manual ch. 8: a failure anywhere in the subject fails the statement).
 ;; MEASURED on sbl -bf: T[K] = 0 :F(DONE), K input from a two-line file, takes :F at the third read and prints "done 2". snobol4jvm stored T[nil] and looped,
 ;; as corpus spitbol_x64_tests demos/keyword (KEYTABLE[KEYS] = 0 :S(KEYLOOP)) and demos/kwic2 did until the harness killed them.

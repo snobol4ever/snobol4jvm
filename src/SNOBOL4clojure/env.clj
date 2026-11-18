@@ -662,6 +662,11 @@
   (hashCode [_]   (System/identityHashCode v)))
 (defn- table-key [k] (if (object-identity? k) (ObjKey. k) k))
 
+;; A TABLE takes one subscript: more is "237 table referenced with more than one subscript" (manual Appendix D), as sbl -bf raises it for T[1,2] read, T[1,2] = 3
+;; and ITEM(T,1,2) alike (MEASURED). snobol4jvm read the first key and dropped the rest, so spitbol_x64_tests demos/kwic2, whose SORT of an empty table fails
+;; and leaves CAPTURE a table, read CAPTURE[I = I + 1, 2] for ever where sbl -bf ends at line 103 with ERROR 237. -> the one key.
+(defn table-subscript [ks]
+  (if (next ks) (throw (ex-info (error-message 237) {:snobol/error 237})) (first ks)))
 (defn table-get [t k]        (get @t (table-key k) (:dflt (meta t) ε)))
 (defn table-set [t k v]
   (let [k (table-key k)]

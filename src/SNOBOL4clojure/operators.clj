@@ -359,7 +359,7 @@
                                   raw-container)]
                   (cond
                     (table? container)
-                    (table-set container (first ks) r)
+                    (table-set container (SNOBOL4clojure.env/table-subscript ks) r)
                     ;; a subscript out of bounds fails the statement, as a read of one does (manual ch. 14, -FAIL: "...especially when array subscripts are out of bounds")
                     (array? container)
                     (array-set container (vec ks) r)
@@ -693,7 +693,7 @@
                   f (if (fn? f) f
                       (get @<FUNS> (str op) f))]
               (cond
-                (table? f) (table-get f (first args))   ; TABLE subscript read
+                (table? f) (table-get f (SNOBOL4clojure.env/table-subscript args))   ; TABLE subscript read
                 (array? f) (array-get f (vec args))     ; ARRAY subscript read
                 (fn? f)    (apply f args)
                 ;; Nothing callable by this name: ERROR 022, as SPITBOL raises it.
@@ -953,7 +953,7 @@
           (let [c (if (symbol? op) ($$ op) (EVAL! op))
                 c (if (instance? NAME c) ($$ (symbol (str (.n ^NAME c)))) c)]
             (when-some [ks (eval-operands parms)]
-              (cond (table? c) (table-get c (first ks))
+              (cond (table? c) (table-get c (SNOBOL4clojure.env/table-subscript ks))
                     (array? c) (array-get c (vec ks))
                     :else (throw (ex-info "subscripted operand is not table or array" {:snobol/error 235})))))
           ;; The unused unary and binary operators are ERROR 029 until OPSYN defines one.

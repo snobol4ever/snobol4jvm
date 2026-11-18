@@ -856,7 +856,7 @@
    a subscript outside an array."
   [c & ks]
   (cond
-    (SNOBOL4clojure.env/table? c) (SNOBOL4clojure.env/table-get c (first ks))
+    (SNOBOL4clojure.env/table? c) (SNOBOL4clojure.env/table-get c (SNOBOL4clojure.env/table-subscript ks))
     (SNOBOL4clojure.env/array? c) (SNOBOL4clojure.env/array-get c (vec ks))
     :else nil))
 
