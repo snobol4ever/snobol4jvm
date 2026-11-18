@@ -535,6 +535,7 @@
                               (reset! &STNO stno-saved)
                               (reset! &FILE file-saved)
                               (reset! &LINE line-saved)
+                              (reset! SNOBOL4clojure.env/<STMT-LINE> line-saved)
                               (reset! &RTNTYPE (case outcome :freturn "FRETURN" :nreturn "NRETURN" "RETURN"))
                               ;; Dispatch on outcome
                               (case outcome

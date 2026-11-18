@@ -129,6 +129,9 @@
 ;; execution error's report are cut to it (manual ch. 13, -t; MEASURED on sbl -bf: -t400 puts "page 1" at columns 393 to 398 and writes a 173-column error
 ;; line whole, -t80 puts it at 73 to 78 and cuts the error line at 80; corpus gate_cases_snobol4 test_gate_sno_any_notany_span_..._error__c1, run -t400)
 (def <WIDTH> (atom 120))
+;; the line of the statement running, which an error's report names: &LINE as a statement starts, but kept when a trace function leaves &LINE at 2 (trace.clj
+;; call-trace-fn!; MEASURED on sbl -bf: csnobol4_suite setexit4, an STCOUNT trace armed, reports ERROR 331 "in line 16", its :(SCONTINUE)'s line)
+(def <STMT-LINE> (atom 0))
 (def <HOST0> (atom ""))   ; what HOST(0) returns: the -u text, or else the program's own arguments joined by blanks
 (def <ARGV>  (atom []))   ; the command line HOST(2, n) answers from: the engine's jar, then -main's arguments
 (def <ARGI>  (atom 0))    ; what HOST(3) returns: the index in <ARGV> of the program's first own argument

@@ -21,10 +21,10 @@
         used (- (.totalMemory rt) (.freeMemory rt))
         file @env/&FILE]
     (concat [["" false] ["" false] ["" false]
-             [(format "%s(%d) : ERROR %03d -- %s" file @env/&LINE code text) true]
+             [(format "%s(%d) : ERROR %03d -- %s" file @env/<STMT-LINE> code text) true]
              ["" true] ["" true] ["" false] ["" false] ["" false]
              [(row "in file" file) true]
-             [(row "in line" @env/&LINE) true]
+             [(row "in line" @env/<STMT-LINE>) true]
              [(row "in statement" @env/&STNO) true]]
             (when-not (neg? (long @env/&STLIMIT))
               [[(row "stmts executed" stmts) true]

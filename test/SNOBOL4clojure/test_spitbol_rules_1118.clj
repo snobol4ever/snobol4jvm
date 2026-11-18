@@ -364,3 +364,11 @@
   (let [[out] (run-sno (str (apply str (repeat 14 "        X = ) ; Y = (\n")) "END\n"))
         ls (clojure.string/split-lines out)]
     (is (= [8 77] (keep-indexed (fn [i l] (when (re-find #"page [0-9]+$" l) i)) ls)))))
+
+;; An error's report names the line of the statement in error, whatever &LINE reads after a trace function. MEASURED on sbl -bf: with an STCOUNT trace armed, a
+;; :(SCONTINUE) on line 6 with no preceding error ends at "(6) : ERROR 321" and "in line 6"; corpus csnobol4_suite setexit4 (its 331, line 16).
+(deftest an-errors-report-names-its-statements-line-after-a-trace
+  (let [[out] (run-sno (str "        DEFINE('S()')  :(SE)\nS       X = 1  :(RETURN)\nSE      TRACE('STCOUNT','KEYWORD',,.S)\n        &TRACE = 1000\n"
+                            "        OUTPUT = 'a'\n        :(SCONTINUE)\nEND\n"))]
+    (is (re-find #"\(6\) : ERROR 321" out))
+    (is (re-find #"in line +6\n" out))))

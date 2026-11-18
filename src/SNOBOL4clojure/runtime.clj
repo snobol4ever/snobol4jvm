@@ -105,7 +105,7 @@
       (reset! &STNO (get @<DISPNO> n n))
       (reset! &LASTFILE @&FILE)
       (reset! &LASTLINE @&LINE)
-      (let [[f l] (get @<POS> n ["" 0])] (reset! &FILE f) (reset! &LINE l))
+      (let [[f l] (get @<POS> n ["" 0])] (reset! &FILE f) (reset! &LINE l) (reset! SNOBOL4clojure.env/<STMT-LINE> l))
       (when (and counted (pos? (long @&TRACE))) (fire-keyword! "STCOUNT" counted)))))
 
 ;; The statements from the one at names on, err0 the error a CONTINUE refers to; k, for a handler running at its error, that error's serial (RUN-AT-ERROR), else nil.
@@ -255,7 +255,7 @@
             (reset! &LASTNO @&STNO)
             (reset! &LASTFILE @&FILE)
             (reset! &LASTLINE @&LINE)
-            (let [[f l] (get @<POS> (first current) ["" 0])] (reset! &FILE f) (reset! &LINE l))
+            (let [[f l] (get @<POS> (first current) ["" 0])] (reset! &FILE f) (reset! &LINE l) (reset! SNOBOL4clojure.env/<STMT-LINE> l))
             (reset! &STNO (get @<DISPNO> (first current) (first current)))
             ;; a negative &STLIMIT is unlimited execution, and &STCOUNT stops counting; 0 is no limit too, as sbl -bf counts (its countdown starts at the limit,
             ;; sbl.min stgcc, so at 0 the check is never reached), and &STCOUNT goes on
