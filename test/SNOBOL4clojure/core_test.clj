@@ -2702,6 +2702,14 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; An operator OPSYN defined as a function that returns a name is an assignment target, its value going to the name returned, as F(args) = v (manual ch. 15, OPSYN;
+;; ch. 9, NRETURN). MEASURED on sbl -bf: F(A) ending F = .Q :(NRETURN), OPSYN('%','F',1), then %X = 'v' calls F with X's value and sets Q to 'v'. snobol4jvm read
+;; (% X) as a subscript of a container named %, ERROR 235, so corpus snoflake_suite stack-opsyn (Griswold 1971, Solution 6.1) stopped at its first push.
+(deftest an-opsyn-operator-that-returns-a-name-is-an-assignment-target
+  (is (= "got ARRAY\nQ=v\n"
+         (:stdout (run-with-timeout (str "        DEFINE('F(A)')  :(F_END)\nF       OUTPUT = 'got ' DATATYPE(A)\n        F = .Q  :(NRETURN)\n"
+                                         "F_END   OPSYN('%','F',1)\n        X = ARRAY(3)\n        %X = 'v'\n        OUTPUT = 'Q=' Q\nEND\n") 2000)))))
+
 ;; After a function returns, its own last statement is the one last executed: &LASTNO and &LASTLINE name it, &STNO the caller's (manual ch. 16, &LASTNO).
 ;; MEASURED on sbl -bf: F's body ending at statement 3 (line 3), OUTPUT = F() ' ' &LASTNO ' ' &LASTLINE ' ' &STNO at statement 5 prints "f 3 3 5"; snobol4jvm
 ;; printed "f 2 2 5", the statement before F's last, and corpus csnobol4_suite setexit4 read @S13 where sbl -bf reads @S18 after its STCOUNT trace function.

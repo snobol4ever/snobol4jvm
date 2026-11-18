@@ -1042,6 +1042,19 @@
                 (let [r (apply INVOKE fsym as)]
                   (when (instance? SNOBOL4clojure.env.NameResult r) (when-some [v (EVAL! (second parms))] (INVOKE '= (:target r) v))))
                 (when-some [v (EVAL! (second parms))] (INVOKE '= (apply list fsym as) v)))))
+          ;; %X = v, an operator OPSYN defined as a function that returns a name: the value goes to the name it returns, as for F(args) = v below (sbl -bf, MEASURED:
+          ;; with F(A) ending F = .Q :(NRETURN) and OPSYN('%','F',1), %X = 'v' calls F with X's value and sets Q to 'v'; this engine read (% X) as a subscript
+          ;; of a container named %, ERROR 235, so corpus snoflake_suite stack-opsyn, Griswold's PUSH and TOP stack, stopped at its first push)
+          (and (equal op '=) (list? (first parms))
+               (or (and (clojure.core/= 2 (count (first parms))) (contains? unused-unary-ops (first (first parms)))
+                        (get @<FUNS> (opsyn-key (unused-unary-ops (first (first parms))) 1)))
+                   (and (clojure.core/= 3 (count (first parms))) (contains? unused-binary-ops (first (first parms)))
+                        (get @<FUNS> (opsyn-key (unused-binary-ops (first (first parms))) 2)))))
+          (let [N  (first parms)
+                f  (if (clojure.core/= 2 (count N)) (get @<FUNS> (opsyn-key (unused-unary-ops (first N)) 1)) (get @<FUNS> (opsyn-key (unused-binary-ops (first N)) 2)))]
+            (when-some [args (eval-operands (rest N))]
+              (let [r (apply f args)]
+                (when (instance? SNOBOL4clojure.env.NameResult r) (when-some [v (EVAL! (second parms))] (INVOKE '= (:target r) v))))))
           ;; F(args) = v, F a function that returns a name: the value goes to the name it returns
           (and (equal op '=) (call-form? (first parms)))
           (when-some [r (name-of-call (first parms))]
