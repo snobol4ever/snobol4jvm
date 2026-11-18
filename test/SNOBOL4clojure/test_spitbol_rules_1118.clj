@@ -313,3 +313,13 @@
     (is (= ["(1,18) : ERROR 233"] (errs "        Y = 'a' && b\nEND\n")))
     (is (= ["(1,14) : ERROR 233"] (errs "        Y = .. X\nEND\n")))
     (is (= ["(1) : ERROR 212"] (errs "        Y = ..X\nEND\n")))))
+
+;; After a bad label the scan reads on to a semicolon when the label begins with ( [ < > : or , and a parenthesis in the label field is no bracket; any other bad
+;; first character ends the line's scan. MEASURED on sbl -bf: "[  a; }" and "(  a; }" are 214 and 230 at 7, "#  a; }" and "!  a; }" 214 alone; corpus gate_cases_snobol4
+;; test_gate_s4e_donewhen_runs_the_whole_criterion__w.
+(deftest a-bad-label-ends-the-scan-of-its-line-unless-it-is-a-bracket
+  (let [errs (fn [src] (vec (re-seq #"\(\d+(?:,\d+)?\) : ERROR \d+" (first (run-sno src)))))]
+    (is (= ["(1) : ERROR 214" "(1,7) : ERROR 230"] (errs "[  a; }\nEND\n")))
+    (is (= ["(1) : ERROR 214" "(1,7) : ERROR 230"] (errs "(  a; }\nEND\n")))
+    (is (= ["(1) : ERROR 214"] (errs "#  a; }\nEND\n")))
+    (is (= ["(1) : ERROR 214"] (errs "!  a; }\nEND\n")))))

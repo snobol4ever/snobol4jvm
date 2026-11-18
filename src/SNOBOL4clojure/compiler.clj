@@ -115,12 +115,16 @@
             ;; a comment line (* in column 1) is one comment: a semicolon in it separates nothing. Every statement a semicolon ends is one, an empty or blank one a
             ;; statement SPITBOL numbers and never runs, as a blank line is (sbl -bf: X = 1 ;; Y = 2 is three statements, two executed)
             ;; a semicolon inside a parenthesis the statement leaves open separates nothing: the statement goes on (MEASURED on sbl -bf: "        Y = ( ; Z = 1 +" is
-            ;; one statement, 226 at the semicolon, column 15, and no 221 for Z; corpus tests/snobol4 compile_diag__p22)
+            ;; one statement, 226 at the semicolon, column 15, and no 221 for Z; corpus tests/snobol4 compile_diag__p22); a parenthesis in the label field is no
+            ;; bracket, the label running to the first blank ("(  a; }" is 214 and 230 at the })
             ;; a statement whose label field begins with what no label may begin with is 214 at its first column, and SPITBOL reads no further on that line, so
             ;; a semicolon later in it ends nothing (MEASURED on sbl -bf: "#   not ambiguous ... that; refusing ..." is one statement, the next line the next
             ;; number; corpus gate_cases_snobol4 test_gate_s4e_donewhen_runs_the_whole_criterion__w, a shell script, where this engine counted two and named 223)
-            (and (= ch \;) (not in-sq) (not in-dq) (not (and (pos? (.length cur)) (= \* (.charAt cur 0)))) (not (pos? (long (open-parens (str cur)))))
-                 (not (and (pos? (.length cur)) (let [c (.charAt cur 0)] (not (or (Character/isLetterOrDigit c) (#{\space \tab \- \+ \.} c)))))))
+            (and (= ch \;) (not in-sq) (not in-dq) (not (and (pos? (.length cur)) (= \* (.charAt cur 0)))) (not (pos? (long (open-parens (let [t (str cur)] (if (and (seq t) (not (Character/isWhitespace (.charAt t 0)))) (subs t (or (string/index-of t " ") (count t))) t))))))
+                 ;; but after ( [ < > : or , the scan reads on and the semicolon ends the statement (MEASURED on sbl -bf: "[  a; }" and "(  a; }" are 214 and
+                 ;; 230 at the }, "#  a; }", "!  a; }" and "_  a; }" 214 alone; corpus gate_cases_snobol4 test_gate_s4e_donewhen_runs_the_whole_criterion__w, whose
+                 ;; [ -f ... ] || { ...; exit 2; } lines sbl reads as three statements)
+                 (not (and (pos? (.length cur)) (let [c (.charAt cur 0)] (not (or (Character/isLetterOrDigit c) (#{\space \tab \- \+ \. \( \[ \< \> \: \,} c)))))))
             (let [s (trimr (str cur))]
               (recur (inc i) (StringBuilder.) (conj stmts (if (seq s) [s sl] [:blank sl])) false false ls line line diags))
             (and (= ch \newline) (not record?))
