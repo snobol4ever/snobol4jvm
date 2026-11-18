@@ -28,10 +28,13 @@
   "The integer a real becomes: truncated toward zero. A real outside the
    integer range is the least integer, as sbl -bf gives it (the x86-64
    conversion), not a failure."
+  ;; and a real that truncates to 2147483648, 2**31, converts to no integer: sbl's rti fails there and nowhere else (MEASURED on sbl -bf: CONVERT(2147483648.5,
+  ;; 'INTEGER'), 2147483648.1 and 2147483648.0 fail, 2147483647.5 and 2147483649.5 convert, -2147483648.5 gives -2147483648, 1.5e19 the least integer;
+  ;; corpus gate_cases_snobol4 convert_reads_a_numeric_string_as_spitbol_gtnum_does__w)
   [x]
   (let [lo (double Long/MIN_VALUE)]
     (if (and (clojure.core/<= lo x) (clojure.core/< x (clojure.core/- lo)))
-      (long x)
+      (let [i (long x)] (when-not (clojure.core/= i 2147483648) i))
       Long/MIN_VALUE)))
 
 ;; An integer argument as sbl -bf reads it: an integer, a real (truncated toward zero) or a numeric string (read as a number, so a point or an exponent makes it a

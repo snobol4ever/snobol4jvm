@@ -156,3 +156,10 @@
               " 'REAL') , 'FAIL')\n        X = CONVERT(S, 'NUMERIC')   :F(CN)\n        OUT = OUT ' N:' DATATYPE(X) ' ' X  :(CO)\nCN      OUT = OUT ' N:FAIL'\n"
               "CO      OUTPUT = OUT  :(RETURN)\nCE      C('1e ')\n        C('1e+ ')\n        C('1d ')\n        C('1e')\n        C('1e 2')\n        C('- ')\n"
               "        C(' - ')\n        C('+ ')\n        C('-')\n        C('- 5')\nEND\n"))))))
+
+;; A real that truncates to 2147483648 converts to no integer, sbl's rti failing there alone. MEASURED on sbl -bf; corpus gate_cases_snobol4
+;; convert_reads_a_numeric_string_as_spitbol_gtnum_does__w
+(deftest a-real-of-two-to-the-31-converts-to-no-integer
+  (is (= "2147483648.5 FAIL\n2147483648. FAIL\n2147483647.5 2147483647\n2147483649.5 2147483649\n-2147483648.5 -2147483648\n2147483648.5 FAIL\n"
+         (first (run-sno (str "        DEFINE('C(R)')  :(CE)\nC       OUTPUT = R ' ' (CONVERT(R, 'INTEGER') , 'FAIL')  :(RETURN)\nCE      C(2147483648.5)\n        C(2147483648.0)\n"
+              "        C(2147483647.5)\n        C(2147483649.5)\n        C(-2147483648.5)\n        C('2147483648.5')\nEND\n"))))))
