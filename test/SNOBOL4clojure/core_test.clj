@@ -2702,6 +2702,18 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; ERROR 214, a bad label or a misplaced continuation, names no column, and its mark is an empty line (manual Appendix D, 214). MEASURED on sbl -bf: a line
+;; "        X = 1 ;# fails" (a statement after the semicolon that begins with #) is "(1) : ERROR 214 -- bad label or misplaced continuation line". snobol4jvm
+;; said (1,16) (corpus rosetta-snobol4 string-matching).
+(deftest error-214-names-no-column
+  (let [f (java.io.File/createTempFile "lbl" ".sno")]
+    (try
+      (spit f "        X = 1 ;# fails\nEND\n")
+      (let [o (java.io.StringWriter.) rc (binding [*out* o *err* (java.io.StringWriter.)] (-main (.getPath f)))]
+        (is (= 231 rc))
+        (is (re-find #"\(1\) : ERROR 214 -- bad label or misplaced continuation line" (str o)) (str o)))
+      (finally (.delete f)))))
+
 ;; ENDFILE(unit) closes the file on unit; a null argument is ERROR 097 and a unit nothing holds open ERROR 098 (manual ch. 19, ENDFILE; Appendix D). MEASURED on
 ;; sbl -bf: ENDFILE() is 097, ENDFILE(7) never opened and a second ENDFILE(3) are 098. snobol4jvm ran on (corpus rosetta-snobol4 create-a-file).
 (deftest endfile-of-a-null-or-closed-unit-is-97-or-98

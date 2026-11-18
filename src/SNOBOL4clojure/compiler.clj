@@ -432,7 +432,9 @@
                          lkey (when lbl (keyword lbl))
                          dup? (and lkey (not code-text?) (or (contains? NOS lkey) (system-labels lkey)))]
                      (when-not (#{\+ \.} (first stmt))
-                       (swap! <DIAGNOSTICS> conj (if dup? [pline 217 nil NO] [pline n (when col (+ (long (offset pline command)) (min (long col) (max 1 (count stmt))))) NO])))
+                       ;; 214, a bad label or a misplaced continuation, names no column (MEASURED on sbl -bf: "X = 1 ;# fails" is "(5) : ERROR 214" with an empty line
+                       ;; for its mark, where this engine said (5,60); corpus rosetta-snobol4 string-matching)
+                       (swap! <DIAGNOSTICS> conj (if dup? [pline 217 nil NO] [pline n (when (and col (not= 214 n)) (+ (long (offset pline command)) (min (long col) (max 1 (count stmt))))) NO])))
                      (recur (rest stmts) (inc NO) (assoc CODES NO (error-node code)) (if (and lkey (not dup?)) (assoc NOS lkey NO) NOS)
                             (if (and lkey (not dup?)) (assoc LABELS NO lkey) LABELS) blanks (conj before blanks) fold (conj poss here) pos'')))
                  (let [label  (:label code)
