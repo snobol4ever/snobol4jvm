@@ -290,7 +290,8 @@
                                       (reset! env/&ERRTYPE code)
                                       (reset! env/&ERRTEXT text)
                                       ;; the statement the limit stops is not executed
-                                      (listed #(fatal/report! code text (if n @env/&STCOUNT (dec (long steps))) t0))))))
+                                      ;; the limit's overrun leaves &STCOUNT at the limit, as sbl's stcov does
+                                      (listed #(fatal/report! code text @env/&STCOUNT t0))))))
                                 ;; "246 stack overflow" (sbl -bf, a function that calls itself with no end): the run is over, a SETEXIT handler is not entered,
                                 ;; and the report is the one every execution error ends with
                                 (catch StackOverflowError _

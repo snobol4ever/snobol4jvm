@@ -323,3 +323,22 @@
     (is (= ["(1) : ERROR 214" "(1,7) : ERROR 230"] (errs "(  a; }\nEND\n")))
     (is (= ["(1) : ERROR 214"] (errs "#  a; }\nEND\n")))
     (is (= ["(1) : ERROR 214"] (errs "!  a; }\nEND\n")))))
+
+;; The statement limit is checked before the STCOUNT trace fires; with an STCOUNT trace armed SPITBOL stops at the statement whose count reaches the limit, and
+;; otherwise at the one after; the overrun raises &STLIMIT by 10 and leaves &STCOUNT at the limit (sbl.min stgcc, stgo4, stcov). MEASURED on sbl -bf: &STLIMIT = 5
+;; and a loop print &STCOUNT 2 to 5; traced, the trace writes 3 and 4 and the fifth statement ends the run; a trace function under &STLIMIT = 20 is stopped at its
+;; own first statement on its sixth call, &STCOUNT 20 and &STLIMIT 30; corpus spitbol_88 DEMOS/GOTOS.
+(deftest the-statement-limit-is-checked-before-the-stcount-trace
+  (let [[out] (run-sno "        &STLIMIT = 5\nL       OUTPUT = &STCOUNT  :(L)\nEND\n")]
+    (is (clojure.string/starts-with? out "2\n3\n4\n5\n")))
+  (let [[out] (run-sno "        &TRACE = 100\n        TRACE('STCOUNT','KEYWORD')\n        &STLIMIT = 5\nL       X = 1  :(L)\nEND\n")]
+    (is (re-find #"&STCOUNT = 4\n" out))
+    (is (not (re-find #"&STCOUNT = 5\n" out)))
+    (is (re-find #"\(4\) : ERROR 244" out)))
+  (let [[out] (run-sno (str "        DEFINE('TF()')                     :(TFE)\nTF      N = N + 1\n        M = M + 1                          :(RETURN)\n"
+                            "TFE     TRACE('STCOUNT', 'KEYWORD', , 'TF')\n        &TRACE = 1000\n        &DUMP = 1\n        &STLIMIT = 20\n"
+                            "L       I = I + 1                          :(L)\nEND\n"))]
+    (is (re-find #"\(2\) : ERROR 244" out))
+    (is (re-find #"(?m)^N = 5$" out))
+    (is (re-find #"(?m)^&STCOUNT = 20$" out))
+    (is (re-find #"(?m)^&STLIMIT = 30$" out))))

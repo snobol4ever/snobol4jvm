@@ -72,11 +72,15 @@
 ;; "if stlimit is exceeded, up to 10 more statements are obeyed so that a setexit trap can regain control" (sbl.min stcov): under &ERRLIMIT the overrun is
 ;; error 244, trapped as an error in the statement is, after &STLIMIT is raised by 10; it is a fatal error, and at the third the program ends whatever &ERRLIMIT
 ;; is (err07), as it ends with &ERRLIMIT at 0 (sbl -bf: SETEXIT(.OVER) at &ERRLIMIT 1 and &STLIMIT 20 reaches OVER with &ERRTYPE 244 and &STLIMIT 30).
+;; stcov raises &STLIMIT by 10 whatever &ERRLIMIT holds, and &STCOUNT reads the limit it reached (sbl.min stcov: "add to former limit", "set as new count" 10; MEASURED
+;; on sbl -bf: &STLIMIT = 20 ends at ERROR 244 with &STCOUNT 20 and &STLIMIT 30 in the dump, at &ERRLIMIT 0; corpus spitbol_88 DEMOS/GOTOS)
 (defn- overrun [n]
-  (if (and (pos? (long @&ERRLIMIT)) (< (long (swap! SNOBOL4clojure.env/<ERRFT> inc)) 3))
-    (do (swap! &STLIMIT clojure.core/+ 10)
-        (ex-info (SNOBOL4clojure.env/error-message 244) {:snobol/error 244}))
-    (snobol-steplimit! n)))
+  (let [lim (long @&STLIMIT)]
+    (reset! &STCOUNT lim)
+    (swap! &STLIMIT clojure.core/+ 10)
+    (if (and (pos? (long @&ERRLIMIT)) (< (long (swap! SNOBOL4clojure.env/<ERRFT> inc)) 3))
+      (ex-info (SNOBOL4clojure.env/error-message 244) {:snobol/error 244})
+      (snobol-steplimit! n))))
 
 ;; An error SPITBOL counts fatal (icv errft before erb) is trapped as any error is, but the third such ends the program whatever &ERRLIMIT is (sbl.min err07).
 (defn- fatal-error [n]
@@ -258,8 +262,15 @@
             (let [over
             (let [n (if (neg? (long @&STLIMIT)) @&STCOUNT (swap! &STCOUNT inc))]
               ;; "tracing keyword &STCOUNT produces a trace after every SPITBOL statement" (manual ch. 16): as the count moves; a negative &STLIMIT moves none
-              (when (and (pos? (long @&TRACE)) (not (neg? (long @&STLIMIT)))) (fire-keyword! "STCOUNT" n))
-              (let [over (when (and (pos? (long @&STLIMIT)) (> n @&STLIMIT)) (overrun n))]
+              ;; the limit is checked first, and the trace fires only for a statement that will run (sbl.min stgo4: "ile stcov" before "execute keyword trace";
+              ;; MEASURED on sbl -bf: an STCOUNT trace function TF under &STLIMIT = 20 is entered for the statement before the limit and ends at its own first
+              ;; statement; corpus spitbol_88 DEMOS/GOTOS, which sbl ends at line 48, statement 21, and this engine ended inside the trace function)
+              ;; and with an STCOUNT trace armed, or profiling on, SPITBOL counts every statement and stops at the one whose count reaches the limit, where it
+              ;; otherwise counts in steps the limit's own size and stops at the one after (sbl.min stgcc, stgo4; MEASURED on sbl -bf: &STLIMIT = 5 and a loop
+              ;; print &STCOUNT 2 to 5 and end at the sixth; with TRACE('STCOUNT','KEYWORD') the trace writes 3 and 4 and the fifth statement ends the run)
+              (let [step (if (or (SNOBOL4clojure.trace/stcount-traced?) (not (zero? (long @SNOBOL4clojure.env/&PROFILE)))) 1 0)
+                    over (when (and (pos? (long @&STLIMIT)) (> (+ (long n) step) (long @&STLIMIT))) (overrun n))
+                    _    (when (and (not over) (pos? (long @&TRACE)) (not (neg? (long @&STLIMIT)))) (fire-keyword! "STCOUNT" n))]
                 ;; ── LABEL trace ────────────────────────────────────────────────
                 (when (pos? @&TRACE)
                   (when (statement-trace-active?)
