@@ -121,7 +121,8 @@
       (and (:top ctx) (#{\) \] \> \,} c)) (stray! c i)
       (stop? c) i
       :else
-      (loop [[j kind] (operand s i) n 1]
+      ;; q counts the binary ?s at this level and pre the operands before the first: a statement's ? binds loosest, so what stands before it is the subject
+      (loop [[j kind] (operand s i) n 1 q 0 pre 0]
         (let [c (at s j)]
           ;; right after an operand comes a blank, the end, a closer, a comma or a colon: another operand there lacks its operator, and an operator there lacks
           ;; the blank a binary operator needs
@@ -143,7 +144,13 @@
                 (and (operator-char? d) (or (nil? e) (blank? e)))
                 (if (= d \=)
                   ;; an assignment's object is a name: a literal standing alone is "212 value used where name is required"
+                  ;; and so is the subject of a replacement after a statement's ?: a concatenation before it, or the value of an earlier match, is 212 (MEASURED on
+                  ;; sbl -bf: X 'b' ? LEN(1) = 'Z' and Y ? 'l' ? '' = 'L' are 212, X ? 'a' 'b' = 'c', (X) ? 'a' = 'b' and $X ? 'a' = 'c' compile; corpus
+                  ;; gate_cases_snobol4 a_statement_level_query_takes_a_concatenated_subject_and_chains_left_to_right__refuse1 and 2, which this engine named 220)
                   (cond (and (= kind :literal) (= n 1))  (fail! 212 k)
+                        ;; in the statement's pattern (:stop-at-equals, the subject read before it) any ? is one more than the subject's own
+                        ;; and it names no column (sbl -bf: "(3) : ERROR 212")
+                        (and (:top ctx) (pos? q) (or (:stop-at-equals ctx) (> q 1) (> pre 1))) (fail! 212 :none)
                         (:stop-at-equals ctx)            k
                         :else                            (let [m (skip-blanks s (inc k))] (if (at s m) (expression s m (dissoc ctx :stop-at-equals)) m)))
                   (let [m (skip-blanks s (inc k))]
@@ -151,9 +158,9 @@
                       (or (nil? (at s m)) (#{\) \] \> \, \: \;} (at s m)))      (fail! 221 m)
                       ;; a goto's target is a name: an expression of more than one element is "212 value used where name is required"
                       (:goto ctx)                                                 (fail! 212 m)
-                      :else                                                       (recur (operand s m) (inc n)))))
+                      :else                                                       (recur (operand s m) (inc n) (if (= d \?) (inc q) q) (if (and (= d \?) (zero? q)) n pre)))))
                 (:goto ctx) (fail! 212 k)
-                :else (recur (operand s k) (inc n))))))))))
+                :else (recur (operand s k) (inc n) q pre)))))))))
 
 ;; The goto field after the colon: S(label), F(label), (label) or the same with < >, each at most once (sbl -bf: 218 duplicated, 219 empty, 227 and 228 unclosed,
 ;; 234 anything else).
@@ -236,7 +243,7 @@
                 (= \= (at s m))  (replacement m)
                 :else            (fail! 220 m)))))))
     (catch clojure.lang.ExceptionInfo e
-      (when-let [n (::error (ex-data e))] {:error n :column (inc (or (::at (ex-data e)) 0))}))))
+      (when-let [n (::error (ex-data e))] (if (= :none (::at (ex-data e))) {:error n} {:error n :column (inc (or (::at (ex-data e)) 0))})))))
 
 ;; The text EVAL or CONVERT compiles is one expression, scanned to its end (sbl.min gtexp: expan builds the expression, then "error if not end of image").
 ;; {:error n} for the syntax error the scan meets first, else {:end i}, the index where the expression ends: the end of s, or a colon or a semicolon outside every

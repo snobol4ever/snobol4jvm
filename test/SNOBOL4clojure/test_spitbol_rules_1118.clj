@@ -241,3 +241,12 @@
     (is (= 231 rc))
     (is (not (re-find #"(?m)^x$" out))))
   (is (= ["x\n" nil] (run-sno "-NOEXECUTE\n-EXECUTE\n        OUTPUT = 'x'\nEND\n"))))
+
+;; A statement's ? binds loosest, so a replacement after it needs the subject before it to be a name: a concatenation, or an earlier match's value, is 212,
+;; with no column. MEASURED on sbl -bf; corpus gate_cases_snobol4 a_statement_level_query_takes_a_concatenated_subject_and_chains_left_to_right__refuse1 and 2
+(deftest a-replacement-after-a-statement-query-needs-a-name
+  (doseq [src ["        X = 'a'\n        X 'b' ? LEN(1) = 'Z'\nEND\n" "        Y = 'hello'\n        Y ? 'l' ? '' = 'L'\nEND\n"]]
+    (let [[out rc] (run-sno src)]
+      (is (= 231 rc))
+      (is (re-find #"\(2\) : ERROR 212 -- syntax error: value used where name is required" out) src)))
+  (is (= ["c\n" nil] (run-sno "        X = 'ab'\n        X ? 'a' 'b' = 'c'\n        OUTPUT = X\nEND\n"))))
