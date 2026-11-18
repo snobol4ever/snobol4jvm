@@ -2723,6 +2723,20 @@
                         (:stdout (run-with-timeout (str "        &ERRLIMIT = 1\n        OUTPUT = " c "  :S(END)\n        OUTPUT = &ERRTYPE\nEND\n") 2000)))
         c)))
 
+;; An error the constant folding finds stands at the statement's last line, the one SPITBOL's compiler has read when it folds (Appendix D 14). MEASURED on
+;; sbl -bf: "X = (1 / 0)" continued by "+ 'abc'" and "+ 'def'" is "(3) : ERROR 014"; "X = 'a'" continued by "+ 'c' (1 / 0)" is (2). snobol4jvm named the
+;; statement's first line (corpus decus_vax84a atn, palin, synt).
+(deftest a-folded-error-stands-at-the-statements-last-line
+  (doseq [[src line] [["        X = (1 / 0)\n+ 'abc'\n+ 'def'\nEND\n" 3] ["        X = 'a'\n+ 'c' (1 / 0)\n        Y = 2\nEND\n" 2]]]
+    (GLOBALS)
+    (let [f (java.io.File/createTempFile "fold" ".sno") p (.getPath f)]
+      (try
+        (spit f src)
+        (let [out (binding [*err* (java.io.StringWriter.)] (with-out-str (-main p)))]
+          (is (re-find (re-pattern (str "\\Q" p "(" line ") : ERROR 014 -- division caused integer overflow\\E")) out) src))
+        (finally (.delete f))))))
+
+
 ;; Concatenation groups to the right and its innermost operation is done first, left operand before right: the part before the last with no text is ERROR 8,
 ;; then the last 9, then any earlier part 8 (manual Appendix D 8, 9). MEASURED on sbl -bf, A an array: 'x' A 'y' 8, 'x' 'y' A 9, A 'x' 'y' 8, A 'x' 'y' A 9,
 ;; 'x' A A 8, LEN(1) A 'x' 8. snobol4jvm named the first such part read left to right (corpus tests/snobol4 user_function_array_keyword_1).

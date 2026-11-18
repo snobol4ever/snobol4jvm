@@ -493,7 +493,15 @@
                        ;; or NRETURN is 217, and a CODE text may define L again)
                        dup?   (and (not code-text?) (keyword? label) (or (contains? NOS label) (system-labels label)))
                        ferr   (if dup? 217 (fold-error body (when (map? goto) goto)))
-                       _      (when ferr (swap! <DIAGNOSTICS> conj [pline ferr nil NO]))
+                       ;; an error the folding finds names no column and stands at the statement's last line, the one SPITBOL's compiler has read when it folds,
+                       ;; and that line is the one listed (MEASURED on sbl -bf: "        X = (1 / 0)" then "+ 'abc'" and "+ 'def'" is "(3) : ERROR 014", listed
+                       ;; "1       + 'def'"; "X = 'a'" then "+ 'c' (1 / 0)" is (2); corpus decus_vax84a atn, a 015 folded from 'prep ' ! 'adj ' on its line 35, which this
+                       ;; engine put at 34); a duplicate label is the first line's
+                       _      (when ferr
+                                (let [last-line (loop [l (long pline) c (+ (long (offset pline command)) (count stmt))]
+                                                  (let [len (count (get src-lines (dec l) "")) nxt (get src-lines l)]
+                                                    (if (and (> c len) nxt (#{\+ \.} (first nxt))) (recur (inc l) (- c len)) l)))]
+                                  (swap! <DIAGNOSTICS> conj [(if (= 217 ferr) pline last-line) ferr nil NO])))
                        body   (if ferr body (freeze body))
                        key    (if (and label (not dup?)) label NO)
                        code   (reduce #(conj %1 %2) [] [body goto])
