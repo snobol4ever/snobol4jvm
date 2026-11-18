@@ -2696,6 +2696,23 @@
 (deftest host-describes-the-system
   (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
 
+;; A unit held by OUTPUT is no INPUT's, and one held by INPUT is no OUTPUT's (manual ch. 19, INPUT and OUTPUT). MEASURED on sbl -bf: OUTPUT(.A,10,'u1.txt') then
+;; INPUT(.B,10,5) or INPUT(.B,10,'u1.txt') is "ERROR 289 -- input channel currently in use"; INPUT(.A,10,'t.txt') then OUTPUT(.B,10) is "ERROR 161 -- output
+;; file cannot be written to". snobol4jvm opened a second channel on the unit and ran on, so corpus csnobol4_suite update passed its line 3.
+(deftest a-unit-held-by-the-other-direction-is-error-289-or-161
+  (let [dir (.toFile (java.nio.file.Files/createTempDirectory "units" (make-array java.nio.file.attribute.FileAttribute 0)))
+        f   #(.getPath (java.io.File. dir %))]
+    (try
+      (spit (f "t.txt") "l1\n")
+      ;; a unit of its own for each case: the runs share the engine's channels (run-with-timeout does not reset them)
+      (doseq [[open2 code] [[(str "	OUTPUT(.A,41,'" (f "u1.txt") "')\n	INPUT(.B,41,5)") "input channel currently in use"]
+                            [(str "	OUTPUT(.A,42,'" (f "u2.txt") "')\n	INPUT(.B,42,'" (f "u2.txt") "')") "input channel currently in use"]
+                            [(str "	INPUT(.A,43,'" (f "t.txt") "')\n	OUTPUT(.B,43)") "output file cannot be written to"]]]
+        (let [r (run-with-timeout (str open2 "\n	OUTPUT = 'ran on'\nEND\n") 2000)]
+          (is (= :error (:exit r)) open2)
+          (is (= code (:thrown r)) open2)))
+      (finally (doseq [x (reverse (file-seq dir))] (.delete x))))))
+
 ;; A TABLE takes one subscript; more is ERROR 237 (manual Appendix D). MEASURED on sbl -bf, each alone: X = T[1,2], T[1,2] = 3 and X = ITEM(T,1,2), T a TABLE,
 ;; each end "ERROR 237 -- table referenced with more than one subscript". snobol4jvm read the first key and dropped the rest, so corpus spitbol_x64_tests
 ;; demos/kwic2, whose CAPTURE stays a table when SORT of an empty table fails, read CAPTURE[I = I + 1, 2] for ever.

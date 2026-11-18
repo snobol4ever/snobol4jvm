@@ -535,7 +535,15 @@
 ;; has, else the file an environment variable of its name names, else ERROR 116 (160 for OUTPUT), and so is a file with no channel. A fourth argument, CSNOBOL4's
 ;; file name, is not read (sbl -bf: INPUT(.X, 8, , 'f') is ERROR 116). Returns [key file-argument channel-to-share], or calls bad.
 (defn- association [type unit filename bad]
-  (let [{nm :name opts :opts} (file-spec (or filename ""))]
+  (let [{nm :name opts :opts} (file-spec (or filename ""))
+        held (when-not (null-arg? unit) (get @<CHANNELS> (channel-key unit)))]
+    ;; A unit the other direction holds is that direction's error, whatever the file argument says (MEASURED on sbl -bf: OUTPUT(.A,10,'u1.txt') then INPUT(.B,10,5)
+    ;; or INPUT(.B,10,'u1.txt') is "289 input channel currently in use"; INPUT(.A,10,'t.txt') then OUTPUT(.B,10) is "161 output file cannot be written to"; corpus
+    ;; csnobol4_suite update, INPUT(.bin, 10, 5) on the unit OUTPUT opened, ends at that 289, where this engine opened a second channel and ran on)
+    (when (and held (not (clojure.core/= type (:type held))))
+      (if (clojure.core/= type :input)
+        (throw (ex-info "input channel currently in use" {:snobol/error 289}))
+        (throw (ex-info "output file cannot be written to" {:snobol/error 161}))))
     (cond
       (null-arg? unit)                                       (if (null-arg? filename) [0 nil nil] (bad))
       (or (not (clojure.string/blank? nm)) (contains? opts \f)) [(channel-key unit) filename nil]
