@@ -227,6 +227,17 @@
   (or (and (instance? NAME v) (not (symbol? (.n ^NAME v))))
       (array? v) (table? v) (instance? SNOBOL4clojure.env.DataObj v) (instance? SNOBOL4clojure.env.CodeBlock v)))
 
+;; A value with no text where a pattern is wanted is its operator's error (Appendix D; MEASURED on sbl -bf, T a table and A an array: '0' ? T and ('a' ? A) are
+;; "240 pattern match right operand is not pattern", ARBNO(T) 061, FENCE(T) 259, T . X 030, A $ X 025; an alternation checks its right operand first, "005
+;; alternation right operand is not pattern", then its left, 006, the operator grouping to the right: LEN(2) | A is 5, A | LEN(2) 6, 'a' | A | 'b' 6, 'a' | 'b' | A
+;; 5, A | T 5; corpus gate_cases_snobol4 an_array_or_table_as_a_pattern_operand_raises_the_operand_errors_of_spitbol_in_both_modes__a, whose '0' ? T crashed here)
+(defn- pattern-argument [p err] (if (textless? p) (throw (ex-info (SNOBOL4clojure.env/error-message err) {:snobol/error err})) p))
+
+(defn- pattern-operands! [args]
+  (let [v (vec args) n (count v)]
+    (pattern-argument (v (dec n)) 5)
+    (doseq [i (range (clojure.core/- n 2) -1 -1)] (pattern-argument (v i) 6))))
+
 ;; The null string concatenated is the other operand, as it was; a concatenation of a value with no text with anything else is "008 concatenation left operand is
 ;; not a string or pattern" for the first operand, "009 ... right operand" for a later one, the concatenation being left to right (sbl -bf: '' T is the table T,
 ;; T 'x' and T '' 'x' are 8, 'x' 'y' N of a keyword's name N is 9, LEN(1) T is 9).
@@ -288,9 +299,11 @@
   (if-let [pf (program-fn op)]
     (apply pf args)
   (case op
-    |       (apply | args)
-    $       (apply $ args)
-    .       (apply . args)
+    |       (do (when (<= 2 (count args)) (pattern-operands! args)) (apply | args))
+    $       (do (when (and (<= 2 (count args)) (textless? (first args))) (throw (ex-info (SNOBOL4clojure.env/error-message 25) {:snobol/error 25})))
+                (apply $ args))
+    .       (do (when (and (<= 2 (count args)) (textless? (first args))) (throw (ex-info (SNOBOL4clojure.env/error-message 30) {:snobol/error 30})))
+                (apply . args))
     LEN     (LEN    (first args))
     POS     (POS    (first args))
     RPOS    (RPOS   (first args))
@@ -303,8 +316,8 @@
     SPAN    (SPAN   (first args))
     ;; FENCE() is the function given the null string, FENCE(''), which the scanner backs up past; the bare FENCE that ends the match is the pattern the variable
     ;; FENCE holds (sbl -bf: 'ABC' FENCE() 'B' succeeds, 'ABC' FENCE 'B' fails)
-    FENCE   (FENCE (if (seq args) (first args) ε))
-    ARBNO   (ARBNO  (first args))
+    FENCE   (FENCE (pattern-argument (if (seq args) (first args) ε) 259))
+    ARBNO   (ARBNO  (pattern-argument (first args) 61))
     EQ      (EQ     (first args) (second args))
     NE      (NE     (first args) (second args))
     LE      (LE     (first args) (second args))
@@ -352,7 +365,7 @@
     ;; "(SUBJECT ? PATTERN) performs pattern matching and returns the substring matched, or failure as its value" (manual ch. 9, Binary operator extensions)
     ;; the subject is a string, a real its SPITBOL text (0.0 is 0.)
     ;; a subject with no text is "241 pattern match left operand is not a string" (sbl.min gtstg; sbl -bf: N ? 'x' of a keyword's name N, and T ? 'x')
-    ?       (let [[s p] args s (gtstg s 241)] (when-let [[a b] (SEARCH s p)] (subs s a b)))
+    ?       (let [[s p] args s (gtstg s 241)] (when-let [[a b] (SEARCH s (pattern-argument p 240))] (subs s a b)))
     =       (let [[N r] args]
               ;; nil replacement = sub-expression failure → statement fails
               (when-not (nil? r)
@@ -417,7 +430,7 @@
                                   (apply INVOKE (or (:container (meta n)) (first n)) (rest n))
                                   (let [v ($$ n)] (when (pos? (long @SNOBOL4clojure.env/&TRACE)) (fire-access! n v)) v))   ; the subject is a reference
                                 241)
-                  pat     p]                      ; already evaluated by EVAL! dispatch
+                  pat     (pattern-argument p 240)]   ; already evaluated by EVAL! dispatch
               (when-let [[start end] (SEARCH subject pat)]
                 ;; The replacement is evaluated after the match, so it sees the
                 ;; variables the match assigned (S RTAB(N) . S REM . S1 = S1 S).

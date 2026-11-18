@@ -532,7 +532,11 @@
         (case action
           :proceed
           (let [thunk (second (ζΠ ζ))
-                P     (if (fn? thunk) (thunk) thunk)]
+                P     (if (fn? thunk) (thunk) thunk)
+                ;; a value with no text is "046 expression does not evaluate to pattern" (MEASURED on sbl -bf: 'ab' ? *T of a table; corpus gate_cases_snobol4
+                ;; an_array_or_table_as_a_pattern_operand_raises_the_operand_errors_of_spitbol_in_both_modes__a, where this engine's matcher crashed)
+                _     (when (or (SNOBOL4clojure.env/array? P) (SNOBOL4clojure.env/table? P) (instance? SNOBOL4clojure.env.DataObj P))
+                        (throw (ex-info (SNOBOL4clojure.env/error-message 46) {:snobol/error 46})))]
             (if (nil? P)
               (let [[Σ Δ] ζ] (recur :fail (ζ↑ ζ Σ Δ) Ω))
               (recur :proceed (ζ↓ ζ P) (🡥 Ω ζ))))

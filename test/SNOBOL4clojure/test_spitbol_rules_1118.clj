@@ -104,3 +104,22 @@
   (is (= "slash u<a>\n"
          (first (run-sno (str "        DEFINE('U(X)')                          :(U.END)\nU       U = 'u<' X '>'                          :(RETURN)\nU.END   OPSYN('/', .U, 1)\n"
               "        OUTPUT = 'slash ' /'a'\nEND\n"))))))
+
+;; A value with no text where a pattern is wanted is its operator's error: 240 the match, 005 and 006 alternation (right operand first), 061 ARBNO, 259 FENCE,
+;; 046 *T, 030 the . capture, 025 the $ capture (Appendix D). MEASURED on sbl -bf; corpus gate_cases_snobol4
+;; an_array_or_table_as_a_pattern_operand_raises_the_operand_errors_of_spitbol_in_both_modes__a
+(deftest a-non-pattern-operand-is-its-operators-error
+  (is (= (str "1 ERROR 240\n2 ERROR 240\n3 ERROR 5\n4 ERROR 6\n5 ERROR 8\n6 ERROR 5\n7 ERROR 6\n8 ERROR 6\n9 ERROR 6\n10 ERROR 5\n11 ERROR 8\n12 ERROR 8\n"
+              "13 ERROR 9\n14 ERROR 240\n15 ERROR 6\n16 ERROR 9\n17 ok\n18 ok\n19 ok\n20 ok\n21 ERROR 61\n22 ERROR 259\n23 ERROR 46\n24 ERROR 30\n"
+              "25 ERROR 25\n26 ERROR 30\n")
+         (first (run-sno (str "        &ERRLIMIT = 1000\n        t = TABLE()\n        a = ARRAY(3)\n        p = LEN(1)\n        i = 0\nnxt     i = i + 1\n        SETEXIT(.errh)\n"
+              "        :($('C' i))\nC1      '0' ? t                         :(ok)\nC2      'ab' ? a                        :(ok)\nC3      x = LEN(2) | a            "
+              "      :(ok)\nC4      x = a | LEN(2)                  :(ok)\nC5      a[1] ? t 'a'                    :(ok)\nC6      'ab' ? 'a' | a                  :("
+              "ok)\nC7      'ab' ? a | 'a'                  :(ok)\nC8      'ab' ? 'a' | a | 'b'            :(ok)\nC9      'ab' ? a | 'a' | 'b'            :(ok)\n"
+              "C10     'ab' ? 'a' | 'b' | a            :(ok)\nC11     'ab' ? 'a' a 'b'                :(ok)\nC12     'ab' ? a 'a' 'b'                :(ok)\n"
+              "C13     'ab' ? 'a' 'b' a                :(ok)\nC14     x = ('a' ? a)                   :(ok)\nC15     x = ('a' ? t | 'a')             :(ok)\n"
+              "C16     'ab' ? p t                      :(ok)\nC17     'ab' ? p 'b'                    :(ok)\nC18     'ab' ? p | 'b'                  :(ok)\n"
+              "C19     x = p | 'b'                     :(ok)\nC20     x = 'ab' ? p                    :(ok)\nC21     'ab' ? ARBNO(t)                 :(ok)\n"
+              "C22     'ab' ? FENCE(t)                 :(ok)\nC23     'ab' ? *t                       :(ok)\nC24     'ab' ? t . x                    :(ok)\n"
+              "C25     'ab' ? a $ x                    :(ok)\nC26     x = ('ab' ? t . y)              :(ok)\nC27     :(END)\nok      OUTPUT = i ' ok'               "
+              " :(nxt)\nerrh    OUTPUT = i ' ERROR ' &ERRTYPE   :(nxt)\nEND\n"))))))
