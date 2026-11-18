@@ -69,7 +69,10 @@
         _  (when (or (zero? (count s2)) (not= (count s2) (count s3)))
              (throw (ex-info "null or unequally long 2nd, 3rd args to replace" {:snobol/error 171})))
         s1 (str-arg s1 170)]
-    (apply str (map #(let [i (.indexOf ^String s2 (str %))]
+    ;; a character the second argument holds twice is replaced as its last place says, SPITBOL's table being filled from the first to the last (MEASURED on sbl
+    ;; -bf: with f = a..z and its 14th made z, REPLACE('lazy', f, 'ZYX...A') gives OZAB, z taking A, the 26th; corpus gate_cases_snobol4
+    ;; replace_is_an_asm_leaf_that_agrees_with_sbl_and_its_c_twin__rep)
+    (apply str (map #(let [i (.lastIndexOf ^String s2 (str %))]
                        (if (>= i 0) (.charAt ^String s3 i) %))
                     s1))))
 ;; DUPL's first argument is a string or a pattern, "091 dupl first argument is not a string or pattern": a pattern, or an expression, repeated is the pattern of

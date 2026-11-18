@@ -208,3 +208,10 @@
 (deftest size-answers-an-integer
   (is (= "INTEGER\n2\n"
          (first (run-sno "        OUTPUT = DATATYPE(SIZE('abc'))\n        OUTPUT = SIZE(CONVERT(SIZE('abcdefghijkl'), 'STRING'))\nEND\n")))))
+
+;; REPLACE maps a character its second argument holds twice by its last place. MEASURED on sbl -bf; corpus gate_cases_snobol4
+;; replace_is_an_asm_leaf_that_agrees_with_sbl_and_its_c_twin__rep
+(deftest replace-maps-a-repeated-character-by-its-last-place
+  (is (= "OZAB\nyyz\n"
+         (first (run-sno (str "        OUTPUT = REPLACE('lazy', 'abcdefghijklmzopqrstuvwxyz', 'ZYXWVUTSRQPONMLKJIHGFEDCBA')\n        OUTPUT = REPLACE('aab', 'aab', 'xyz')\n"
+              "END\n"))))))
