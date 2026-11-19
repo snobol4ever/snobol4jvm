@@ -1,7 +1,4 @@
 (ns SNOBOL4clojure.core
-  "SNOBOL4/Clojure — public entry point.
-   Loads all sub-namespaces and re-exports the public API via def aliases
-   so that (require '[SNOBOL4clojure.core :refer :all]) works unchanged."
   (:gen-class)
   (:refer-clojure :exclude [= + - * / num])
   (:require [clojure.pprint :as pp]
@@ -143,9 +140,6 @@
 (def CODE-ir           comp/CODE-ir)
 (def preprocess-includes comp/preprocess-includes)
 (defn include-dirs
-  "Where -INCLUDE looks, in order: the program's own directory, then each
-   directory of SNO_LIB (colon-separated, the fleet's include variable), then
-   the current directory."
   [program-dir sno-lib]
   (vec (distinct (concat [program-dir]
                          (remove clojure.string/blank? (clojure.string/split (or sno-lib "") #":"))
@@ -159,10 +153,6 @@
                     no (when (clojure.string/starts-with? line "-") (map #(if (clojure.string/starts-with? % "-") % (str "-" %)) (clojure.string/split line #",-")))))
           false (clojure.string/split-lines src)))
 (defn -main
-  "SNOBOL4/Clojure — run a .sno file: [--engine interp] <file.sno>.
-   The engine is the interpreter, the one every board grades (the vm engine was deleted 2026-11-19; JVM bytecode is reached through run-jvm!).
-   -INCLUDE files resolve against the program's own directory, then SNO_LIB,
-   then the current one. INPUT reads stdin."
   [& args]
   (reset! env/<WIDTH> 120)
   (reset! dump-switch nil)

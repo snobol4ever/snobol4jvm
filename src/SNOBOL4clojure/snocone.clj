@@ -1,5 +1,4 @@
 (ns SNOBOL4clojure.snocone
-  "The Snocone front end: lexer, expression grammar, and an emitter of SNOBOL4 source text."
   (:require [instaparse.core :as insta :refer [defparser]]))
 (def ^:const KIND-INTEGER   :sc/integer)
 (def ^:const KIND-REAL      :sc/real)
@@ -119,7 +118,6 @@
 (def ^:private ops-by-length
   (sort-by (comp - count first) op-entries))
 (defn- strip-comment
-  "Return the portion of `line` before any unquoted # character."
   [^String line]
   (loop [i 0 in-single false in-double false]
     (if (>= i (count line))
@@ -131,13 +129,11 @@
           (and (= c \#) (not in-single) (not in-double)) (subs line 0 i)
           :else (recur (inc i) in-single in-double))))))
 (defn- continuation?
-  "True when the last non-whitespace char of stripped line is a continuation char."
   [^String stripped]
   (let [trimmed (clojure.string/trimr stripped)]
     (and (pos? (count trimmed))
          (continuation-chars (.charAt trimmed (dec (count trimmed)))))))
 (defn- split-semicolon
-  "Split `line` on semicolons that are not inside string literals."
   [^String line]
   (loop [i 0 in-single false in-double false buf (StringBuilder.) result []]
     (if (>= i (count line))
@@ -153,8 +149,6 @@
           :else
           (recur (inc i) in-single in-double (.append buf c) result))))))
 (defn- scan-number
-  "Scan a number token starting at position `start` in `seg`.
-  Returns [kind text end-pos]."
   [^String seg start]
   (let [len (count seg)]
     (let [leading-dot? (= \. (.charAt seg start))]
@@ -189,7 +183,6 @@
          (subs seg start pos)
          pos])))))
 (defn- tokenize-segment
-  "Tokenize one logical statement segment; append tokens to `acc` (transient vector)."
   [^String seg line-no acc]
   (let [len (count seg)]
     (loop [pos 0 acc acc]
@@ -237,14 +230,6 @@
                 (recur (inc pos)
                        (conj! acc {:kind KIND-UNKNOWN :text (subs seg pos (inc pos)) :line line-no}))))))))))
 (defn tokenize
-  "Tokenize a complete Snocone source string.
-  Returns a vector of token maps, each {:kind kw :text str :line int},
-  terminated by a single {:kind :sc/eof :text \"\" :line N}.
-  Handles:
-  - # comment stripping
-  - Continuation lines (last non-ws char is a continuation char)
-  - Semicolon-separated statements on one line
-  - Strings, numbers, identifiers, keywords, operators"
   [^String source]
   (let [raw-lines (clojure.string/split (clojure.string/replace source #"\r\n|\r" "\n") #"\n" -1)
         n         (count raw-lines)]
@@ -308,7 +293,6 @@
 (defn- sc-binary?  [tok] (contains? prec-table    (:kind tok)))
 (defn- sc-unary?   [tok] (contains? unary-ops     (:kind tok)))
 (defn- sc-unary-pos?
-  "True if position i is a unary position."
   [tokens i]
   (if (zero? i)
     true
@@ -325,7 +309,6 @@
 (defn- stk-peek  [s]    (when (seq s) (last s)))
 (defn- stk-pop   [s]    (when (seq s) (pop s)))
 (defn- drain-ops-to
-  "Pop ops from op-stack into output until top matches pred or stack empty."
   [op-stack output stop-pred]
   (loop [stk op-stack out output]
     (let [top (stk-peek stk)]
@@ -333,8 +316,6 @@
         [stk out]
         (recur (stk-pop stk) (conj out top))))))
 (defn parse-expression
-  "Parse a flat infix token vector into postfix (RPN).
-  Synthetic nodes carry :arg-count; unary ops carry :unary? true."
   [tokens]
   (let [tokens (mapv sc-dotck tokens)
         n      (count tokens)]
@@ -485,7 +466,6 @@
     (infix-ops op) (str l " " op " " r)
     :else (str l " " op " " r)))
 (defn emit-expr
-  "Transform a snocone-grammar AST node into a SNOBOL4 source string."
   [ast]
   (insta/transform
     {:expr    (fn [x] x)
@@ -543,7 +523,6 @@
      :aref    (fn [& args] (str "[" (clojure.string/join "," (remove nil? args)) "]"))}
     ast))
 (defn sc->snobol4
-  "Parse a Snocone expression string and return the SNOBOL4 source string."
   [sc-src]
   (let [ast (parse-sc-expr sc-src)]
     (if (insta/failure? ast)

@@ -1,5 +1,4 @@
 (ns SNOBOL4clojure.runtime
-  "The two execution engines over one IR: the interpreter, the reference, and JVM bytecode, the low-level one."
   (:require [SNOBOL4clojure.env :as env :refer [<STNO> <LABL> <CODE> <DISPNO> block-end compile-error &STCOUNT &STLIMIT &TRACE &STNO &LASTNO &ERRLIMIT &ERRTYPE &ERRTEXT <POS> &FILE &LASTFILE
                                                 &LINE &LASTLINE &FNCLEVEL snobol-return! snobol-freturn! snobol-nreturn! snobol-end! snobol-steplimit! fire-label! fire-keyword!
                                                 statement-trace-active?]]
@@ -217,8 +216,6 @@
     "FRETURN" :freturn
     "NRETURN" :nreturn))
 (defn- assign-pcs
-  "Pass 1: build a map from IR key (integer or keyword) to bytecode PC.
-   Integer slots that are label placeholders map to the same PC as the keyword."
   [[codes nos labels]]
   (let [all-int   (sort (into (set (filter integer? (keys codes)))
                               (vals nos)))
@@ -234,8 +231,6 @@
                 m kw-slots)
         (recur (rest slots) (inc pc) (assoc m (first slots) pc))))))
 (defn compile-ir
-  "Compile a [codes nos labels] triple to a flat bytecode vector.
-   Returns a vector of instruction maps {:op :body :s :f}."
   [[codes nos labels :as ir]]
   (let [pc-map   (assign-pcs ir)
         all-int  (sort (into (set (filter integer? (keys codes)))
@@ -301,7 +296,6 @@
     (let [instrs (mapv make-instr all-int)]
       (conj instrs {:op OP-HALT :body nil :s nil :f nil}))))
 (defn compile-src
-  "Compile SNOBOL4 source to the instruction list."
   [src]
   (compile-ir (comp/CODE! src)))
 (def ^:private ^:const ACC-PUBLIC   (int Opcodes/ACC_PUBLIC))
@@ -340,7 +334,6 @@
          LT_FN GT_FN LE_FN GE_FN EQ_FN NEQ_FN SIGNAL_FN
          CONCAT_FN SIZE_FN STR_FN)
 (defn- init-inline-fns!
-  "Bind all inline IFn references. Called once when jvm_codegen loads."
   []
   (alter-var-root #'$$_FN   (constantly env/$$))
   (alter-var-root #'SET_FN  (constantly env/protected-store!))
@@ -379,7 +372,6 @@
   (alter-var-root #'STR_FN (constantly
     (fn [v] (if (nil? v) nil (str v))))))
 (def ^:private JC-IFN-FIELD-SIGS
-  "Map from inline-fn var-name string → static field name on jvm_codegen."
   {"$$_FN"    "$$_FN"
    "SET_FN"   "SET_FN"
    "PRINT_FN" "PRINT_FN"
@@ -398,21 +390,14 @@
    "SIZE_FN"   "SIZE_FN"
    "STR_FN"    "STR_FN"})
 (def ^:private ARITH-OP->FN
-  "Map from IR arithmetic operator symbol → inline field name."
   {'+ "ADD_FN" '- "SUB_FN" '* "MUL_FN" '/ "DIV_FN"})
 (def ^:private CMP-OP->FN
-  "Map from IR comparison operator symbol → inline field name."
   {'LT "LT_FN" 'GT "GT_FN" 'LE "LE_FN" 'GE "GE_FN"
    'EQ "EQ_FN" 'NE "NEQ_FN"})
 (defn- sym-or-lit?
-  "True if x is a symbol (variable) or a number/string literal."
   [x]
   (or (symbol? x) (integer? x) (float? x) (string? x)))
 (defn- emit-val!
-  "Emit bytecode to push a SNOBOL4 value (sym or literal) onto the stack.
-   Symbols → call $$_FN.invoke(sym-string) to read from <VARS>.
-   Integer/real literals → LDC the boxed value.
-   Strings → LDC the string."
   [^MethodVisitor mv cls-name x]
   (cond
     (symbol? x)
@@ -433,9 +418,6 @@
     :else
     (throw (ex-info "emit-val!: not a sym-or-lit" {:x x}))))
 (defn- inline-emit!
-  "Try to emit optimised JVM bytecode for IR body.
-   Returns true on success (body inlined), false if EVAL_FN fallback needed.
-   Leaves exactly one value on the stack (the result, possibly null)."
   [^MethodVisitor mv cls-name body]
   (cond
     (and (list? body)
@@ -586,23 +568,12 @@
       true)
     :else false))
 (defn ^clojure.lang.ExceptionInfo make-signal
-  "Create a SNOBOL4 ExceptionInfo. Called from JVM-compiled programs."
   [^String sig-name]
   (ex-info sig-name {:snobol/signal (keyword sig-name)}))
 (defn gen-class-name
-  "Generate a stable JVM internal class name for a SNOBOL4 source string.
-   The class is in the SNOBOL4clojure package to match jvm_codegen's package."
   [src]
   (str "SNOBOL4clojure/SnobolProg" (format "%08x" (Math/abs (hash src)))))
 (defn compile-to-class
-  "Compile SNOBOL4 source to JVM bytecode.
-   Returns byte[] — a valid .class file.
-   Generated class layout:
-     public static IFn EVAL_FN;     // set externally before run() is called
-     public static Object body_N;   // one field per instruction body
-     static { body_N = RT.readString(...); ... }
-     public static void run() { ... }
-  "
   [src]
   (let [bc-vec    (compile-src src)
         n-instrs  (count bc-vec)
@@ -700,11 +671,6 @@
     (.toByteArray cw)))
 (def ^:private class-cache (atom {}))
 (defn load-program
-  "Compile src to JVM bytecode and load the class.
-   Returns a zero-arg fn that calls the generated static run() method.
-   Results are cached by source string hash.
-   Before invoking run(), this function sets EVAL_FN and all 23E inline
-   IFn helper fields on the generated class."
   [src]
   (or (get @class-cache src)
       (let [bc       (compile-to-class src)
@@ -739,12 +705,10 @@
         (swap! class-cache assoc src run-fn)
         run-fn)))
 (defn clear-class-cache!
-  "Evict all entries from the JVM class cache."
   []
   (reset! class-cache {})
   nil)
 (defn run-jvm!
-  "Run src through the JVM-compiled path. Output goes to *out*."
   [src]
   (env/GLOBALS (find-ns 'SNOBOL4clojure.runtime))
   (reset! env/STNO 0)
@@ -764,13 +728,9 @@
               (throw cause))
             (throw (or cause e))))))))
 (defn run-jvm-captured!
-  "Run src through JVM-compiled path and return captured stdout as string."
   [src]
   (with-out-str (run-jvm! src)))
 (defn bench-compare-jvm
-  "Compare interpreter (RUN+CODE) vs JVM-compiled (run-jvm!) on src.
-   Warms both paths before timing.
-   Returns {:interpreter-ms :jvm-ms :ratio :outputs-match}."
   [src n]
   (let [reset-env! (fn []
                      (env/GLOBALS (find-ns 'SNOBOL4clojure.runtime))

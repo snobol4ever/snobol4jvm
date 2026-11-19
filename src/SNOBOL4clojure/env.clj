@@ -1,6 +1,4 @@
 (ns SNOBOL4clojure.env
-  "The runtime: its state, the built-in functions, the pattern constructors and scanners, and what sbl -bf writes besides
-  the program's output (the listing, an error's report, the &DUMP dump, the traces). Everything here depends on nothing but itself."
   (:refer-clojure :exclude [num])
   (:require [clojure.pprint :as pp]
             [clojure.string :as string])
@@ -372,7 +370,6 @@
    #'&MAXLNGTH 16777216, #'&OUTPUT 1, #'&PROFILE 0, #'&TRIM 1, #'&TRACE 0,
    #'&STLIMIT 2147483647, #'&IOCOMPAT :catspaw})
 (defn reset-keywords!
-  "Give every settable keyword its starting value, as a fresh program has it."
   []
   (doseq [[v dflt] keyword-defaults] (reset! @v dflt)))
 (def  INPUT$     (atom ε))
@@ -457,8 +454,6 @@
             :else                  (do (.append sb (if (and (clojure.core/>= (int c) 97) (clojure.core/<= (int c) 122)) (Character/toUpperCase c) c)) (recur (inc i) nil))))))
     (str sb)))
 (defn name-string
-  "The text of a name argument: a NAME (.F) is the name of its variable,
-   anything else its string."
   [x]
   (if (instance? NAME x) (str (.n ^NAME x)) (str x)))
 (def ^:private ten-powers (double-array [1.0 1e1 1e2 1e3 1e4 1e5 1e6 1e7 1e8 1e9 1e10]))
@@ -466,9 +461,6 @@
 (def ^:private gts-round (clojure.core// 0.5 gts-scale))
 (defn- ftz ^double [^double x] (if (< (Math/abs x) Double/MIN_NORMAL) (clojure.core/* x 0.0) x))
 (defn parse-real
-  "The real sbl.min gtnum makes of s (an optional sign, digits, a point or an exponent marked e, E, d or D or both, blanks at the ends), or nil when s has
-   no digits, neither a point nor an exponent, or a step overflows. The digits before the point are an integer while it fits in 64 bits, the rest go in as r*10 + digit, and the
-   value is scaled by steps of 10**10 and then a powers-of-ten table entry, each step rounded."
   [s]
   (when-let [[_ sg ^String ip point ex] (re-matches #"\s*([+-]?)(\d*)(?:\.(\d*))?(?:[eEdD]([+-]?\d+|[+-]?(?=\s)))?\s*" (str s))]
     (let [^String fp (or point "")
@@ -508,9 +500,6 @@
 (defn  ncvt [x] (list 'num x))
 (defn  scvt [x] (list 'str x))
 (defn real-str
-  "A real as sbl.min gtstg prints it: its absolute value scaled into [0.1, 1) by steps of 10**10 and a powers-of-ten table entry, 0.5e-15 added, and 15 digits
-   truncated from it, trailing zeros dropped; fixed point when the exponent is 0 to 15, with a trailing \".\" when integral (2.0 -> \"2.\"), otherwise
-   0.<digits>e<sign><exponent> (1e20 -> \"0.1e+21\", 0.001 -> \"0.1e-2\"); zero is \"0.\"."
   [x]
   (let [x (double x)]
     (cond
@@ -533,15 +522,10 @@
             frac  (if (zero? nd) "" (clojure.string/replace (format (str "%0" nd "d") (rem n p)) #"0+$" ""))]
         (str (when (neg? x) "-") (quot n p) "." frac (when-not fixed (str "e" (if (neg? e) "-" "+") (Math/abs e))))))))
 (defn sstr
-  "A SNOBOL4 value as the text it becomes in output and concatenation:
-   nil is the null string, a real is formatted by real-str, anything else is str."
   [x]
   (cond (nil? x) "" (double? x) (real-str x) :else (str x)))
 (def <VARS> (atom {}))
 (defn GLOBALS
-  "Reset ALL SNOBOL4 runtime state for a fresh program run.
-   Clears variables, functions, code/label tables, I/O channels, and operator synonyms.
-   The ns argument is accepted for API compatibility but ignored."
   ([]
    (reset! <VARS>    {})
    (reset! <FUNS>    {})
@@ -591,7 +575,7 @@
    (reset-keywords!))
   ([_ns] (GLOBALS)))
 (declare error-text)
-(defn error-message "SPITBOL's text for its error n, in lower case as sbl -bf writes it, or nil." [n] (error-text n))
+(defn error-message [n] (error-text n))
 (def ^:private error-text
   (merge (into {} (for [[n m] error-messages :when (not (#{274 276 278} n))] [n (clojure.string/lower-case m)]))
          {274 "value assigned to keyword fullscan is zero"}))
@@ -604,7 +588,6 @@
         (and (instance? NAME x) (symbol? (.n ^NAME x))) (name (.n ^NAME x))
         :else (throw (ex-info (error-message n) {:snobol/error n}))))
 (defn keyword-var
-  "The var of keyword &K (K a string or symbol, spelled as the program spells it), or nil when there is no such keyword."
   [k]
   (ns-resolve (the-ns 'SNOBOL4clojure.env) (symbol (str "&" (name k)))))
 (defn assign-keyword! [k v]
@@ -637,19 +620,16 @@
 (def protected-variables '#{ABORT ARB BAL FAIL FENCE REM SUCCEED})
 (defn output-associated? [sym] (clojure.core/= :output (:type (get @<CHANNELS> sym))))
 (defn snobol-set!
-  "Assign val to the SNOBOL4 user variable named by sym."
   [sym val]
   (let [s (symbol (name sym))]
     (swap! <VARS> assoc s val)
     (when (output-associated? s) (swap! <ASSOC-LAST> assoc s val)))
   val)
 (defn protected-store!
-  "A direct assignment's store, X = V: 042 for a protected variable, else snobol-set!."
   [sym val]
   (when (protected-variables (symbol (name sym))) (throw (ex-info (error-message 42) {:snobol/error 42})))
   (snobol-set! sym val))
 (defn reference
-  "Return the current value of SNOBOL4 user variable N, or nil if unbound."
   [N]
   (get @<VARS> (symbol (name N))))
 (defn clear-vars! [s]
@@ -702,7 +682,6 @@
                                      (str sb))
           :else                  (do (.append sb (char c)) (recur (inc n))))))))
 (defn channel-read
-  "The next record of input channel ch, as it comes (nil at its end), counted into the channel's position (:at) when it keeps one."
   [ch]
   (let [rdr ^java.io.BufferedReader (:reader ch)
         at  (:at ch)]
@@ -724,7 +703,6 @@
       (let [resolved (when (and (re-matches #"[A-Z][A-Z0-9]*" (name sym)) (not (no-function sym))) (ns-resolve (find-ns 'SNOBOL4clojure.core) sym))]
         (if (instance? clojure.lang.Var resolved) (var-get resolved) ($$ N))))))
 (defn holder-name
-  "The name of the natural variable SPITBOL names the object v by (<PRNMV> above), a string, or nil when no variable holds it."
   [v]
   (let [last @<PRNMV>]
     (if (and last (identical? v (get @<VARS> last)))
@@ -762,9 +740,6 @@
         (val v)
         (if (protected-variables sym) (primitive-pattern sym) ε)))))
 (defn snapshot!
-  "Return a sorted map of all currently-set SNOBOL4 user variables → values.
-   Call after a :step-limit stop to inspect full program state.
-   Also useful for post-mortem debugging: (snapshot!) after any RUN."
   []
   (into (sorted-map) @<VARS>))
 (defrecord SnobolArray [dims dflt data])
@@ -777,7 +752,6 @@
   (when (> (long lo) (long hi)) (throw (ex-info (error-message 67) {:snobol/error 67})))
   [lo hi])
 (defn- parse-array-proto
-  "[dims proto]: the [lo hi] pairs of ARRAY's first argument and the prototype PROTOTYPE answers."
   [proto]
   (let [proto (if (and (instance? NAME proto) (symbol? (.n ^NAME proto))) (str (.n ^NAME proto)) proto)
         whole (when (or (number? proto) (string? proto)) (let [n (num proto)] (when (or (integer? n) (and (double? n) (not (Double/isNaN n)))) (long n))))]
@@ -792,7 +766,6 @@
              (clojure.string/split proto #"," -1))
        proto])))
 (defn ARRAY
-  "ARRAY(proto) or ARRAY(proto, default): a SnobolArray of the dimensions proto gives, each element default."
   ([proto] (ARRAY proto ε))
   ([proto dflt]
    (let [[dims text] (parse-array-proto proto)]
@@ -822,16 +795,12 @@
     (swap! t assoc k v))
   v)
 (defn table-entries
-  "The [key value] entries of a table in the order the keys were first assigned."
   [t]
   (let [order (if-let [o (:order (meta t))] @o {})]
     (map (fn [[k v]] [(if (instance? ObjKey k) (.v ^ObjKey k) k) v])
          (sort-by (fn [[k _]] (get order k Long/MAX_VALUE)) (seq @t)))))
 (defn array?    [x] (instance? SnobolArray x))
 (defn- array-subscript
-  "A subscript as the integer SPITBOL converts it to: a numeric string reads as
-   its number, a real is truncated, the null string is 0. Anything else is
-   ERROR 238."
   [i]
   (if (integer? i)
     i
@@ -840,7 +809,6 @@
         (throw (ex-info "array subscript is not integer" {:snobol/error 238}))
         (long n)))))
 (defn- array-check-bounds
-  "Returns nil (failure) if idx-vec is out of bounds, else the normalised key."
   [^SnobolArray arr idx-vec]
   (let [dims    (:dims arr)
         _       (when-not (clojure.core/= (count idx-vec) (count dims))
@@ -852,21 +820,17 @@
                            (and (integer? i) (>= i lo) (<= i hi)))
                          dims idx-vec))
         idx-vec))))
-(defn array-in-bounds? "True when idx-vec names an element of arr." [arr idx-vec] (some? (array-check-bounds arr idx-vec)))
+(defn array-in-bounds? [arr idx-vec] (some? (array-check-bounds arr idx-vec)))
 (defn array-get
-  "Read arr at idx-vec (vector of ints). Returns nil on bounds failure."
   [^SnobolArray arr idx-vec]
   (when-let [k (array-check-bounds arr idx-vec)]
     (get @(:data arr) k (:dflt arr))))
 (defn array-set
-  "Write arr at idx-vec. Returns nil on bounds failure, value on success."
   [^SnobolArray arr idx-vec v]
   (when-let [k (array-check-bounds arr idx-vec)]
     (swap! (:data arr) assoc k v)
     v))
 (defn array-prototype
-  "Return the PROTOTYPE of a SnobolArray: the count, an integer, for an array
-   made from a bare count, as SPITBOL returns it; otherwise the prototype string."
   [^SnobolArray arr]
   (let [proto (or (:proto arr)
                   (clojure.string/join "," (map (fn [[lo hi]] (str lo ":" hi)) (:dims arr))))]
@@ -971,7 +935,6 @@
       (str "." n))))
 (defn- dims-text [dims] (string/join "," (map (fn [[lo hi]] (if (clojure.core/= lo 1) (str hi) (str lo ":" hi))) dims)))
 (defn value-text
-  "A value as a dump shows it, and a trace: an array, a table or a DATA object by its kind and number (ARRAY(2:4) #2, TABLE(11) #4, NODE #6)."
   [v]
   (cond
     (string? v)  (str "'" v "'")
@@ -1037,7 +1000,6 @@
                 :sub   (str holder "<" (subscript-text label) "> = " (value-text x))
                 :field (str label "(" holder ") = " (value-text x)))))))
 (defn dump-text
-  "The text of a dump at level lvl (1 or more): after the last line, SPITBOL writes its newline and three blank lines."
   [lvl]
   (let [vars (variables lvl)
         sec  (fn [header lines] (concat ["" "" header ""] lines))]
@@ -1095,7 +1057,6 @@
         (recur (rest ss) n starts))
       starts)))
 (defn write-listing!
-  "Write the listing of the program last compiled, named file, as far as its -LIST cards ask for one, and its compile errors on their page."
   [file]
   (let [{:keys [text stmts cards]} @<SOURCE>
         lines  (string/split (str text) #"\n")
@@ -1161,7 +1122,6 @@
 (defn- row [label v] (str (format "%-21s" label) v))
 (defn- regenerations [] (reduce + 0 (map #(max 0 (.getCollectionCount ^GarbageCollectorMXBean %)) (ManagementFactory/getGarbageCollectorMXBeans))))
 (defn- report-lines
-  "[line also-to-standard-error?] pairs: the report of error code with text, after stmts statements executed in the run that started at start-ns."
   [code text stmts start-ns]
   (let [rt   (Runtime/getRuntime)
         used (- (.totalMemory rt) (.freeMemory rt))
@@ -1180,7 +1140,6 @@
              [(row "memory left (bytes)" (- (.maxMemory rt) used)) false]
              ["" true]])))
 (defn report!
-  "Write the report of error code with text on *out*, and its share on *err*, as sbl -bf does."
   [code text stmts start-ns]
   (doseq [[l both?] (report-lines code text stmts start-ns)]
     (let [width  (long @<WIDTH>)
@@ -1189,8 +1148,6 @@
       (when both? (binding [*out* *err*] (println (last pieces)))))))
 (def ^:private registry <TRACES>)
 (defn- trace-kinds
-  "The kinds a trace type registers, by its first letter in any case: V value, A access, L label, C call, R return, F both of a function's, K keyword.
-   Any other letter is ERROR 199, trace second argument is not trace type."
   [type]
   (case (first (clojure.string/upper-case (str type)))
     \V [:value]
@@ -1209,11 +1166,6 @@
       (when-let [c (and (seq? n) (:container (meta n)))]
         [c (vec (rest n)) (str (first n) "<" (clojure.string/join "," (map #(if (string? %) (str "'" % "'") (str %)) (rest n))) ">")]))))
 (defn trace!
-  "Register a trace. Called by INVOKE's TRACE branch.
-   name  — variable/label/function name (a string, a symbol or a NAME)
-   type  — trace type: VALUE LABEL CALL RETURN FUNCTION KEYWORD, or by its first letter(s)
-   label — optional goto label (string/keyword) when trace fires
-   fn    — optional user function name to call when trace fires"
   ([name type]       (trace! name type nil nil))
   ([name type label] (trace! name type label nil))
   ([name type label user-fn]
@@ -1228,7 +1180,6 @@
          (swap! registry assoc (reg-key name kind) {:label label :fn user-fn}))))
    nil))
 (defn stoptr!
-  "Remove a trace registration. Called by INVOKE's STOPTR branch."
   [name type]
   (if-let [[c ks _] (element-of name)]
     (let [kinds (set (trace-kinds type))]
@@ -1237,23 +1188,18 @@
       (swap! registry dissoc (reg-key name kind))))
   nil)
 (defn clear-all-traces!
-  "Remove every trace registration. Resets &TRACE to 0."
   []
   (reset! registry {})
   (reset! elements [])
   (reset! &TRACE 0)
   nil)
 (defn active?
-  "True if a trace of the given type is registered for name."
   [name type]
   (boolean (some #(contains? @registry (reg-key name %)) (trace-kinds type))))
 (defn any-active?
-  "True if any trace of any type is currently registered."
   []
   (pos? (count @registry)))
 (def ^:dynamic *trace-output*
-  "Where trace output goes. Default: the program's output (*out*), as in SPITBOL.
-   Rebind to a writer in tests to capture trace output."
   nil)
 (defn- trace-println [& args]
   (let [w (or *trace-output* *out*)
@@ -1263,13 +1209,10 @@
         (println l)
         (doseq [p (partition-all 120 l)] (println (apply str p)))))))
 (defn- star-field
-  "Four asterisks and the number of the statement being executed, filled with asterisks to 12 characters."
   []
   (let [s (str "****" @&STNO)]
     (str s (apply str (repeat (max 0 (- 12 (count s))) \*)))))
 (defn- trace-val
-  "A value as a dump shows it: a string in quotes exactly as it is, a NAME with a point, a real with its point, PATTERN for a pattern, an array, a table or a
-   DATA object by its kind and number (sbl -bf: N = ARRAY(2:4) #2)."
   [v]
   (cond
     (or (SNOBOL4clojure.env/array? v) (SNOBOL4clojure.env/table? v) (instance? DataObj v)) (value-text v)
@@ -1281,7 +1224,6 @@
     (and (or (list? v) (vector? v)) (= "PATTERN" (SNOBOL4clojure.env/DATATYPE v))) "PATTERN"
     :else                     (str v)))
 (defn- emit-line!
-  "Write one trace line if &TRACE is above 0, and charge it 1."
   [text]
   (when (pos? @&TRACE)
     (swap! &TRACE dec)
@@ -1301,8 +1243,6 @@
       (reset! SNOBOL4clojure.env/&LINE 2)
       r)))
 (defn fire-value!
-  "Fire VALUE trace for `sym` being assigned `new-val`. Called from operators.clj INVOKE '= after the assignment. The line is the statement's star field, an i
-   for each function level, then name = value, as sbl -bf writes it (****4******* i G = 3 for an assignment in a function called from level 0)."
   [sym new-val]
   (when-let [entry (@registry (reg-key sym :value))]
     (if-let [f (and (pos? @&TRACE) (trace-fn entry))]
@@ -1310,8 +1250,6 @@
       (emit-line! (str (apply str (repeat @&FNCLEVEL \i)) " " sym " = " (trace-val new-val))))
     (:label entry)))
 (defn fire-element!
-  "Fire the VALUE trace of the element of container c at subscripts ks, just assigned new-val (operators.clj, the element assignment), as fire-value! does for a
-   variable; nothing when no element trace is registered."
   [c ks new-val]
   (when-let [e (and (seq @elements) (first (filter #(and (= :value (:kind %)) (identical? c (:c %)) (= (vec ks) (:ks %))) @elements)))]
     (if-let [f (and (pos? @&TRACE) (trace-fn e))]
@@ -1321,9 +1259,6 @@
                        " = " (trace-val new-val))))
     (:label e)))
 (defn fire-access!
-  "Fire the ACCESS trace of the variable `sym`, whose value `v` a statement has just fetched: \"Produces a trace every time the named item is referenced. If you say
-   X = N, that does not change the value of N, but it is a reference\" (manual ch. 10, Debugging). As sbl -bf writes it: the referencing statement's star field, an
-   i for each function level, then name = value; or the trace function is called. Either costs 1 of &TRACE. Called only while &TRACE is above 0."
   [sym v]
   (when-let [entry (@registry (reg-key sym :access))]
     (if-let [f (trace-fn entry)]
@@ -1331,8 +1266,6 @@
       (do (swap! &TRACE dec)
           (trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " " sym " = " (trace-val v))))))
 (defn fire-keyword!
-  "Fire the KEYWORD trace of the keyword named kw (ERRTYPE, FNCLEVEL or STCOUNT, the ones SPITBOL traces) now holding new-val: the trace function is called, or the
-   line written as sbl -bf writes it, the statement's star field, an i for each function level, then &NAME = value; either costs 1 of &TRACE."
   [kw new-val]
   (when (pos? @&TRACE)
     (when-let [entry (@registry (reg-key kw :keyword))]
@@ -1341,9 +1274,6 @@
         (do (swap! &TRACE dec)
             (trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " &" kw " = " (trace-val new-val)))))))
 (defn fire-label!
-  "Fire the LABEL trace of `label-key`, a Goto transferring to it: \"Produce a trace when a Goto transfer to statement name occurs. Flowing sequentially into the
-   labeled statement ... does not produce a trace\" (manual ch. 10). Called from runtime.clj's Goto while &STNO is still the statement whose Goto it is; the line
-   is its star field, an i for each function level, then :(L), as sbl -bf writes it, or the trace function is called; either costs 1 of &TRACE."
   [label-key]
   (when (pos? @&TRACE)
     (let [lname (if (keyword? label-key) (name label-key) (str label-key))]
@@ -1353,11 +1283,6 @@
           (do (swap! &TRACE dec)
               (trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " :(" lname ")")))))))
 (defn- function-line!
-  "A call or return line of the function `fname`. It is written when the function is registered for `kind` and &TRACE is above 0 (and costs 1 of &TRACE),
-   or else when &FTRACE is above 0 (and costs 1 of &FTRACE). Four asterisks and the statement number, a blank, one i for each function level the caller is
-   inside, a blank, then the text. The text is a thunk, built only when the line is written: a call's text quotes each argument whole, so building it on
-   every call copied every string argument of every call (MEASURED: corpus mikebeer_snobol bench/recursion, whose PERM doubles its string argument each level,
-   ran the JVM out of heap in trace-val, with no trace armed, where sbl -bf ends at ERROR 205)."
   [fname kind text & [caller-stno]]
   (let [line  #(trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " " (text))
         entry (@registry (reg-key fname kind))]
@@ -1369,13 +1294,9 @@
         (and entry (pos? @&TRACE)) (do (swap! &TRACE dec) (line))
         (pos? @&FTRACE)            (do (swap! &FTRACE dec) (line))))))
 (defn fire-call!
-  "Fire the call trace of user function `fname`, whose parameters hold `args`. Called from the DEFINE wrapper before the body runs, at the caller's
-   function level and with the number of the calling statement."
   [fname args]
   (function-line! fname :call #(str fname "(" (clojure.string/join "," (map trace-val args)) ")")))
 (defn fire-return!
-  "Fire the return trace of user function `fname` returning `val`. signal is :return :freturn or :nreturn. Called from the DEFINE wrapper once the level is
-   the caller's again and while the number of the returning statement is still &STNO."
   [fname val signal & [caller-stno]]
   (function-line! fname :return
                   #(case signal
@@ -1384,40 +1305,28 @@
                     (str "RETURN " fname " = " (trace-val val)))
                   caller-stno))
 (defn pattern-trace-active?
-  "True if PATTERN trace is registered for `subject-var` (or globally via \"*\").
-   Used by match.clj to decide whether to bind *trace* true."
   [subject-var]
   (and (pos? @&TRACE)
        (or (@registry (reg-key subject-var :pattern))
            (@registry (reg-key "*" :pattern)))))
 (defn stcount-traced? [] (boolean (@registry (reg-key "STCOUNT" :keyword))))
 (defn statement-trace-active?
-  "True if &TRACE > 0 AND a global statement trace (name \"*\" type \"LABEL\")
-   is registered. This is our extension for full statement-by-statement tracing."
   []
   (and (pos? @&TRACE)
        (@registry (reg-key "*" :label))))
 (defn enable-full-trace!
-  "Convenience: register a global statement+value trace. Sets &TRACE > 0.
-   Equivalent to the test helper calling:
-     (trace! \"*\" \"LABEL\") (trace! \"*\" \"VALUE\") (trace! \"*\" \"CALL\")"
   []
   (trace! "*" "LABEL")
   (trace! "*" "VALUE")
   (trace! "*" "CALL")
   (trace! "*" "RETURN"))
 (defn disable-full-trace!
-  "Convenience: clear the global wildcard traces."
   []
   (stoptr! "*" "LABEL")
   (stoptr! "*" "VALUE")
   (stoptr! "*" "CALL")
   (stoptr! "*" "RETURN"))
 (defn- string->real
-  "The real a string denotes, or nil (failure). SNOBOL4's syntax, measured
-   with sbl -bf: blanks at the ends ignored, the null string is 0., then an
-   optional sign, digits with an optional point, and an optional exponent
-   marked e, E, d or D. A value out of range fails."
   [x]
   (let [t (clojure.string/trim (str x))]
     (cond
@@ -1426,16 +1335,12 @@
       (try (double (Long/parseLong t)) (catch NumberFormatException _ nil))
       :else (parse-real (str x)))))
 (defn- real->integer
-  "The integer a real becomes: truncated toward zero. A real outside the
-   integer range is the least integer, as sbl -bf gives it (the x86-64
-   conversion), not a failure."
   [x]
   (let [lo (double Long/MIN_VALUE)]
     (if (and (clojure.core/<= lo x) (clojure.core/< x (clojure.core/- lo)))
       (let [i (long x)] (when-not (clojure.core/= i 2147483648) i))
       Long/MIN_VALUE)))
 (defn integer-of
-  "The integer x is as an integer argument, or nil when it is none."
   [x]
   (cond
     (integer? x) x
@@ -1486,8 +1391,6 @@
                   (if (clojure.core/<= pad 0) s-str
                     (str s-str (apply str (repeat pad fill-c)))))))
 (defn SUBSTR
-  "SUBSTR(s, i, n): the n characters of s from the 1-based position i, where n = 0 means all the rest of s from i. It fails when i is not from 1 to one past
-   the end of s, when n is negative, or when the n characters are not all there, as sbl -bf does."
   [s i n]
   (let [n (int-arg n 192) i (int-arg i 193) s (str-arg s 194) len (count s)]
     (when (and (clojure.core/<= 1 i (inc len)) (clojure.core/>= n 0))
@@ -1594,14 +1497,12 @@
     (and (vector? x) (clojure.core/= "PATTERN" (DATATYPE x))) (with-meta (into [] x) (meta x))
     :else x))
 (defn CHAR
-  "CHAR(n): the one-character string whose code is n, 0 to 255."
   [n]
   (let [n (int-arg n 281)]
     (if (clojure.core/<= 0 n 255)
       (str (char n))
       (throw (ex-info "char argument not in range" {:snobol/error 282})))))
 (defn ORD
-  "ORD(s): the code of the first character of s; it fails for the null string. A number is read as its text."
   [s]
   (let [t (sstr s)] (when (seq t) (long (int (first t))))))
 (declare finite-or)
@@ -1621,7 +1522,6 @@
         (if (neg? a) (if (clojure.core/<= d 0.0) d (clojure.core/- d)) (if (neg? d) (clojure.core/- d) d))))))
 (defn- real-error [code msg] (throw (ex-info (or (error-message code) msg) {:snobol/error code})))
 (defn- real-arg
-  "x as a double, or ERROR code when it is not numeric."
   [x code fname]
   (let [n (num x)]
     (if (and (double? n) (Double/isNaN ^double n))
@@ -1633,7 +1533,6 @@
         :else                              d))
 (defn ATAN [x] (Math/atan (real-arg x 301 "ATAN")))
 (defn CHOP
-  "The real x truncated toward zero."
   [x]
   (let [d (real-arg x 302 "CHOP")]
     (clojure.core/+ 0.0 (if (neg? d) (Math/ceil d) (Math/floor d)))))
@@ -1659,9 +1558,6 @@
     :else (try (Long/parseLong (clojure.string/trim (str x)))
                (catch Exception _ ε))))
 (defn integer-predicate
-  "INTEGER(x) as a program sees it: the null string when x is an integer or a
-   string that reads as one (blanks and a sign allowed; the null string is 0),
-   nil (failure) otherwise."
   [x]
   (cond
     (integer? x) ε
@@ -1676,8 +1572,6 @@
                (catch Exception _ ε))))
 (def data-type-registry (atom {}))
 (defn- parse-data-spec
-  "Parse 'NAME(F1,F2,...)' into [name-str [field-str ...]].
-   NAME and fields may contain any chars except ( ) , whitespace."
   [S]
   (let [s (clojure.string/trim S)
         lp (.indexOf ^String s "(")
@@ -1691,22 +1585,17 @@
                                (clojure.string/split fields-str #",")))]
         [type-name fields]))))
 (defn- field-slot
-  "Where field f lives in inst: its index in inst's type. A field function applied to an object whose type has no such field, or to anything that is no DATA object,
-   is \"41 FIELD function argument is wrong datatype\" (manual, Appendix D), as sbl -bf raises it."
   [f inst]
   (or (when (instance? SNOBOL4clojure.env.DataObj inst)
         (let [fields (.field-names ^SNOBOL4clojure.env.DataObj inst) i (.indexOf ^java.util.List (vec fields) f)]
           (when (>= i 0) i)))
       (throw (ex-info "field function argument is wrong datatype" {:snobol/error 41}))))
 (defn field-fn
-  "The field function named f: (F inst) reads the field and (F inst v) assigns it in place. One function serves every DATA type that has a field named f, as in
-   SPITBOL (DATA('NODE(VAL,LSON)') and DATA('CLUNK(VALUE,LSON)') share LSON)."
   [f]
   (fn
     ([inst]   (let [i (int (field-slot f inst))] (aget ^objects (.fields ^SNOBOL4clojure.env.DataObj inst) i)))
     ([inst v] (let [i (int (field-slot f inst))] (aset ^objects (.fields ^SNOBOL4clojure.env.DataObj inst) i v) v))))
 (defn DATA!
-  "Parse and register a DATA type definition, and return a form that installs its creation function and field functions."
   [S]
   (when-let [[type-name fields] (parse-data-spec S)]
     (let [tname  type-name
@@ -1726,8 +1615,6 @@
     (eval form)
     ε))
 (defn FIELD
-  "FIELD(type-name, n) — return the nth field name of the program-defined type.
-   n is 1-based. Returns nil on out-of-range."
   [type-name n]
   (let [n      (if (clojure.core/= "" (str n)) 0 (int-arg n 107))
         tname  (str type-name)
@@ -1747,8 +1634,6 @@
   (let [line (try (.readLine (stdin-reader)) (catch Exception _ nil))]
     (if (nil? line) ε (input-record line))))
 (defn- channel-file
-  "The java.io.File a channel's file name names: relative to env/*file-dir*
-   when that is bound, else to the working directory."
   ^java.io.File [^String file-str]
   (let [f (java.io.File. file-str)]
     (if (and *file-dir* (not (.isAbsolute f)))
@@ -1819,9 +1704,6 @@
           e                                         [k e nil]
           :else                                     (bad))))))
 (defn open-input-channel!
-  "Register var-sym as an input channel: INPUT(name, unit, file) as sbl -bf takes it (association above).
-   No file and no unit → stdin (reads via read-line, :file stored as nil); a file → a BufferedReader. A pipe spec (\"|cmd\") is ERROR 116, as SPITBOL raises it.
-   A file that cannot be opened fails, as in sbl -bf. Returns ε on success, nil on failure."
   [var-sym unit filename]
   (let [bad      #(throw (ex-info "inappropriate file specification for input" {:snobol/error 116}))
         [unit filename shared] (association :input unit filename bad)
@@ -1894,9 +1776,6 @@
        (if-let [at (:at ch)] @at 0)
        :else (fail 296)))))
 (defn open-output-channel!
-  "Register var-sym as an output channel: OUTPUT(name, unit, file) as sbl -bf takes it (association above).
-   No file and no unit → stdout (writes via PrintWriter, :file stored as nil); a file → a PrintWriter. A pipe spec (\"|cmd\") is ERROR 160, as SPITBOL raises it.
-   A file that cannot be opened fails, as in sbl -bf. Returns ε on success, nil on failure."
   [var-sym unit filename]
   (let [bad      #(throw (ex-info "inappropriate file specification for output" {:snobol/error 160}))
         [unit filename shared] (association :output unit filename bad)
@@ -1919,7 +1798,6 @@
         (swap! <CHANNELS> assoc unit    ch)
         ε))))
 (defn close-channel!
-  "Close and deregister a channel by unit number or var symbol."
   [key]
   (when-let [ch (get @<CHANNELS> key)]
     (try
@@ -1929,8 +1807,6 @@
     (swap! <CHANNELS> (fn [m] (into {} (remove (fn [[_ v]] (and (map? v) (some? (:unit ch)) (clojure.core/= (:unit v) (:unit ch)))) (dissoc m (:var ch) (:unit ch))))))
     ε))
 (defn write-to-channel!
-  "Write val to the output channel registered for var-sym.
-   Returns val on success, nil if no channel registered."
   [var-sym val]
   (when-let [ch (get @<CHANNELS> var-sym)]
     (when (clojure.core/= :output (:type ch))
@@ -1968,19 +1844,16 @@
          ε)
        :else (fail 318 "backspace file does not permit backspace")))))
 (defn DETACH
-  "DETACH(var) — disassociate var from its I/O channel."
   ([] ε)
   ([var-sym]
    (close-channel! (symbol (str var-sym)))))
 (defn EJECT     [] ε)
 (defn ENDFILE
-  "ENDFILE(unit) — signal EOF and close the channel on unit."
   ([] ε)
   ([unit] (close-channel! unit)))
 (defn INPUT     [] (READ-LINE!))
 (defn OUTPUT    [] ε)
 (defn REWIND
-  "REWIND(unit) — rewind file channel to beginning."
   ([] ε)
   ([unit]
    (when-let [ch (get @<CHANNELS> unit)]
@@ -2058,39 +1931,30 @@
 (defn STOPTR  [] nil)
 (defn TRACE   [] nil)
 (defn APPLY
-  "APPLY(fname, arg1, ...) — call a named function by string/symbol."
   [fname & fargs]
   (let [f-sym (symbol (str fname))
         f-fn  (SNOBOL4clojure.env/$$fn f-sym)]
     (when (fn? f-fn)
       (apply f-fn fargs))))
 (defn ARG
-  "ARG(fname, n) — return the nth parameter of function fname (1-based) as a NAME.
-   Returns nil (statement failure) if fname unknown or n out of range."
   [fname n]
   (when-let [meta (get @SNOBOL4clojure.env/<FDEFS>
                        (str fname))]
     (when-some [p (nth (:params meta) (dec (long n)) nil)]
       (SNOBOL4clojure.env.NAME. (symbol p)))))
 (defn LOCAL
-  "LOCAL(fname, n) — return the nth local variable of function fname (1-based) as a NAME.
-   Returns nil (statement failure) if fname unknown or n out of range."
   [fname n]
   (when-let [meta (get @SNOBOL4clojure.env/<FDEFS>
                        (str fname))]
     (when-some [p (nth (:locals meta) (dec (long n)) nil)]
       (SNOBOL4clojure.env.NAME. (symbol p)))))
 (defn ITEM
-  "ITEM(container, key...) — the element of a TABLE or an ARRAY, as container<key...> reads it: the value at the key (ε if absent from a table), failure for
-   a subscript outside an array."
   [c & ks]
   (cond
     (SNOBOL4clojure.env/table? c) (SNOBOL4clojure.env/table-get c (SNOBOL4clojure.env/table-subscript ks))
     (SNOBOL4clojure.env/array? c) (SNOBOL4clojure.env/array-get c (vec ks))
     :else nil))
 (defn PROTOTYPE
-  "PROTOTYPE(array): the prototype the array was made from (manual ch. 19). sbl -bf also answers for a table, with the number of its hash headers, an INTEGER (11 for
-   TABLE()), and ignores a second argument."
   [x & _]
   (cond
     (SNOBOL4clojure.env/table? x) (:size (meta x) 11)
@@ -2108,7 +1972,6 @@
               (let [sa (sort-serial a) sb (sort-serial b)] (if (and sa sb) (compare sa sb) 0))
               (compare (sort-type-rank ta 9) (sort-type-rank tb 9))))))
 (defn- sort-array
-  "A new array with the rows of arr stably sorted on column col."
   [arr col descending?]
   (let [dims   (:dims arr)
         lo1    (first (first dims))

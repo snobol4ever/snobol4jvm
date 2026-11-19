@@ -1,6 +1,4 @@
 (ns SNOBOL4clojure.operators
-  "The evaluator and the matcher. The one namespace that shadows clojure.core's = + - * /: inside it, comparison is
-  written clojure.core/=."
   (:refer-clojure :exclude [= + - * / num])
   (:require [SNOBOL4clojure.env :as env :refer [ε equal out $$ snobol-set! sstr &ANCHOR LIT$ ANY$ NOTANY$ SPAN$ NSPAN$ BREAK$ BREAKX$ POS# RPOS# LEN# TAB# RTAB# BOL# EOL# SUCCEED! FAIL! ARB!
                                                 BAL! ARBNO! ABORT! POS RPOS pattern-trace-active? fire-keyword! η not-equal Σ+ subtract multiply divide ncvt num $$fn reference table?
@@ -346,10 +344,6 @@
           (:fail :recede)
           (recur :recede (🡡 Ω) (🡧 Ω)))))))
 (defn- commit-pending!
-  "Commit all pending conditional (.) assignments to their variables.
-   Called by SEARCH/MATCH/FULLMATCH when the engine returns success.
-   They are made in the order the pattern matched them, so the last capture into a variable is the one that stays (sbl -bf).
-   False when a target fails (*F() whose F fails, an element out of bounds): the statement fails, as sbl -bf fails it."
   []
   (every? (fn [[var-sym text]] (assign! var-sym text)) @*pending-cond*))
 (defn- matching [f]
@@ -365,11 +359,6 @@
                    nil)
                (throw e)))))))
 (defn SEARCH
-  "Slide pattern P across string S, trying each start position 0..n, or
-   only position 0 while &ANCHOR is non-zero.
-   Returns [start end] for the first match found, nil if none.
-   (subs S start end) extracts the matched substring.
-   Binds *trace* true when a PATTERN trace is active (via trace.clj)."
   [S P]
   (binding [*trace*        (or *trace* (pattern-trace-active? S))
             *pending-cond* (volatile! [])]
@@ -385,9 +374,6 @@
                  result (when (commit-pending!) result)
                  :else  (recur (inc i))))))))))
 (defn MATCH
-  "Match pattern P against string S anchored at position 0.
-   Returns [start end] on success, nil on failure.
-   Equivalent to SEARCH with POS(0) prepended."
   [S P]
   (binding [*pending-cond* (volatile! [])]
     (matching
@@ -395,9 +381,6 @@
              result (when-not (clojure.core/= :abort result) result)]
          (when (and result (commit-pending!)) result)))))
 (defn FULLMATCH
-  "Match pattern P against the entirety of string S (anchored both ends).
-   Returns [0 (count S)] on success, nil on failure.
-   Equivalent to SEARCH with POS(0) prepended and RPOS(0) appended."
   [S P]
   (binding [*pending-cond* (volatile! [])]
     (matching
@@ -405,18 +388,10 @@
              result (when-not (clojure.core/= :abort result) result)]
          (when (and result (commit-pending!)) result)))))
 (defn MATCH-REPLACE
-  "Match pattern P against S; if matched, replace the matched span with R.
-   Returns the new string on success, nil on failure.
-   Example: (REPLACE \"hello world\" \"world\" \"Clojure\") => \"hello Clojure\""
   [S P R]
   (when-let [[start end] (SEARCH S P)]
     (str (subs S 0 start) R (subs S end))))
 (defn COLLECT!
-  "Exhaustively collect every match [start end] of pattern P across string S,
-   including all multi-yield backtrack alternatives (e.g. BAL, ARB, ARBNO).
-   Mirrors the SNOBOL4 idiom  P $ X FAIL  — each match is captured then the
-   engine is forced to recede, driving P through all its Omega retry frames.
-   Returns a vector of [start end] pairs in scan order."
   [S P]
   (let [chars (seq S)
         n     (count S)
@@ -509,10 +484,6 @@
 (numeric-predicate GT clojure.core/> 111 112)
 (numeric-predicate GE clojure.core/>= 109 110)
 (defn pow-fn
-  "SNOBOL4 exponentiation (**, and its synonyms ^ and !) as sbl.min o_exp computes it. An integer exponent not below zero is repeated multiplication: of an
-   integer base, exact, 0 ** 0 error 18 and a result past 64 bits error 17; of a real base, each product rounded, 0.0 ** 0 error 18 and an overflow error 266.
-   A real exponent, or a negative integer one, gives e ** (exponent * ln(base)) (glibc's exp and log, which Math/exp and Math/log follow): a zero base gives
-   0.0, or error 18 to the power 0.0; a negative base is allowed only to an integral power, whose parity is the sign, else error 311."
   [x y]
   (let [y   (operand y 15 "exponentiation right operand is not numeric")
         x   (operand x 16 "exponentiation left operand is not numeric")
@@ -607,8 +578,6 @@
     (SNOBOL4clojure.env/DATATYPE v)
     (sstr v)))
 (defn- program-fn
-  "The function a program gave the name op, or nil: a DATA constructor or field (held as the value of the name), or a DEFINEd or OPSYN function (held in
-   <FUNS>). Only names that start with a letter: operators are not looked up."
   [op]
   (when (and (symbol? op) (Character/isLetter (.charAt (name op) 0)))
     (let [v (reference op)]
@@ -973,7 +942,6 @@
     (when (clojure.core/= "" s) (throw (ex-info (SNOBOL4clojure.env/error-message 60) {:snobol/error 60})))
     (symbol s)))
 (defn APPLY
-  "APPLY(fname, arg1, ...) — call the function fname names as a call written in the program calls it: through INVOKE, built-ins included."
   [fname & fargs]
   (apply INVOKE (applied-function fname) fargs))
 (def ^:private unused-unary-ops
@@ -992,9 +960,6 @@
   {"ABORT" (fn [] ABORT) "ARB" (fn [] SNOBOL4clojure.env/ARB) "BAL" (fn [] BAL) "FAIL" (fn [] FAIL) "FENCE" (fn [] bare-fence)
    "REM" (fn [] SNOBOL4clojure.env/REM) "SUCCEED" (fn [] SNOBOL4clojure.env/SUCCEED)})
 (defn- eval-operands
-  "Evaluate the operands left to right. The first one that fails (nil) fails the
-   whole expression, and the operands after it are not evaluated, so a call among
-   them has no effect. Returns the vector of values, or nil."
   [operands]
   (loop [ops (seq operands) vals []]
     (if ops
@@ -1008,13 +973,11 @@
 (defn- deref-result [r]
   (if (instance? SNOBOL4clojure.env.NameResult r) (name-value (:target r)) r))
 (defn- call-form?
-  "True for a form F(args) that calls a function the program DEFINEd (and not a subscript of a table or an array of that name)."
   [X]
   (and (list? X) (symbol? (first X)) (contains? @<FUNS> (name (first X)))
        (not (:data (meta (get @<FUNS> (name (first X))))))
        (let [v (reference (first X))] (not (or (table? v) (array? v))))))
 (defn- name-of-call
-  "Call the DEFINEd function of the form F(args) and return the name it returned (a NameResult), or nil."
   [X]
   (when-some [args (eval-operands (rest X))]
     (let [r (apply INVOKE (first X) args)]

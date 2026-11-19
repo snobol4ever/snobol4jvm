@@ -53,7 +53,6 @@ timeout -k 2 30 /home/resources/x64/bin/sbl -bf prog.sno < input.txt > sbl.out; 
   - Output the program did not write itself (the listing, a compile error's page, an execution error's report, the `&DUMP` dump) goes to the file `$SCRIP_SNO_LIST_SINK` names, if it is set. This is how the harness names a port's listing file. Standard error gets its share either way.
 - **`main.clj` is the uberjar's entry point.** It reads and writes the streams as ISO-8859-1 (a program is bytes), `require`s `core` at run time and exits with `-main`'s code.
   - The `:uberjar` profile AOT-compiles `main` and `core`, and with them every namespace `core` requires. A run then starts in about 1.4 s, or about 1.0 s with the archive `build_snobol4jvm.sh` records.
-  - `main.clj`'s docstring says the Greek-symbol namespaces stay out of AOT. That is out of date.
 
 ## Running the harness boards
 
@@ -88,7 +87,7 @@ This seat runs its own boards (CEO-1912). The engine arm is `../harness/scripts/
 | `snocone.clj` | The Snocone front end. |
 | `harness.clj` | Development tools: the differential harness, the worm generator and the benchmark grid. |
 
-**The source holds no comments and no blank lines** (Lon 2026-11-19: "Remove every single comment and every single blank line."); docstrings stay. Within each file the code stands in the order of the files it was merged from, and the section names below (`grammar`, `trace`, `match` and so on) are those files. `git show 4205ae2:src/SNOBOL4clojure/<file>` has the section banners and every comment, with the manual quotes and `sbl -bf` measurements they carried.
+**The source holds no comments, no docstrings and no blank lines** (Lon 2026-11-19: "Remove every single comment and every single blank line." / "Next remove every docstring."). Within each file the code stands in the order of the files it was merged from, and the section names below (`grammar`, `trace`, `match` and so on) are those files. `git show 4205ae2:src/SNOBOL4clojure/<file>` has the section banners, every comment and every docstring, with the manual quotes and `sbl -bf` measurements they carried.
 
 ### Front end (source to IR)
 
@@ -220,7 +219,7 @@ Each commit cures one defect and names the witness that proves it: the corpus en
   - quotes the manual's rule and the `sbl -bf` probe that measured it;
   - names the board entry it cures;
   - ends with `Witness: <suite> <entry>` and the `lein test` count (tests and failures).
-- **No comments in the source:** the manual's rule and the `sbl -bf` measurement are the commit message's, which `git log` and `git blame` lead to. A docstring says what a function does, never why.
+- **No comments and no docstrings in the source:** the manual's rule and the `sbl -bf` measurement are the commit message's, which `git log` and `git blame` lead to.
 - **Line width:** source lines run up to 200 characters. Do not reflow lines that already fit. No blank line separates forms.
 
 ## Repo notes

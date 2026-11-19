@@ -1,5 +1,4 @@
 (ns SNOBOL4clojure.harness
-  "Development tools: the differential harness, the worm generator and the benchmark grid (lein run -m SNOBOL4clojure.harness)."
   (:require [clojure.java.shell :as sh]
             [clojure.string :as str]
             [SNOBOL4clojure.env :as env]
@@ -12,7 +11,6 @@
 (def ^:dynamic *timeout-ms*   5000)
 (def ^:dynamic *stlimit*      10000)
 (defn- normalise
-  "Trim trailing whitespace from each line; drop trailing blank lines."
   [s]
   (when s
     (->> (str/split-lines s)
@@ -22,7 +20,6 @@
          (reverse)
          (str/join "\n"))))
 (defn run-spitbol
-  "Run src through SPITBOL. Returns {:stdout :stderr :exit}."
   [src]
   (try
     (let [result (sh/sh *spitbol-bin* "-b" "-"
@@ -38,7 +35,6 @@
     (catch Exception e
       {:stdout "" :stderr (.getMessage e) :exit :crashed})))
 (defn run-csnobol4
-  "Run src through CSNOBOL4. Returns {:stdout :stderr :exit}."
   [src]
   (try
     (let [result (sh/sh *csnobol4-bin* "-"
@@ -54,7 +50,6 @@
     (catch Exception e
       {:stdout "" :stderr (.getMessage e) :exit :crashed})))
 (defn- reset-runtime!
-  "Clear all compiler + runtime state for a fresh run."
   []
   (env/GLOBALS)
   (reset! env/STNO  0)
@@ -64,8 +59,6 @@
   (reset! env/<CHANNELS> {})
   (reset! env/<OPSYN>    {}))
 (defn run-clojure
-  "Run src through SNOBOL4clojure. Returns {:stdout :stderr :exit :thrown}.
-   Compiles src with CODE on every call."
   [src]
   (try
     (reset-runtime!)
@@ -93,8 +86,6 @@
        :exit   :error
        :thrown (str (class e) ": " (.getMessage e))})))
 (defn- oracle-stdout
-  "Return the agreed oracle stdout, or nil if oracles disagree.
-   Also returns which oracle(s) are considered authoritative."
   [sp cs]
   (let [sp-ok (zero? (:exit sp))
         cs-ok (zero? (:exit cs))]
@@ -107,7 +98,6 @@
       cs-ok  {:stdout (:stdout cs) :oracle :csnobol4}
       :else  {:stdout ""           :oracle :both-error})))
 (defn- classify
-  "Compare oracle stdout against clojure outcome; return status keyword."
   [oracle-out cl]
   (cond
     (#{:timeout :step-limit} (:exit cl))  :timeout
@@ -124,7 +114,6 @@
     :pass-class
     :else :fail))
 (defn diff-run
-  "Run src through all three sides. Returns a corpus record."
   ([src] (diff-run src nil))
   ([src depth]
    (let [sp     (run-spitbol src)
@@ -141,7 +130,6 @@
       :length   (count src)
       :depth    depth})))
 (defn save-corpus!
-  "Append records to resources/golden-corpus.edn (one record per line)."
   [records]
   (let [path "resources/golden-corpus.edn"]
     (clojure.java.io/make-parents path)
@@ -151,7 +139,6 @@
         (.newLine w)))
     (count records)))
 (defn load-corpus
-  "Load all records from resources/golden-corpus.edn."
   []
   (let [path "resources/golden-corpus.edn"]
     (when (.exists (clojure.java.io/file path))
@@ -162,22 +149,12 @@
             (if (= form ::eof) acc
               (recur (conj acc form)))))))))
 (defn run-csnobol4-to-step
-  "Run src through CSNOBOL4 for exactly n statements by prepending
-   &STLIMIT = n to the program source.  CSNOBOL4 natively honours &STLIMIT.
-   Returns the same {:stdout :stderr :exit} map as run-csnobol4.
-   Used by bisect-divergence for three-oracle step comparison."
   [src n]
   (run-csnobol4 (str "        &STLIMIT = " n "\n" src)))
 (defn run-spitbol-to-step
-  "Run src through SPITBOL for exactly n statements by prepending
-   &STLIMIT = n to the program source.  SPITBOL honours &STLIMIT.
-   Returns the same {:stdout :stderr :exit} map as run-spitbol."
   [src n]
   (run-spitbol (str "        &STLIMIT = " n "\n" src)))
 (defn run-clojure-to-step
-  "Run src through SNOBOL4clojure for exactly n statements.
-   Returns the run-to-step map: {:exit :steps :vars :stdout}.
-   Requires test-helpers/run-to-step — call from test context only."
   [src n]
   (reset-runtime!)
   (reset! env/&STLIMIT n)
@@ -211,11 +188,9 @@
 (def cmp-ops-int ["EQ" "NE" "GT" "LT" "GE" "LE"])
 (def cmp-ops-str ["IDENT" "DIFFER"])
 (defn- indent
-  "Emit a statement with 8-space indent (no label)."
   [body]
   (str "        " body))
 (defn- labelled
-  "Emit a statement with a label in column 1 (padded to 8 chars)."
   [lbl body]
   (let [pad (max 1 (- 8 (count (name lbl))))]
     (str (name lbl) (apply str (repeat pad " ")) body)))
@@ -238,7 +213,6 @@
   (update st :lines into lines))
 (defn- live? [st pool] (seq (get st pool)))
 (defn- move-assign-int
-  "Assign a literal integer to an int var."
   [st rng]
   (let [v   (rand-nth int-vars)
         lit (rand-nth int-lits)]
@@ -246,7 +220,6 @@
         (emit (indent (str v " = " lit)))
         (update :live-int conj v))))
 (defn- move-assign-real
-  "Assign a literal real to a real var."
   [st rng]
   (let [v   (rand-nth real-vars)
         lit (rand-nth real-lits)]
@@ -254,7 +227,6 @@
         (emit (indent (str v " = " lit)))
         (update :live-real conj v))))
 (defn- move-assign-str
-  "Assign a literal string to a string var."
   [st rng]
   (let [v   (rand-nth str-vars)
         lit (rand-nth str-lits)]
@@ -262,8 +234,6 @@
         (emit (indent (str v " = " lit)))
         (update :live-str conj v))))
 (defn- move-arith
-  "Assign integer arithmetic result to an int var.
-   Requires at least one live int var or uses literals."
   [st rng]
   (let [op  (rand-nth arith-ops)
         lhs (if (and (live? st :live-int) (< (rand) 0.6))
@@ -275,7 +245,6 @@
         (emit (indent (str v " = " lhs " " op " " rhs)))
         (update :live-int conj v))))
 (defn- move-concat
-  "Concatenate two string values into a string var."
   [st rng]
   (let [live (vec (:live-str st))
         lhs  (if (and (seq live) (< (rand) 0.6))
@@ -300,7 +269,6 @@
 (defn- move-output-lit [st rng]
   (emit st (indent (str "OUTPUT = " (rand-nth str-lits)))))
 (defn- move-cmp-branch
-  "Comparison with :S/:F branch to a fresh label pair with convergence."
   [st rng]
   (when (live? st :live-int)
     (let [v          (rand-nth (vec (:live-int st)))
@@ -317,7 +285,6 @@
           (emit (labelled lskip ""))
           (update :labels conj ls lf lskip)))))
 (defn- move-pat-assign
-  "Assign a pattern literal to a pattern var."
   [st rng]
   (let [v   (rand-nth pat-vars)
         lit (rand-nth pat-lits)]
@@ -325,7 +292,6 @@
         (emit (indent (str v " = " lit)))
         (update :live-pat conj v))))
 (defn- move-pat-match
-  "Match a pattern against a string var (success/failure branch)."
   [st rng]
   (let [subj (if (and (live? st :live-str) (< (rand) 0.7))
                (str (rand-nth (vec (:live-str st))))
@@ -344,7 +310,6 @@
         (emit (labelled lskip ""))
         (update :labels conj ls lf lskip))))
 (defn- move-pat-replace
-  "Pattern replace: subj PAT = repl, then output the subject."
   [st rng]
   (when (live? st :live-str)
     (let [v    (rand-nth (vec (:live-str st)))
@@ -356,13 +321,11 @@
           (emit (indent (str v " " pat " = " repl)))
           (emit (indent (str "OUTPUT = " v)))))))
 (defn- move-size
-  "Output SIZE of a string."
   [st rng]
   (when (live? st :live-str)
     (let [v (rand-nth (vec (:live-str st)))]
       (emit st (indent (str "OUTPUT = SIZE(" v ")"))))))
 (defn- move-loop
-  "Counted loop: initialise I, loop body outputs I, increment, branch back."
   [st rng]
   (let [limit    (rand-nth [3 4 5])
         counter  'I
@@ -406,12 +369,9 @@
           fn
           (recur (rest remaining) acc))))))
 (defn- finalise
-  "Add the END label and join lines."
   [st]
   (str/join "\n" (conj (:lines st) "end")))
 (defn rand-program
-  "Generate a random SNOBOL4 program with n-moves statements.
-   Returns source string."
   ([] (rand-program (+ 3 (rand-int 6))))
   ([n-moves]
    (loop [st  (fresh-state)
@@ -423,21 +383,18 @@
              new-st   (move-fn st nil)]
          (recur (or new-st st) (dec n)))))))
 (defn gen-assign-int
-  "Lazy seq of all (var = lit) integer assignments."
   []
   (for [v int-vars, lit int-lits]
     (str (indent (str v " = " lit)) "\n"
          (indent (str "OUTPUT = " v)) "\n"
          "end")))
 (defn gen-assign-str
-  "Lazy seq of all (var = lit) string assignments + output."
   []
   (for [v str-vars, lit str-lits]
     (str (indent (str v " = " lit)) "\n"
          (indent (str "OUTPUT = " v)) "\n"
          "end")))
 (defn gen-arith
-  "Lazy seq of all (var = lhs op rhs) arithmetic programs."
   []
   (for [v   int-vars
         op  arith-ops
@@ -447,7 +404,6 @@
          (indent (str "OUTPUT = " v)) "\n"
          "end")))
 (defn gen-concat
-  "Lazy seq of all (var = s1 s2) concatenation programs."
   []
   (for [v  str-vars
         s1 str-lits
@@ -457,7 +413,6 @@
          (indent (str "OUTPUT = " v)) "\n"
          "end")))
 (defn gen-pat-match
-  "Lazy seq of pattern-match programs (string lit vs pattern lit)."
   []
   (for [s str-lits
         p pat-lits]
@@ -469,7 +424,6 @@
          "DONE\n"
          "end")))
 (defn gen-cmp
-  "Lazy seq of integer comparison programs."
   []
   (for [op  cmp-ops-int
         lhs int-lits
@@ -482,11 +436,9 @@
          "DONE\n"
          "end")))
 (defn rand-batch
-  "Generate n random programs of varying size."
   [n]
   (repeatedly n rand-program))
 (defn systematic-batch
-  "Return a lazy seq of all systematic (gen-*) programs."
   []
   (concat
     (gen-assign-int)
@@ -496,7 +448,6 @@
     (gen-cmp)
     (gen-pat-match)))
 (def ^:private canonical-fixtures
-  "Standard fixture preamble — initialises all typed pools."
   (str/join "\n"
     ["        I = 0"
      "        J = 1"
@@ -510,7 +461,6 @@
      "        Y = 'bar'"
      "        Z = 'baz'"]))
 (defn- with-fixtures
-  "Wrap body lines with canonical fixtures + END."
   [& body-lines]
   (str canonical-fixtures "\n"
        (str/join "\n" body-lines) "\n"
@@ -618,18 +568,9 @@
     "DOUBLE  DOUBLE = X * 2 :S(RETURN)F(FRETURN)"
     "END"]])
 (defn- bodies->programs
-  "Convert a seq of body-line vectors to full programs (with fixtures)."
   [bodies]
   (map (fn [lines] (apply with-fixtures lines)) bodies))
 (defn gen-by-length
-  "Lazy seq of [length program-src] pairs sorted by source length.
-   Covers every grammatical construct at its simplest.
-   Suitable for systematic coverage testing.
-   Each program is self-contained and uses canonical fixture variables.
-   Programs are emitted in order of increasing source length.
-   Usage:
-     (take 10 (gen-by-length))   ; first 10 shortest programs
-     (filter #(= 1 (:band %)) (gen-by-length-annotated))  ; just T1"
   []
   (let [all-bodies (concat
                      (band-assign-int)
@@ -655,14 +596,6 @@
          (sort-by count)
          (dedupe))))
 (defn gen-by-length-annotated
-  "Like gen-by-length but returns maps {:src s :length n :band k}
-   where band is 0..5 based on source length:
-     0  = trivial  (<= 80 chars)
-     1  = simple   (<= 140 chars)
-     2  = medium   (<= 200 chars)
-     3  = complex  (<= 300 chars)
-     4  = large    (<= 500 chars)
-     5  = very large (> 500 chars)"
   []
   (map (fn [src]
          {:src    src
@@ -675,10 +608,6 @@
                         :else                5)})
        (gen-by-length)))
 (defn rand-statement
-  "Generate a random complete SNOBOL4 program consisting of exactly one
-   meaningful statement (plus fixture setup and END).
-   The statement is chosen uniformly from all grammatical shapes at random.
-   Returns source string."
   []
   (let [forms
         [
@@ -732,12 +661,6 @@
         body ((rand-nth forms))]
     (str canonical-fixtures "\n" body "\n" "END")))
 (defn gen-error-class-programs
-  "Return a seq of programs designed to exercise the four error classes:
-     :normal   — runs fine
-     :div-zero — integer division by zero
-     :bad-goto — goto undefined label
-     :syntax   — malformed statement (grammar error)
-   Oracle determines expected behaviour — these are passed through diff-run."
   []
   (concat
    (take 20 (gen-by-length))
@@ -761,17 +684,6 @@
    ["        = bad syntax\nEND"
     "NOLABEL\nEND"]))
 (defn run-worm-batch
-  "Run `n` programs through the three-oracle diff harness.
-   source-fn is a 0-arg function that returns a program source string.
-   Returns a map:
-     :records  — vector of corpus records
-     :summary  — {:pass N :fail N :skip N :timeout N :pass-class N}
-     :failures — vector of corpus records with :status :fail
-   Example:
-     (run-worm-batch 100 rand-program)
-     (run-worm-batch 500 #(first (drop (rand-int 200) (gen-by-length))))
-   Internally calls harness/diff-run — requires SPITBOL + CSNOBOL4 installed.
-   Saves all records to resources/golden-corpus.edn."
   [n source-fn]
   (require '[SNOBOL4clojure.harness :as harness])
   (let [programs  (repeatedly n source-fn)
@@ -791,9 +703,6 @@
      :summary  summary
      :failures failures}))
 (defn run-systematic-batch
-  "Run the full systematic (gen-by-length) corpus through the harness.
-   Returns the same map as run-worm-batch.
-   This exhaustively covers every construct in the grammar."
   []
   (require '[SNOBOL4clojure.harness :as harness])
   (let [programs  (vec (gen-by-length))
@@ -818,22 +727,15 @@
      :failures failures
      :total    (count programs)}))
 (defn- safe-name
-  "Make a string into a valid Clojure identifier."
   [s]
   (-> s
       (str/replace #"[^a-zA-Z0-9_]" "_")
       (str/replace #"^[0-9]" "x")))
 (defn- quote-lines
-  "Turn a multi-line SNOBOL4 source string into a seq of quoted line strings."
   [src]
   (map (fn [line] (str "    " (pr-str line)))
        (str/split-lines src)))
 (defn corpus-record->deftest
-  "Convert a corpus record to a Clojure deftest string.
-   For :pass records: pins the expected output.
-   For :fail records: pins the oracle output as expected (regression guard).
-   For :skip/:timeout/:pass-class: emits a commented-out skeleton.
-   oracle-stdout is extracted from :spitbol or :csnobol4 based on :oracle tag."
   [record index]
   (let [{:keys [src status oracle spitbol csnobol4]} record
         oracle-out (case oracle
@@ -857,9 +759,6 @@
       (str ";; " (name status) " — skipped (oracle: " oracle ")\n"
            ";; (deftest " test-name " ...)\n"))))
 (defn emit-regression-tests
-  "Given a collection of corpus records, emit a complete Clojure test namespace
-   string suitable for writing to a .clj test file.
-   Only :pass and :fail records are emitted as live deftests; others commented."
   [records ns-name]
   (str "(ns " ns-name "\n"
        "  \"Auto-generated regression tests from worm corpus.\n"

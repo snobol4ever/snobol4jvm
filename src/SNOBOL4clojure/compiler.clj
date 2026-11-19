@@ -1,6 +1,4 @@
 (ns SNOBOL4clojure.compiler
-  "The front end: SNOBOL4 source to IR. Statements are split, -INCLUDE expanded, each statement parsed by the grammar, its
-  constant parts folded and its tree emitted as IR; a statement that does not compile is an error in <DIAGNOSTICS>."
   (:require [instaparse.core :as insta :refer [defparser]]
             [clojure.edn :as edn]
             [clojure.string :as string]
@@ -219,7 +217,6 @@
                 (fail! (if (= closer \)) 227 228) (loop [b k] (if (and (pos? b) (name-char? (at s (dec b)))) (recur (dec b)) b)))
                 :else               (fail! 212 k)))))))))
 (defn syntax-error
-  "The error SPITBOL reports for statement s, a line of source without its line end, as {:error n :column c} (c counted from 1), or nil when the scan finds none."
   [^String s]
   (try
     (when (and (at s 0) (not (blank? (at s 0))) (not (letter? (at s 0))) (not (digit? (at s 0)))) (fail! 214 0))
@@ -363,7 +360,6 @@
      :R         (fn [s] (or (parse-real s) (throw (ex-info "syntax error: invalid numeric item" {:snobol/error 231 :snobol/compile true}))))}
     ast))
 (defn parse+emit
-  "Parse a SNOBOL4 expression string and emit the Clojure IR."
   [s]
   (first (emitter (parse-expression s))))
 (defn- source-names [^String s]
@@ -387,7 +383,6 @@
     (boolean (and n (not (zero? (Long/parseLong n)))))))
 (defn- error-node [info] (list 'ERROR (:line info) (:column info) (:text info)))
 (defn- open-parens
-  "The parentheses s leaves open, quoted text aside."
   [^String s]
   (loop [i 0 d 0 q nil]
     (if (>= i (count s))
@@ -399,9 +394,6 @@
               (= c \))             (recur (inc i) (dec d) q)
               :else                (recur (inc i) d q))))))
 (defn- split-source
-  "Split SNOBOL4 source into raw statement strings, each with the physical line it begins on, as [statement line]. A blank physical line is a statement of its own as
-   SPITBOL numbers them, and is [:blank line]. ls is where the physical line being read begins, line is its number and sl the line the statement being read began on.
-   A record, the text CODE compiles, is one line: a line end in it is a character as any other, and only a semicolon ends a statement (record? true)."
   ([src] (split-source src false))
   ([src record?]
   (let [chars (if (or record? (= "" (str src)) (string/ends-with? (str src) "\n")) (str src) (str src "\n"))
@@ -457,26 +449,10 @@
               :else                              (recur (inc i) nil))))))
 (declare preprocess-includes*)
 (defn preprocess-includes
-  "Recursively expand -INCLUDE 'file' (or -INCLUDE \"file\") directives.
-   Scans source line-by-line.  When a line matches (case-insensitive)
-     -INCLUDE 'filename'   or   -INCLUDE \"filename\"
-   it reads that file relative to each directory in search-path (first match
-   wins) and splices its content inline.  The include file is itself
-   preprocessed recursively.
-   As SPITBOL has it, a file name is included once: a second -INCLUDE of the same name is skipped, and so is a cycle; the names kept are trimmed, so a name
-   written with a blank after it is included every time. The splice is bracketed by
-   the cards -FILE-ENTER \"name\" and -FILE-LEAVE (STALE), which CODE! reads to keep &FILE and &LINE. STALE is written when the included file's last line is a comment,
-   the case in which SPITBOL leaves the included file's name as &FILE for the statement that follows.
-   Parameters:
-     src          – SNOBOL4 source string
-     search-path  – seq of directory path strings; default [\".\"]
-     seen         – (internal) the set of names already included
-   Returns the fully expanded source string."
   ([src] (preprocess-includes src ["."]))
   ([src search-path] (preprocess-includes src search-path #{}))
   ([src search-path seen] (first (preprocess-includes* src search-path seen))))
 (defn- preprocess-includes*
-  "preprocess-includes, returning [expanded-source seen cards], cards the -INCLUDE lines as written, one for each -FILE-ENTER card in order, which the listing prints."
   [src search-path seen]
   (let [include-re #"^-INCLUDE\s+['\"]([^'\"]+)['\"]"]
     (loop [lines (string/split src #"\n") out [] seen seen cards [] ph 0]
@@ -550,13 +526,11 @@
   (some-> (requiring-resolve (symbol "SNOBOL4clojure.env" (name sym))) var-get))
 (declare fold)
 (defn- constant-name?
-  "True for a name that is a constant: a variable, a keyword, an expression, or $C of a constant C."
   [x]
   (or (symbol? x)
       (and (list? x) (= 2 (count x)) (or (= '& (first x)) (= '* (first x))))
       (and (list? x) (= 2 (count x)) (= '$ (first x)) (first (fold (second x))))))
 (defn- fold
-  "[constant? value] of the IR n, its constant parts evaluated as SPITBOL's compiler evaluates them; an error raised there is thrown."
   [n]
   (let [eval! (requiring-resolve 'SNOBOL4clojure.operators/EVAL!)]
     (cond
@@ -591,7 +565,6 @@
               [false nil]))))
       :else [false nil])))
 (defn fold-error
-  "The number of the error folding the statement body raises, then its goto's operands, or nil."
   ([body] (fold-error body nil))
   ([body goto]
    (try (fold body)
@@ -601,7 +574,6 @@
         nil
         (catch clojure.lang.ExceptionInfo e (:snobol/error (ex-data e))))))
 (defn freeze
-  "The IR n with each pattern variable read by an expression of constants marked (pattern-constant V)."
   [n]
   (letfn [(mark [n]
             (cond (and (symbol? n) (SNOBOL4clojure.env/protected-variables n)) (list 'pattern-constant n)
@@ -618,10 +590,6 @@
     (if (some #(and (symbol? %) (SNOBOL4clojure.env/protected-variables %)) (tree-seq coll? seq n)) (walk n) n)))
 (def ^:private system-labels #{:ABORT :CONTINUE :SCONTINUE :RETURN :FRETURN :NRETURN})
 (defn CODE!
-  "Compile SNOBOL4 source S into a [codes nos labels disp] vector. disp holds, for each statement in order, how many blank lines (statements SPITBOL
-   numbers but never runs) came before it, and the total, as {:before [..] :total n}, and where it stands in its file, as {:pos [[file line] ..]}.
-   Optional include-path is a seq of directory strings used to resolve
-   -INCLUDE directives (default [\".\"]). file is the name the program was given, which &FILE reads."
   ([S] (CODE! S ["."]))
   ([S include-path] (CODE! S include-path nil))
   ([S include-path file] (CODE! S include-path file false))
@@ -712,8 +680,6 @@
       (let [k (keyword (name b))] (when (@<STNO> k) k)))))
 (declare load-code)
 (defn CODE
-  "Compile S and load into the global statement store.
-   Optional include-path is a seq of directory strings (default [\".\"])."
   ([S] (CODE S ["."]))
   ([S include-path] (CODE S include-path nil))
   ([S include-path file]
@@ -721,7 +687,6 @@
      (reset! <CODELINE> (or (last (:pos disp)) ["" 0]))
      (load-code ir))))
 (defn- load-code
-  "Load a CODE! result into the global statement store; returns the entry, as CODE does."
   [[codes nos labels disp]]
    (let [start              (inc @STNO)
          base               @BLANKS]
@@ -766,8 +731,6 @@
               (swap! <CODE> assoc @STNO block-end)
               (or entry @STNO)))))))
 (defn CODE-ir
-  "Like CODE, but takes a pre-compiled [codes nos labels] triple.
-   Skips grammar and emitter entirely. ~10x faster than CODE for short programs."
   [[codes nos labels disp]]
   (let [start (inc @STNO)
         base  @BLANKS]
