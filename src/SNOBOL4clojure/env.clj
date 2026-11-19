@@ -773,10 +773,15 @@
         (throw (ex-info "array subscript is not integer" {:snobol/error 238}))
         (long n)))))
 
+;; A count of subscripts that is not the array's dimension count is "236 array referenced with wrong number of subscripts", checked before the subscripts
+;; are converted and before the bounds (MEASURED on sbl -bf: of ARRAY(2), A<1,'x'>, A<1,2>, A<3,1>, ITEM(A), ITEM(A,1,'x') and the capture target A<1,2> are 236,
+;; A<'x'> 238 and A<3> fails; of ARRAY('2,2'), B<1> and ITEM(B,1) are 236, B<1,'x'> 238). snobol4jvm failed the statement for a wrong count.
 (defn- array-check-bounds
   "Returns nil (failure) if idx-vec is out of bounds, else the normalised key."
   [^SnobolArray arr idx-vec]
   (let [dims    (:dims arr)
+        _       (when-not (clojure.core/= (count idx-vec) (count dims))
+                  (throw (ex-info (error-message 236) {:snobol/error 236})))
         idx-vec (mapv array-subscript idx-vec)]
     (when (clojure.core/= (count idx-vec) (count dims))
       (when (every? true?

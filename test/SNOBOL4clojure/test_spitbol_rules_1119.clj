@@ -57,3 +57,18 @@
   (is (= "brk 103 STRING\nlen 103\n"
          (first (run-sno (str "        &ERRLIMIT = 10\n        X = 'a'\n        Y = EVAL(BREAK(*X))\n        OUTPUT = 'brk ' &ERRTYPE ' ' DATATYPE(Y)\n        &ERRTYPE = 0\n"
                               "        Y = EVAL(LEN(*N))\n        OUTPUT = 'len ' &ERRTYPE\nEND\n"))))))
+
+;; A count of subscripts that is not the array's dimension count is ERROR 236, checked before each subscript is converted (238) and before the bounds. MEASURED on
+;; sbl -bf, this program's whole output: of ARRAY(2), A<1,'x'>, A<1,2>, ITEM(A,1,'x'), ITEM(A,1,2), A<1,'x'> = 5, ITEM(A), A<3,1> and the capture target A<1,2>
+;; are 236, A<'x'> 238, A<3> fails with nothing set; of ARRAY('2,2'), B<'x'>, B<1> and ITEM(B,1) are 236, B<1,'x'> 238. snobol4jvm failed a wrong count silently.
+(deftest a-wrong-count-of-subscripts-is-236
+  (is (= "a1x 236\na12 236\ni1x 236\ni12 236\nbx 236\nb1x 238\nset1x 236\nax 238\nia 236\nib1 236\nb1 236\na31 236\na3 fail 0\ncap 236\n"
+         (first (run-sno (str "        &ERRLIMIT = 30\n        A = ARRAY(2)\n        B = ARRAY('2,2')\n"
+                              "        X = A<1,'x'>\n        OUTPUT = 'a1x ' &ERRTYPE\n        &ERRTYPE = 0\n        X = A<1,2>\n        OUTPUT = 'a12 ' &ERRTYPE\n        &ERRTYPE = 0\n"
+                              "        X = ITEM(A,1,'x')\n        OUTPUT = 'i1x ' &ERRTYPE\n        &ERRTYPE = 0\n        X = ITEM(A,1,2)\n        OUTPUT = 'i12 ' &ERRTYPE\n"
+                              "        &ERRTYPE = 0\n        X = B<'x'>\n        OUTPUT = 'bx ' &ERRTYPE\n        &ERRTYPE = 0\n        X = B<1,'x'>\n        OUTPUT = 'b1x ' &ERRTYPE\n"
+                              "        &ERRTYPE = 0\n        A<1,'x'> = 5\n        OUTPUT = 'set1x ' &ERRTYPE\n        &ERRTYPE = 0\n        X = A<'x'>\n        OUTPUT = 'ax ' &ERRTYPE\n"
+                              "        &ERRTYPE = 0\n        X = ITEM(A)\n        OUTPUT = 'ia ' &ERRTYPE\n        &ERRTYPE = 0\n        X = ITEM(B,1)\n        OUTPUT = 'ib1 ' &ERRTYPE\n"
+                              "        &ERRTYPE = 0\n        X = B<1>\n        OUTPUT = 'b1 ' &ERRTYPE\n        &ERRTYPE = 0\n        X = A<3,1>\n        OUTPUT = 'a31 ' &ERRTYPE\n"
+                              "        &ERRTYPE = 0\n        X = A<3> :F(F1)\n        OUTPUT = 'a3 ok' :(N1)\nF1      OUTPUT = 'a3 fail ' &ERRTYPE\n"
+                              "N1      'abc' LEN(1) . A<1,2>\n        OUTPUT = 'cap ' &ERRTYPE\nEND\n"))))))
