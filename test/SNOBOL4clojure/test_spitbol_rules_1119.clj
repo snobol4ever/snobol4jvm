@@ -72,3 +72,14 @@
                               "        &ERRTYPE = 0\n        X = B<1>\n        OUTPUT = 'b1 ' &ERRTYPE\n        &ERRTYPE = 0\n        X = A<3,1>\n        OUTPUT = 'a31 ' &ERRTYPE\n"
                               "        &ERRTYPE = 0\n        X = A<3> :F(F1)\n        OUTPUT = 'a3 ok' :(N1)\nF1      OUTPUT = 'a3 fail ' &ERRTYPE\n"
                               "N1      'abc' LEN(1) . A<1,2>\n        OUTPUT = 'cap ' &ERRTYPE\nEND\n"))))))
+
+;; FIELD's second argument not an integer is ERROR 107, checked first; then a first argument that names no datatype DATA defined is 108; n out of range fails.
+;; MEASURED on sbl -bf, these programs' whole output: of DATA('NODE(V,W)'), FIELD('NOPE',1), FIELD(5,1) and FIELD('STRING',1) are 108, FIELD('NODE','x') and
+;; FIELD('NOPE','x') 107, FIELD('NODE',3) fails with nothing set, FIELD('NODE',2) is W. snobol4jvm failed every one of these errors with nothing set.
+(deftest field-checks-its-arguments-as-spitbol-does
+  (is (= "nope 108\nn3 fail 0\nnx 107\nn5 108\nstr 108\nok W\n"
+         (first (run-sno (str "        &ERRLIMIT = 20\n        DATA('NODE(V,W)')\n        X = FIELD('NOPE',1)\n        OUTPUT = 'nope ' &ERRTYPE\n        &ERRTYPE = 0\n"
+                              "        X = FIELD('NODE',3) :F(F1)\n        OUTPUT = 'n3 ok ' X :(N1)\nF1      OUTPUT = 'n3 fail ' &ERRTYPE\nN1      &ERRTYPE = 0\n"
+                              "        X = FIELD('NODE','x')\n        OUTPUT = 'nx ' &ERRTYPE\n        &ERRTYPE = 0\n        X = FIELD(5,1)\n        OUTPUT = 'n5 ' &ERRTYPE\n"
+                              "        &ERRTYPE = 0\n        X = FIELD('STRING',1)\n        OUTPUT = 'str ' &ERRTYPE\n        OUTPUT = 'ok ' FIELD('NODE',2)\nEND\n")))))
+  (is (= "both 107\n" (first (run-sno "        &ERRLIMIT = 20\n        X = FIELD('NOPE','x')\n        OUTPUT = 'both ' &ERRTYPE\nEND\n")))))

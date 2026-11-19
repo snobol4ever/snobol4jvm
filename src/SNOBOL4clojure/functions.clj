@@ -459,13 +459,20 @@
     (eval form)
     ε))
 
+;; FIELD(type, n): the nth field name of a type DATA defined, failing when n is out of range. The arguments are converted last first: n not an integer is "107
+;; field second argument is not integer" (the null string is 0, a real or a numeric string its integer), then a type that is no defined datatype's name, or the
+;; null string, is "108 field first argument is not datatype name" (MEASURED on sbl -bf: of DATA('NODE(V,W)'), FIELD('NOPE', 1), FIELD(5, 1), FIELD('STRING', 1)
+;; and FIELD('', 1) are 108, FIELD('NODE', 'x') and FIELD('NOPE', 'x') 107, FIELD('NODE', 3) and FIELD('NODE', '') fail with nothing set, FIELD('NODE', '2') and
+;; FIELD('NODE', 2.0) are W, FIELD(.NODE, 1) is V). snobol4jvm failed every one of these errors with nothing set.
 (defn FIELD
   "FIELD(type-name, n) — return the nth field name of the program-defined type.
    n is 1-based. Returns nil on out-of-range."
   [type-name n]
-  (let [tname  (str type-name)
+  (let [n      (if (clojure.core/= "" (str n)) 0 (int-arg n 107))
+        tname  (str type-name)
         fields (get @data-type-registry tname)]
-    (when (and fields (>= (long n) 1) (<= (long n) (count fields)))
+    (when-not fields (throw (ex-info "field first argument is not datatype name" {:snobol/error 108})))
+    (when (and (>= (long n) 1) (<= (long n) (count fields)))
       (nth fields (dec (long n))))))
 
 ;; ── Date / time ───────────────────────────────────────────────────────────────
