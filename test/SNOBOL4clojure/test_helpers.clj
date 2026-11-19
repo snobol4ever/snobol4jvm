@@ -165,7 +165,7 @@
    src is a single source string expression (evaluated at runtime).
 
    Example:
-     (prog-include [\"corpus/gimpel/SNOBOL4\"]
+     (prog-include [\"inc\"]
        \"-INCLUDE 'push.inc'\\n        OUTPUT = 'hello'\\nEND\")"
   [include-dirs src]
   `(let [raw#  ~src

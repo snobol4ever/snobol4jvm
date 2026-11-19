@@ -16,17 +16,18 @@ The oracle is `/home/resources/x64/bin/sbl -bf prog.sno`:
 - `-b` drops the signon;
 - `-f` leaves source case alone, as this engine does and as the corpus refs were cut.
 
-Where the engine and the oracle disagree, the oracle wins unless the difference is an extension the rulings above keep. Old code and tests still carry CSNOBOL4 or Catspaw dialect (for example `t_io_channels` and the Budne programs in `test_csnobol4_suite`). Where the two dialects differ, the test's expectation is what `sbl -bf` prints, unless snobol4jvm keeps the CSNOBOL4 extension. Before changing a construct, read its section of the SPITBOL manual (`/home/claude_ceo/.tools/docs/spitbol-manual-v3.7.txt`; Appendix D lists the errors).
+Where the engine and the oracle disagree, the oracle wins unless the difference is an extension the rulings above keep. Old code and tests still carry CSNOBOL4 or Catspaw dialect (for example the section t_io_channels of `test_runtime.clj`). Where the two dialects differ, the expectation is what `sbl -bf` prints, unless snobol4jvm keeps the CSNOBOL4 extension. Before changing a construct, read its section of the SPITBOL manual (`/home/resources/manuals/snobol4/spitbol-manual-v3.7.txt`; Appendix D lists the errors).
 
 ## Commands
 
-Run every command from the repo root. Tests open the repo's own `corpus/` by relative path (`corpus/gimpel/SNOBOL4`, `corpus/aisnobol`, `corpus/spitbol`). Do not confuse it with the fleet corpus `../corpus`, which the harness boards grade.
+Run every command from the repo root. The repo holds no SNOBOL4 test programs of its own: they are the corpus package `/home/corpus/packages/snobol4/jvm` (see Tests).
 
 ```bash
-lein test                                          # whole suite, about a minute
-lein test SNOBOL4clojure.test-match                # one namespace (file test/SNOBOL4clojure/test_match.clj)
-lein test :only SNOBOL4clojure.test-match/test-search-basic   # one deftest
-lein test SNOBOL4clojure.catalog.t_arith           # catalog namespaces keep the underscore
+lein test                                          # the Clojure-level suite, about 20 s
+lein test SNOBOL4clojure.test-engine               # one namespace (file test/SNOBOL4clojure/test_engine.clj)
+lein test :only SNOBOL4clojure.test-engine/test-search-basic  # one deftest
+# the SNOBOL4 programs: the corpus package snobol4/jvm, graded on this port as the row jvm@jvm (chunk or entry as below)
+S4E_ENGINE=jvm python3 /home/harness/scripts/corpus_suite_harness.py run /home/corpus/packages/snobol4/jvm/ALL.sno /home/corpus/packages/snobol4/jvm/ALL.ref --lang snobol4 --modes m3 --partition entry:t_arith__worm_add_0_0
 lein check                                         # compile every namespace, reflection warnings
 lein run prog.sno < input.txt                      # run a program; INPUT reads stdin
 lein run -m SNOBOL4clojure.harness                 # engine × backend benchmark grid
@@ -181,14 +182,23 @@ These come from the README's "Design Laws", plus traps found in the code.
   - **What it cost:** until `1fe23d8`, 35 of the 56 test namespaces were written that way, and `lein test` read 0 failures over a suite that really had about 366.
   - **How to spot it:** a `WARNING: = already refers to …` line in `lein test` output. `test_operators` refers `operators :all` behind `:refer-clojure :exclude`, so it gave no warning.
   - **Predicates:** a lambda or predicate passed to a helper such as `bisect-divergence` follows the same rule; `test_helpers.clj`'s docstring has the example.
-- **`lein test` is red, and its reds are real.** Measured on 2026-10-28 at `50caacd`: 2,249 tests, 4,854 assertions, 74 failures, 0 errors, in 57 s. The live count is in the LIVE CURSOR of `/home/claude_jvm/.github/GOAL-HQ-JVM.md` and in the last commit message.
-  - Fix the engine, or set an expectation to what SPITBOL prints; never weaken a test to pass.
-  - `csnobol4-match4` flips between red and green across full runs, a shared-state flake (see the next bullet).
+- **`lein test` is the Clojure-level suite and is green.** Measured on 2026-11-19: 270 tests, 912 assertions, 0 failures, 0 errors. Never weaken a test to pass.
+- **The SNOBOL4 reds are the corpus package's.** Every SNOBOL4 program the suite once ran is an entry of `/home/corpus/packages/snobol4/jvm`, its answer cut from `sbl -bf`; the cycle grades it as the rows `jvm` (SCRIP), `jvm@jvm` and `jvm@dotnet` (Lon 2026-11-19; skill `ports`, section 3). Its README says how it was cut; its `DUPLICATES.tsv` names the programs another corpus package already held.
 - **Runtime state is global and is not reset between tests by default.** `run-with-timeout` and `prog` do not call `GLOBALS`.
   - Namespaces that need a clean slate do it themselves with `(use-fixtures :each (fn [t] (GLOBALS) (t)))`, or reset `STNO`, `<STNO>`, `<LABL>` and `<CODE>` the way `run-to-step` does.
   - Because of this shared state, tests cannot run in parallel.
 
 ## Tests
+
+A SNOBOL4 program is never a new deftest: it is an entry of the corpus package `snobol4/jvm`, given to the grader as a patch (skill `ports`, section 3). The repo's tests are Clojure-level, in five files:
+
+- **`test_engine.clj`:** the matcher, the pattern constructors and scanners, the operators and the runtime state.
+- **`test_compiler.clj`:** IR, the compile error numbers, `-INCLUDE`, and `CODE` and `RUN` called directly.
+- **`test_runtime.clj`:** the public API of `SNOBOL4clojure.core`: channels, traces, diagnostics, `-main`.
+- **`test_snocone.clj`:** the Snocone lexer, grammar and emitter.
+- **`test_helpers.clj`:** the harness below.
+
+Each file is divided into sections, each opening with a `;; ═══` banner naming the file it was before 2026-11-19; each file has one fixture, which resets the runtime state.
 
 `test/SNOBOL4clojure/test_helpers.clj` is the harness. Every test that runs a program must use one of its wrappers, because a SNOBOL4 program can loop forever:
 
@@ -202,33 +212,25 @@ These come from the README's "Design Laws", plus traps found in the code.
 **How a program runs under these wrappers:**
 
 - **Retry:** a timeout is retried once.
-- **Stdin:** programs run in a `future`, so `binding [*in* …]` reaches them. This is how stdin tests feed data, as in `test_csnobol4_suite.clj`.
-- **Files:** a relative file name in `INPUT()`/`OUTPUT()` resolves against `env/*file-dir*` when it is bound. When it is `nil`, the name resolves against the process's working directory, since a JVM cannot change its own. `test_csnobol4_suite` binds it to a temp directory, so `lein test` writes nothing into the tree.
+- **Stdin:** programs run in a `future`, so `binding [*in* …]` reaches them.
+- **Files:** a relative file name in `INPUT()`/`OUTPUT()` resolves against `env/*file-dir*` when it is bound. When it is `nil`, the name resolves against the process's working directory, since a JVM cannot change its own.
 - **Debugging:** `run-to-step`, `probe-at`, `bisect-divergence`, `probe-test` and `run-with-restart` stop a program after N statements and snapshot its variables.
-
-Test groups:
-
-- **`test_worm*` and `catalog/`:** hand-encoded semantic facts, one per `deftest`.
-- **`test_cooper`:** ported from Cooper's Snobol4.Net tests.
-- **`test_csnobol4_suite`:** Budne's CSNOBOL4 suite, with program text inlined. The `:expected-fail` metadata its docstring mentions is not implemented anywhere.
-- **`test_syntax`:** the compile error numbers `compiler.clj`'s section syntax names.
-- **`test_sprintN`:** feature tests by sprint.
 
 ## Commits
 
-Each commit cures one defect and carries the test that proves it.
+Each commit cures one defect and names the witness that proves it: the corpus entry the cure turns green, or a new entry of `snobol4/jvm` given to the grader (its answer cut from `sbl -bf`), never a new deftest that runs a SNOBOL4 program.
 
 - **Subject:** the subject line states SPITBOL's rule as a sentence, for example `Backing up into FENCE fails the whole match`.
 - **Body:**
   - quotes the manual's rule and the `sbl -bf` probe that measured it;
   - names the board entry it cures;
-  - ends with `Test: <deftest>` and the `lein test` count (tests, failures, and "none new").
+  - ends with `Witness: <suite> <entry>` and the `lein test` count (tests and failures).
 - **Comments in the code** cite the same manual chapter and `sbl -bf` measurement.
 - **Line width:** source lines run up to 200 characters, and a longer comment is broken onto further comment lines. Do not reflow lines that already fit.
 
 ## Repo notes
 
-- **`corpus/lon` is a git submodule** (SNOBOL4-plus/SNOBOL4-corpus) and is uninitialised in a fresh clone. `corpus/gimpel`, `corpus/aisnobol`, `corpus/spitbol` and `corpus/beauty` are tracked directly.
+- **No `corpus/` folder.** The repo's old copies (gimpel, aisnobol, spitbol, beauty and the `corpus/lon` submodule) were removed on 2026-11-19; the fleet corpus `/home/corpus` holds those programs. `bench/testpgms-test3.spt` is the one program file the benchmark grid reads.
 - **Leftovers, not live code:**
   - `misc/` holds editor syntax files and scratch.
   - `CHANGELOG.md` and `doc/intro.md` are both still the Leiningen template.

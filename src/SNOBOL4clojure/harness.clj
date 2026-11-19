@@ -1162,7 +1162,7 @@
 ;; Programs that load via -INCLUDE use comp/preprocess-includes to resolve.
 ;; We store the resolved source so all backends see the same text.
 
-(def ^:private SDIR "corpus/spitbol")
+(def ^:private SDIR "bench")   ; testpgms-test3.spt, the one program of this grid read from a file (the repo's corpus/ copy is gone: its programs are the corpus's)
 
 (defn- include-src [filename]
   (comp/preprocess-includes
