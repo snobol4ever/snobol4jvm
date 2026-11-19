@@ -292,6 +292,19 @@
 ;; what a call saves of a variable: an output-associated one's value is the one a read finds (env/output-associated?)
 (defn- saved-value [sym] (if (SNOBOL4clojure.env/output-associated? sym) (get @SNOBOL4clojure.env/<ASSOC-LAST> sym) (reference sym)))
 
+;; "In SPITBOL, extra arguments are ignored, and missing arguments are supplied as null strings" (manual ch. 19, APPLY). A built-in handed more arguments
+;; than it takes is called with as many as it takes (sbl -bf: EVAL('1', 'x') is 1, ARRAY(2, 0, 'x') an ARRAY, TABLE(1, 1, 'd', 'x') a TABLE, SORT(T, 1, 'x'),
+;; DATE(0, 'x'), SETEXIT('', 'x') succeed, BACKSPACE(99, 'x') is 317); a variadic function takes them all. The arity is read once a class from its invoke methods.
+(def ^:private fixed-arity
+  (memoize (fn [^Class c]
+             (let [ms (.getDeclaredMethods c)]
+               (when-not (some (fn [^java.lang.reflect.Method m] (clojure.core/= "doInvoke" (.getName m))) ms)
+                 (reduce max -1 (keep (fn [^java.lang.reflect.Method m] (when (clojure.core/= "invoke" (.getName m)) (alength (.getParameterTypes m)))) ms)))))))
+
+(defn- apply-builtin [f args]
+  (let [n (fixed-arity (class f))]
+    (if (and n (clojure.core/>= n 0) (clojure.core/> (count args) n)) (apply f (take n args)) (apply f args))))
+
 (defn INVOKE [op & args]
   ;; A program's own DATA function wins over the engine's arm of the same
   ;; name: SPITBOL refuses to redefine its own functions (ERROR 248), so a
@@ -623,8 +636,8 @@
                 :else (do (swap! <FUNS> dissoc nm) (swap! <FDEFS> dissoc nm) ε)))
     APPLY   (apply APPLY (first args) (rest args))
     REPLACE (let [[s1 s2 s3] args] (REPLACE s1 s2 s3))
-    TABLE   (apply SNOBOL4clojure.env/TABLE args)
-    ARRAY   (apply SNOBOL4clojure.env/ARRAY args)
+    TABLE   (apply-builtin SNOBOL4clojure.env/TABLE args)
+    ARRAY   (apply-builtin SNOBOL4clojure.env/ARRAY args)
     REMDR   (REMDR  (first args) (second args))
     ;; TRACE / STOPTR register and remove traces in trace.clj.
     TRACE   (let [[nm ty lbl f] args] (trace! nm (or ty "VALUE") lbl f) ε)
@@ -638,7 +651,7 @@
                       want (SNOBOL4clojure.env/num (first args))]
                   (when-not (and (integer? want) (clojure.core/> want free)) free)))
     CLEAR     (SNOBOL4clojure.env/clear-vars! (first args))
-    BACKSPACE (apply SNOBOL4clojure.functions/BACKSPACE args)
+    BACKSPACE (apply-builtin SNOBOL4clojure.functions/BACKSPACE args)
     ;; EJECT(channel) "sends an ASCII form-feed character (decimal 12) to the I/O channel specified, or to the listing file if channel is omitted" (manual ch. 19,
     ;; EJECT). As sbl -bf writes it: a record of its own on an output channel; the form feed alone, with no line end, on the listing, standard output here; nothing
     ;; on an input channel; a channel nothing opened is "093 EJECT file does not exist".
@@ -650,7 +663,7 @@
                       (nil? ch)                                (throw (ex-info "EJECT file does not exist" {:snobol/error 93}))
                       (clojure.core/= :output (:type ch))      (let [w ^java.io.PrintWriter (:writer ch)] (.println w "\f") (.flush w) ε)
                       :else                                    ε))))
-    SETEXIT (apply SETEXIT args)
+    SETEXIT (apply-builtin SETEXIT args)
     HOST    (apply HOST args)
     ;; DUMP(i) writes a dump now: 1 the variables and keywords, 2 and 3 the elements and fields too; any other value writes nothing (manual ch. 19, DUMP)
     DUMP    (let [n (num (first args))] (when (and (integer? n) (clojure.core/<= 1 n 3)) (print (dump-text n))) ε)
@@ -671,7 +684,7 @@
     DUPL    (DUPL   (first args) (second args))
     REVERSE (REVERSE (first args))
     ITEM      (apply ITEM args)
-    PROTOTYPE (apply PROTOTYPE args)
+    PROTOTYPE (apply-builtin PROTOTYPE args)
     ;; "String to expression: The string must represent a legal SPITBOL expression. The compiler is used to convert the string into its equivalent expression"; an integer
     ;; or a real becomes "an EXPRESSION which when evaluated yields the original" value (manual ch. 17)
     CONVERT   (let [[x t] args]
@@ -683,8 +696,8 @@
                   (CONVERT x t)))
     COPY      (COPY      (first args))
     FIELD     (FIELD     (first args) (second args))
-    SORT      (apply SORT  args)
-    RSORT     (apply RSORT args)
+    SORT      (apply-builtin SORT args)
+    RSORT     (apply-builtin RSORT args)
     DATA      (DATA      (first args))
     DATATYPE  (SNOBOL4clojure.env/DATATYPE (first args))
     ;; String functions missing from original dispatch
@@ -692,7 +705,7 @@
     ORD       (when (seq args) (ORD (first args)))
     ;; "If i2 is omitted or zero, the remaining characters of the argument string are extracted" (manual ch. 19, SUBSTR)
     SUBSTR    (SUBSTR    (first args) (second args) (nth args 2 ""))
-    DATE      (apply DATE args)
+    DATE      (apply-builtin DATE args)
     TIME      (TIME)
     ;; LPAD/RPAD with optional 3rd fill-char arg (functions.clj handles both arities)
     LPAD      (LPAD (nth args 0 "") (nth args 1 "") (nth args 2 ""))   ; "If trailing arguments are omitted, SPITBOL will supply null strings" (manual ch. 4)
@@ -738,7 +751,7 @@
                 ;; this engine closed the unit at the DETACH and the ENDFILE was 098)
                 (do (swap! <CHANNELS> dissoc sym) ε))
     REWIND    (rewind-channel! (first args))
-    EXIT      (apply SNOBOL4clojure.functions/EXIT args)
+    EXIT      (apply-builtin SNOBOL4clojure.functions/EXIT args)
     ;; CODE(src) — compile and execute a SNOBOL4 source fragment in the current env.
     ;; Returns nil on success; :F branch taken on compile/runtime error.
     ;; Uses resolve to avoid circular dependency (runtime → operators → compiler).
@@ -773,7 +786,7 @@
               (cond
                 (table? f) (table-get f (SNOBOL4clojure.env/table-subscript args))   ; TABLE subscript read
                 (array? f) (array-get f (vec args))     ; ARRAY subscript read
-                (fn? f)    (apply f args)
+                (fn? f)    (apply-builtin f args)
                 ;; Nothing callable by this name: ERROR 022, as SPITBOL raises it.
                 ;; The IR spells a call F(x) and a subscript A<x> alike, so a
                 ;; subscripted non-array reads 022 here where SPITBOL says 235.
