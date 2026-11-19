@@ -34,12 +34,12 @@
   (is (= "abc" ($$ 'W))))
 
 (deftest t_any_vowel_first
-  "ANY('aeiou') matches first vowel in 'hello' at pos 2"
+  "LEN(1) LEN(1) ANY('aeiou') finds the first vowel two places past a start: o, from position 2 (MEASURED on sbl -bf: V=[o])"
   (prog
     "        S = 'hello'"
     "        S LEN(1) LEN(1) ANY('aeiou') . V"
     "end")
-  (is (= "e" ($$ 'V))))
+  (is (= "o" ($$ 'V))))
 
 (deftest t_notany_first_consonant
   "NOTANY('aeiou') matches 'h' in 'hello'"
@@ -58,12 +58,12 @@
   (is (= "cde" ($$ 'T))))
 
 (deftest t_rtab_span
-  "SPAN digits RTAB(3) captures '12' from '12abc'"
+  "SPAN digits captures '12' from '12abc', and RTAB(3) from cursor 2 of five characters moves nothing: R is '' (MEASURED on sbl -bf: D=[12] R=[])"
   (prog
     "        S = '12abc'"
     "        S SPAN('0123456789') . D RTAB(3) . R"
     "end")
-  (is (clojure.core/and (= "12" ($$ 'D)) (= "abc" ($$ 'R)))))
+  (is (clojure.core/and (= "12" ($$ 'D)) (= "" ($$ 'R)))))
 
 (deftest t_pos_anchor
   "POS(2) LEN(3) captures chars 3-5"
@@ -74,13 +74,13 @@
   (is (= "cde" ($$ 'T))))
 
 (deftest t_full_match_exact
-  "FULLMATCH 'hello' succeeds on 'hello'"
+  "S = 'hello' 'hello' is an assignment of the concatenation, not a match: S is hellohello (MEASURED on sbl -bf: S=[hellohello])"
   (prog
     "        S = 'hello'"
     "        R = 'no'"
     "        S = 'hello' 'hello'"
     "end")
-  (is (= "hello" ($$ 'S))))
+  (is (= "hellohello" ($$ 'S))))
 
 (deftest t_pattern_in_variable
   "Pattern stored in variable, used in match"

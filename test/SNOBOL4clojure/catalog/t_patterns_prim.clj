@@ -246,14 +246,14 @@
 )
 
 (deftest worm_notany_abc_on_abcdef
-  "NOTANY('abc') on 'abcdef' fails"
+  "NOTANY('abc') on 'abcdef' succeeds: the match is unanchored, and d is not one of abc (manual ch. 6, NOTANY; MEASURED on sbl -bf: yes)"
   (prog
     "        'abcdef' NOTANY('abc') :S(YES)F(NO)"
     "YES     R = 'yes'   :(END)"
     "NO      R = 'no'"
     "END"
   )
-    (is (= "no" ($$ (quote R))))
+    (is (= "yes" ($$ (quote R))))
 )
 
 (deftest worm_span_abc_on_abcdef
@@ -385,14 +385,14 @@
 )
 
 (deftest worm_break_xyz_on_empty
-  "BREAK('xyz') on '' captures ''"
+  "BREAK('xyz') on '' fails: BREAK needs one of its characters to stop at (manual ch. 6, BREAK; MEASURED on sbl -bf: R=[no] C=[])"
   (prog
     "        '' BREAK('xyz') . C :S(YES)F(NO)"
     "YES     R = 'yes'   :(END)"
     "NO      R = 'no'"
     "END"
   )
-    (is (= "yes" ($$ (quote R))))
+    (is (= "no" ($$ (quote R))))
     (is (= "" ($$ (quote C))))
 )
 

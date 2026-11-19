@@ -58,15 +58,16 @@
   (is (= 1 ($$ 'R))))
 
 (deftest t_reverse_string_recursive
-  "RREV('hello')='olleh' recursively"
-  (prog-steplimit 4000 2000
+  "RREV, written SIZE(S)-1, a binary - with no blank before it, is ERROR 233 at its column, and a program with a compile error is never run (manual ch. 3, binary operators
+   have blanks on each side; MEASURED on sbl -bf: (3,39) ERROR 233 -- syntax error: invalid use of operator)"
+  (CODE (clojure.string/join "\n" [
     "        DEFINE('RREV(S)') :(REND)"
     "RREV    EQ(SIZE(S),0) :S(REMPTY)"
     "        RREV = RREV(SUBSTR(S,2,SIZE(S)-1)) SUBSTR(S,1,1)  :(RETURN)"
     "REMPTY  RREV = ''  :(RETURN)"
     "REND    R = RREV('hello')"
-    "end")
-  (is (= "olleh" ($$ 'R))))
+    "end"]))
+  (is (= [[3 233 39]] (mapv #(vec (take 3 %)) @SNOBOL4clojure.env/<DIAGNOSTICS>))))
 
 (deftest t_reverse_string_loop
   "Reverse 'abcde' via loop -> 'edcba'"
@@ -81,8 +82,9 @@
   (is (= "edcba" ($$ 'R))))
 
 (deftest t_palindrome_check_true
-  "'racecar' is a palindrome -> R='yes'"
-  (prog-steplimit 4000 2000
+  "The palindrome check through RREV, written SIZE(S)-1, a binary - with no blank before it, is ERROR 233 at its column, and a program with a compile error is never run (manual ch. 3, binary operators
+   have blanks on each side; MEASURED on sbl -bf: (3,39) ERROR 233 -- syntax error: invalid use of operator)"
+  (CODE (clojure.string/join "\n" [
     "        DEFINE('RREV(S)') :(REND)"
     "RREV    EQ(SIZE(S),0) :S(REMPTY)"
     "        RREV = RREV(SUBSTR(S,2,SIZE(S)-1)) SUBSTR(S,1,1)  :(RETURN)"
@@ -93,8 +95,8 @@
     "        IDENT(S,RREV(S)) :S(PAL)"
     "        :(DONE)"
     "PAL     R = 'yes'"
-    "DONE    end")
-  (is (= "yes" ($$ 'R))))
+    "DONE    end"]))
+  (is (= [[3 233 39]] (mapv #(vec (take 3 %)) @SNOBOL4clojure.env/<DIAGNOSTICS>))))
 
 (deftest t_palindrome_check_false
   "'hello' is not a palindrome -> R='no'"

@@ -79,7 +79,7 @@
 )
 
 (deftest worm_array_loop_fill
-  "Fill array in loop, read back"
+  "Fill array in loop, read back: A<1> A<4> A<5> are 1, 16 and 25 (MEASURED on sbl -bf: 11625)"
   (prog
     "        A = ARRAY(5)"
     "        I = 1"
@@ -89,6 +89,6 @@
     "        R = A<1> A<4> A<5>"
     "end"
   )
-    (is (= "1165" ($$ (quote R))))
+    (is (= "11625" ($$ (quote R))))
 )
 

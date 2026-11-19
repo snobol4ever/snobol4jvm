@@ -218,56 +218,56 @@
 )
 
 (deftest worm_datatype_string
-  "DATATYPE('hello') = 'string'"
+  "DATATYPE('hello') = 'STRING': the type is named in upper case (manual ch. 19, DATATYPE; MEASURED on sbl -bf: STRING)"
   (prog
     "        R = DATATYPE('hello')"
     "end"
   )
-    (is (= "string" ($$ (quote R))))
+    (is (= "STRING" ($$ (quote R))))
 )
 
 (deftest worm_datatype_integer
-  "DATATYPE(42) = 'integer'"
+  "DATATYPE(42) = 'INTEGER': the type is named in upper case (manual ch. 19, DATATYPE; MEASURED on sbl -bf: INTEGER)"
   (prog
     "        R = DATATYPE(42)"
     "end"
   )
-    (is (= "integer" ($$ (quote R))))
+    (is (= "INTEGER" ($$ (quote R))))
 )
 
 (deftest worm_datatype_real
-  "DATATYPE(3.14) = 'real'"
+  "DATATYPE(3.14) = 'REAL': the type is named in upper case (manual ch. 19, DATATYPE; MEASURED on sbl -bf: REAL)"
   (prog
     "        R = DATATYPE(3.14)"
     "end"
   )
-    (is (= "real" ($$ (quote R))))
+    (is (= "REAL" ($$ (quote R))))
 )
 
 (deftest worm_datatype_pattern
-  "DATATYPE(ANY('a')) = 'pattern'"
+  "DATATYPE(ANY('a')) = 'PATTERN': the type is named in upper case (manual ch. 19, DATATYPE; MEASURED on sbl -bf: PATTERN)"
   (prog
     "        R = DATATYPE(ANY('a'))"
     "end"
   )
-    (is (= "pattern" ($$ (quote R))))
+    (is (= "PATTERN" ($$ (quote R))))
 )
 
 (deftest worm_datatype_array
-  "DATATYPE(ARRAY(3)) = 'array'"
+  "DATATYPE(ARRAY(3)) = 'ARRAY': the type is named in upper case (manual ch. 19, DATATYPE; MEASURED on sbl -bf: ARRAY)"
   (prog
     "        R = DATATYPE(ARRAY(3))"
     "end"
   )
-    (is (= "array" ($$ (quote R))))
+    (is (= "ARRAY" ($$ (quote R))))
 )
 
 (deftest worm_datatype_table
-  "DATATYPE(TABLE()) = 'table'"
+  "DATATYPE(TABLE()) = 'TABLE': the type is named in upper case (manual ch. 19, DATATYPE; MEASURED on sbl -bf: TABLE)"
   (prog
     "        R = DATATYPE(TABLE())"
     "end"
   )
-    (is (= "table" ($$ (quote R))))
+    (is (= "TABLE" ($$ (quote R))))
 )
 

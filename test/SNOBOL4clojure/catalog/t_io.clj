@@ -124,7 +124,8 @@
     (is (empty? @env/<CHANNELS>) "channel deregistered after ENDFILE")))
 
 (deftest t-io-endfile-before-eof
-  "ENDFILE before reading all lines closes file; subsequent read returns nil."
+  "ENDFILE before reading all lines closes the file, and a read of its variable after it reads the file again from its first line (manual ch. 5,
+   ENDFILE closes the file; MEASURED on sbl -bf: a, SHOULD NOT PRINT, CLOSED, and LINE2 and a third read are both a)"
   (let [path (tmpfile "a\nb\nc\n")
         r    (run-with-timeout
                (str "        INPUT(.RDR,7,'" path "')\n"
@@ -137,7 +138,8 @@
                     "END\n")
                3000)]
     (is (= :ok (:exit r)))
-    (is (= "a\nCLOSED\n" (:stdout r)))))
+    (is (= "a\nSHOULD NOT PRINT\nCLOSED\n" (:stdout r)))
+    (is (= "a" ($$ 'LINE2)))))
 
 ;; ── DETACH: disassociate var from channel ──────────────────────────────────────
 (deftest t-io-detach

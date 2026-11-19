@@ -42,7 +42,7 @@
   (prog
     "L       "
     "end")
-  (is (= nil ($$ 'L))))   ; L is a label, not a variable — no binding expected
+  (is (= "" ($$ 'L))))   ; L is a label; as a variable it holds the null string, as every unset name does (MEASURED on sbl -bf: OUTPUT = '[' L ']' prints [])
 
 (deftest band0-comment-only
   "A comment line (starts with *) followed by END."
@@ -203,7 +203,7 @@
     "        I = 2 + 3 * 4"
     "end")
   ;; SNOBOL4 has NO operator precedence — strictly left to right
-  (is (= 20 ($$ 'I))))
+  (is (= 14 ($$ 'I))))
 
 (deftest band2-unary-minus
   "I = -5 used in arithmetic"
@@ -910,7 +910,7 @@
     "        LE(I,5) :S(LOOP)"
     "        R = A<1> A<2> A<3> A<4> A<5>"
     "end")
-  (is (= "14916" ($$ 'R))))
+  (is (= "1491625" ($$ 'R))))
 
 (deftest band6-arbno-basic
   "ARBNO matches zero or more repetitions"
@@ -923,33 +923,33 @@
   (is (= "yes" ($$ 'R))))
 
 (deftest band6-datatype-string
-  "DATATYPE('hello') = 'string'"
+  "DATATYPE('hello') = 'STRING': the type is named in upper case (manual ch. 19, DATATYPE; MEASURED on sbl -bf: STRING)"
   (prog
     "        R = DATATYPE('hello')"
     "end")
-  (is (= "string" ($$ 'R))))
+  (is (= "STRING" ($$ 'R))))
 
 (deftest band6-datatype-integer
-  "DATATYPE(42) = 'integer'"
+  "DATATYPE(42) = 'INTEGER': the type is named in upper case (manual ch. 19, DATATYPE; MEASURED on sbl -bf: INTEGER)"
   (prog
     "        R = DATATYPE(42)"
     "end")
-  (is (= "integer" ($$ 'R))))
+  (is (= "INTEGER" ($$ 'R))))
 
 (deftest band6-datatype-pattern
-  "DATATYPE(ANY('abc')) = 'pattern'"
+  "DATATYPE(ANY('abc')) = 'PATTERN': the type is named in upper case (manual ch. 19, DATATYPE; MEASURED on sbl -bf: PATTERN)"
   (prog
     "        P = ANY('abc')"
     "        R = DATATYPE(P)"
     "end")
-  (is (= "pattern" ($$ 'R))))
+  (is (= "PATTERN" ($$ 'R))))
 
 (deftest band6-datatype-array
-  "DATATYPE(ARRAY(3)) = 'array'"
+  "DATATYPE(ARRAY(3)) = 'ARRAY': the type is named in upper case (manual ch. 19, DATATYPE; MEASURED on sbl -bf: ARRAY)"
   (prog
     "        R = DATATYPE(ARRAY(3))"
     "end")
-  (is (= "array" ($$ 'R))))
+  (is (= "ARRAY" ($$ 'R))))
 
 ;; The datatype names are in capitals: sbl -bf (no case-folding) refuses CONVERT(42,'string') and CONVERT('42','integer'), as the manual has it ("Data type names may be lower
 ;; case if case-folding is active", ch. 19); CONVERT(42,'STRING') is the STRING 42 and CONVERT('42','INTEGER') the INTEGER 42.
@@ -998,7 +998,7 @@
     "        A = SORT(T)"
     "        R = DATATYPE(A)"
     "end")
-  (is (= "array" ($$ 'R))))
+  (is (= "ARRAY" ($$ 'R))))
 
 (deftest band6-copy-array
   "COPY(A) produces an independent duplicate"

@@ -50,6 +50,33 @@
         (clojure.string/replace (with-out-str (-main main)) (str dir "/") ""))
       (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))
 
+;; A corpus program run as the board runs it: its files written to a scratch directory, which is where a relative file name it opens resolves (the board runs
+;; the jar in the program's own folder), stdin its NAME.in or nothing, and -main's standard output and exit code returned, the directory taken out of the names.
+(defn- run-corpus [files stdin]
+  (let [dir (.toFile (java.nio.file.Files/createTempDirectory "csnobol4-corpus" (make-array java.nio.file.attribute.FileAttribute 0)))]
+    (try
+      (doseq [[f text] files] (spit (java.io.File. dir ^String f) text :encoding "ISO-8859-1"))
+      (binding [SNOBOL4clojure.env/*file-dir* dir
+                *in* (java.io.BufferedReader. (java.io.StringReader. (or stdin "")))]
+        (let [rc (atom nil)
+              out (with-out-str (reset! rc (-main (str dir "/" (ffirst files)))))]
+          [(clojure.string/replace out (str dir "/") "") @rc]))
+      (finally (doseq [f (reverse (file-seq dir))] (.delete f))))))
+
+;; The board's comparison with the package's masks (ALL.mask): a line that matches one of the regexes stands for any such line on both sides.
+;; ALL.mask's rows for every entry (*): the run summary of SPITBOL's fatal block, engine bookkeeping and never the program's answer.
+(def ^:private board-masks ["^memory used \\(bytes\\)  ([0-9]+|-)$" "^memory left \\(bytes\\)  ([0-9]+|-)$" "^stmts executed       ([0-9]+|-)$"
+                            "^execution time msec  ([0-9]+|-)$" "^REGENERATIONS        ([0-9]+|-)$"])
+
+;; The listing page's version line, which names the engine, and its clock line, the wall time of the run (ALL.mask rows for the entries that print a listing).
+(def ^:private listing-version "^(macro spitbol|snobol4dotnet|snobol4jvm) version [0-9][0-9.a-z]*$")
+(def ^:private listing-clock "^x86-64  [A-Z][a-z][a-z] [A-Z][a-z][a-z] [ 0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9] [0-9]{4}$")
+
+(defn- masked-same-output? [regexes expected actual]
+  (let [ps (map re-pattern regexes)
+        mask (fn [s] (clojure.string/join "\n" (map #(if (some (fn [p] (re-find p %)) ps) "\u0000MASKED" %) (clojure.string/split (str s) #"\n" -1))))]
+    (same-output? (mask expected) (mask actual))))
+
 ;; ── FENCE crosscheck tests (058–067) ───────────────────────────────────────
 
 (deftest fence-058-pat-fence-keyword
@@ -680,8 +707,9 @@ dump of keyword values
 " out))))
 
 (deftest csnobol4-alis
-  "Budne suite: alis.sno"
-  (let [r (run-with-timeout "
+  "Budne suite: alis.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, alis.out, the board's masks
+   applied (ALL.mask: *, alis); sbl exits 231"
+  (let [[out rc] (run-corpus [["alis.sno" "
 *
 *	THIS PROGRAM USES PROGRAMMER-DEFINED DATA TYPES TO
 *	REPRESENT AN ARBITRARILY LONG INTEGER AS A LINKED LIST
@@ -765,25 +793,27 @@ L	I	=  LT(I,K)  I + 1		:F(END)
 	P	=  P  *  N
 	OUTPUT	=  I  ': '  OUT(P)		:(L)
 END
-" 2000)]
-    (is (= "POWERS OF 256
+"]] nil)]
+    (is (masked-same-output? (into board-masks [listing-version listing-clock])
+          "
 
-1: 256
-2: 65536
-3: 16777216
-4: 4294967296
-5: 1099511627776
-6: 281474976710656
-7: 72057594037927936
-8: 18446744073709551616
-9: 4722366482869645213696
-10: 1208925819614629174706176
-11: 309485009821345068724781056
-12: 79228162514264337593543950336
-13: 20282409603651670423947251286016
-14: 5192296858534827628530496329220096
-15: 1329227995784915872903807060280344576
-" (:stdout r)))))
+
+macro spitbol version 4.0f
+x86-64  Sat Sep  5 10:57:05 2026
+
+
+
+                                                                                                                page 1
+
+29      LINK	LINK	=  \\INTEGER(I)  L(I)		:(RETURN)
+            	    	   !
+alis.sno(57,14) : ERROR 230 -- syntax error: illegal character
+
+30      VAL	VAL	=  \\INTEGER(VAL)  V(VAL)		:(RETURN)
+           	   	   !
+alis.sno(59,12) : ERROR 230 -- syntax error: illegal character
+" out))
+    (is (clojure.core/= 231 rc))))
 
 (deftest csnobol4-alph
   "Budne suite: alph.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
@@ -2280,51 +2310,68 @@ END
 " (:stdout r)))))
 
 (deftest csnobol4-base
-  "Budne suite: base.sno"
-  (let [r (run-with-timeout "-include 'basename.sno'
+  "Budne suite: base.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, base.out, the board's masks
+   applied (ALL.mask: *); sbl exits 0"
+  (let [[out rc] (run-corpus [["base.sno" "-INCLUDE 'basename.sno'
 
-	output = basename('a', '/')
-	output = basename('a/b', '/')
-	output = basename('a/b/c', '/')
-	output = basename('a/b/c/', '/')
+	OUTPUT = basename('a', '/')
+	OUTPUT = basename('a/b', '/')
+	OUTPUT = basename('a/b/c', '/')
+	OUTPUT = basename('a/b/c/', '/')
 
-	output = basename('a/b', '/\\')
-	output = basename('a/b/c', '/\\')
-	output = basename('a/b/c/', '/\\')
+	OUTPUT = basename('a/b', '/\\')
+	OUTPUT = basename('a/b/c', '/\\')
+	OUTPUT = basename('a/b/c/', '/\\')
 
-	output = basename('a\\b', '\\')
-	output = basename('a\\b\\c', '\\')
-	output = basename('a\\b\\c\\', '\\')
+	OUTPUT = basename('a\\b', '\\')
+	OUTPUT = basename('a\\b\\c', '\\')
+	OUTPUT = basename('a\\b\\c\\', '\\')
 
-	output = basename('a\\b', '/\\')
-	output = basename('a\\b\\c', '/\\')
-	output = basename('a\\b\\c\\', '/\\')
+	OUTPUT = basename('a\\b', '/\\')
+	OUTPUT = basename('a\\b\\c', '/\\')
+	OUTPUT = basename('a\\b\\c\\', '/\\')
 
-	output = basename('a\\b', '/\\')
-	output = basename('a/b\\c', '/\\')
-	output = basename('a\\b/c\\', '/\\')
+	OUTPUT = basename('a\\b', '/\\')
+	OUTPUT = basename('a/b\\c', '/\\')
+	OUTPUT = basename('a\\b/c\\', '/\\')
 
 
 
-end
-" 2000)]
-    (is (= "a
-b
-c
-c
-b
-c
-c
-b
-c
-c
-b
-c
-c
-b
-c
-c
-" (:stdout r)))))
+END
+"] ["basename.sno" "* $Id: basename.sno,v 1.2 2015-01-02 02:13:50 phil Exp $
+* Phil Budne (idea from Phillip Thomas) January 2015
+-INCLUDE 'host.sno'
+* return trailing element separated by character SEP
+* (SEP defaults to system directory path separator)
+	DEFINE(\"BASENAME(X,SEP)\")		:(BASENAME.END)
+BASENAME
+	SEP = IDENT(SEP) HOST(HOST_DIR_SEP)
+	X = REVERSE(X) SEP
+	X POS(0) SPAN(SEP) =
+	X POS(0) BREAK(SEP) . BASENAME
+	BASENAME = REVERSE(BASENAME)		:(RETURN)
+BASENAME.END
+"]] nil)]
+    (is (masked-same-output? board-masks
+          "
+
+
+base.sno(3) : ERROR 022 -- undefined function called
+
+
+
+
+
+in file              base.sno
+in line              3
+in statement         132
+stmts executed       57
+execution time msec  0
+REGENERATIONS        0
+memory used (bytes)  18928
+memory left (bytes)  1029640
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-breakx
   "Budne suite: breakx.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
@@ -2554,464 +2601,557 @@ D: 4
 " (:stdout r)))))
 
 (deftest csnobol4-crlf
-  "Budne suite: crlf.sno — reads from INPUT (stdin below END)"
-  (let [r (run-with-input "loop	output = input		:s(loop)
-end
-"
-                          "this line has no CR
+  "Budne suite: crlf.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, crlf.out, the board's masks
+   applied (ALL.mask: *, crlf); sbl exits 1"
+  (let [[out rc] (run-corpus [["crlf.sno" "loop	output = input		:s(loop)
+END
+this line has no CR
 this line ends in a CR
 this line has no CR
-"
-                          2000)]
-    (is (= "this line has no CR
-this line ends in a CR
-this line has no CR
-" (:stdout r)))))
+"]] nil)]
+    (is (masked-same-output? (into board-masks [listing-version listing-clock])
+          "
+
+
+macro spitbol version 4.0f
+x86-64  Sat Oct  3 17:03:01 2026
+
+
+
+                                                                                                                page 1
+
+1       loop	output = input		:s(loop)
+1       loop	output = input		:s(loop)
+            	              		        !
+            	              		        !
+crlf.sno(1,30) : ERROR 230 -- syntax error: illegal character
+crlf.sno(1,30) : ERROR 230 -- syntax error: illegal character
+
+
+4       this line ends in a CR
+4       this line ends in a CR
+
+
+crlf.sno(4) : ERROR 217 -- syntax error: duplicate label
+crlf.sno(4) : ERROR 217 -- syntax error: duplicate label
+
+
+5       this line has no CR
+5       this line has no CR
+
+
+crlf.sno(5) : ERROR 217 -- syntax error: duplicate label
+crlf.sno(5) : ERROR 217 -- syntax error: duplicate label
+
+
+No END statement found in source file(s).
+" out))
+    (is (clojure.core/= 1 rc))))
 
 (deftest csnobol4-diag1
-  "Budne suite: diag1.sno"
-  (let [r (run-with-timeout "*-title	snobol test program #1 -- diagnostics phase one
+  "Budne suite: diag1.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, diag1.out, the board's masks
+   applied (ALL.mask: *, diag1); sbl exits 0"
+  (let [[out rc] (run-corpus [["diag1.sno" "*-title	snobol test program #1 -- diagnostics phase one
 *
 *	 this is a standard test program for spitbol which tests
 *	 out functions,	operators and datatype manipulations
 *
-	 &dump = 2
-	 trace(.test)
-	 &trace	= 1000000
+	 &DUMP = 2
+	 TRACE(.test)
+	 &TRACE	= 1000000
 	 stars =		     '	error detected		***'
-	 &errlimit = 1000
-	 setexit(.errors)
-	 output	= '************************************************'
-	 output	= '****	s n o b o l	 d i a g n o s t i c s ****'
-	 output	= '****		 p h a s e    o	n e	       ****'
-	 output	= '************************************************'
-	 output	= '****	 any trace output indicates an error   ****'
-	 output	= '************************************************'
--eject
+	 &ERRLIMIT = 1000
+	 SETEXIT(.errors)
+	 OUTPUT	= '************************************************'
+	 OUTPUT	= '****	s n o b o l	 d i a g n o s t i c s ****'
+	 OUTPUT	= '****		 p h a s e    o	n e	       ****'
+	 OUTPUT	= '************************************************'
+	 OUTPUT	= '****	 any trace output indicates an error   ****'
+	 OUTPUT	= '************************************************'
+-EJECT
 *
 *	 test replace function
 *
-	 test =	differ(replace('axxbyyy','xy','01'),'a00b111') stars
-	 a = replace(&alphabet,'xy','ab')
-	 test =	differ(replace('axy',&alphabet,a),'aab') stars
+	 test =	DIFFER(REPLACE('axxbyyy','xy','01'),'a00b111') stars
+	 a = REPLACE(&ALPHABET,'xy','ab')
+	 test =	DIFFER(REPLACE('axy',&ALPHABET,a),'aab') stars
 *
 *	 test convert function
 *
-	 test =	differ(convert('12','integer') , 12) stars
-	 test =	differ(convert(2.5,'integer'),2)       stars
-	 test =	differ(convert(2,'real'),2.0) stars
-	 test =	differ(convert('.2','real'),0.2) stars
+	 test =	DIFFER(CONVERT('12','INTEGER') , 12) stars
+	 test =	DIFFER(CONVERT(2.5,'INTEGER'),2)       stars
+	 test =	DIFFER(CONVERT(2,'REAL'),2.0) stars
+	 test =	DIFFER(CONVERT('.2','REAL'),0.2) stars
 *
 *	 test datatype function
 *
-	 test =	differ(datatype('jkl'),'STRING') stars
-	 test =	differ(datatype(12),'INTEGER') stars
-	 test =	differ(datatype(1.33),'REAL') stars
-	 test =	differ(datatype(null),'STRING')	stars
--eject
+	 test =	DIFFER(DATATYPE('jkl'),'STRING') stars
+	 test =	DIFFER(DATATYPE(12),'INTEGER') stars
+	 test =	DIFFER(DATATYPE(1.33),'REAL') stars
+	 test =	DIFFER(DATATYPE(null),'STRING')	stars
+-EJECT
 *
 *	 test arithmetic operators
 *
-	 test =	differ(3 + 2,5)	stars
-	 test =	differ(3 - 2,1)	stars
-	 test =	differ(3 * 2,6)	stars
-	 test =	differ(5 / 2,2)	stars
-	 test =	differ(2 ** 3,8) stars
-	 test =	differ(3 + 1,4)	stars
-	 test =	differ(3 - 1,2)	stars
-	 test =	differ('3' + 2,5) stars
-	 test =	differ(3 + '-2',1) stars
-	 test =	differ('1' + '0',1) stars
-	 test =	differ(5 + null,5) stars
-	 test =	differ(-5,0 - 5) stars
-	 test =	differ(+'4',4) stars
-	 test =	differ(2.0 + 3.0,5.0) stars
-	 test =	differ(3.0 - 1.0,2.0) stars
-	 test =	differ(3.0 * 2.0,6.0) stars
-	 test =	differ(3.0 / 2.0,1.5) stars
-	 test =	differ(3.0 ** 3,27.0) stars
-	 test =	differ(-1.0,0.0	- 1.0) stars
+	 test =	DIFFER(3 + 2,5)	stars
+	 test =	DIFFER(3 - 2,1)	stars
+	 test =	DIFFER(3 * 2,6)	stars
+	 test =	DIFFER(5 / 2,2)	stars
+	 test =	DIFFER(2 ** 3,8) stars
+	 test =	DIFFER(3 + 1,4)	stars
+	 test =	DIFFER(3 - 1,2)	stars
+	 test =	DIFFER('3' + 2,5) stars
+	 test =	DIFFER(3 + '-2',1) stars
+	 test =	DIFFER('1' + '0',1) stars
+	 test =	DIFFER(5 + null,5) stars
+	 test =	DIFFER(-5,0 - 5) stars
+	 test =	DIFFER(+'4',4) stars
+	 test =	DIFFER(2.0 + 3.0,5.0) stars
+	 test =	DIFFER(3.0 - 1.0,2.0) stars
+	 test =	DIFFER(3.0 * 2.0,6.0) stars
+	 test =	DIFFER(3.0 / 2.0,1.5) stars
+	 test =	DIFFER(3.0 ** 3,27.0) stars
+	 test =	DIFFER(-1.0,0.0	- 1.0) stars
 *
 *	 test mixed mode
 *
-	 test =	differ(1 + 2.0,3.0) stars
-	 test =	differ(3.0 / 2,1.5) stars
--eject
+	 test =	DIFFER(1 + 2.0,3.0) stars
+	 test =	DIFFER(3.0 / 2,1.5) stars
+-EJECT
 *
 *	 test functions
 *
 *	 first,	a simple test of a factorial function
 *
-	 define('fact(n)')		    :(factend)
-fact	 fact =	eq(n,1)	1	  :s(return)
-	 fact =	n * fact(n - 1)		    :(return)
-factend	 test =	ne(fact(5),120)	stars
-	 test =	differ(opsyn(.facto,'fact')) stars
-	 test =	differ(facto(4),24) stars
+	 DEFINE('fact(n)')		    :(factend)
+fact	 fact =	EQ(n,1)	1	  :s(RETURN)
+	 fact =	n * fact(n - 1)		    :(RETURN)
+factend	 test =	NE(fact(5),120)	stars
+	 test =	DIFFER(OPSYN(.facto,'fact')) stars
+	 test =	DIFFER(facto(4),24) stars
 *
 *	 see if	alternate entry	point works ok
 *
-	 define('fact2(n)',.fact2ent)	    :(fact2endf)
-fact2ent fact2 = eq(n,1) 1	  :s(return)
-	 fact2 = n * fact2(n - 1) :(return)
-fact2endf output = ne(fact(6),720) stars
+	 DEFINE('fact2(n)',.fact2ent)	    :(fact2endf)
+fact2ent fact2 = EQ(n,1) 1	  :s(RETURN)
+	 fact2 = n * fact2(n - 1) :(RETURN)
+fact2endf OUTPUT = NE(fact(6),720) stars
 *
 *	 test function redefinition and	case of	argument = func	name
 *
-	 test =	differ(define('fact(fact)','fact3')) stars
+	 test =	DIFFER(DEFINE('fact(fact)','fact3')) stars
 .					    :(fact2end)
-fact3	 fact =	ne(fact,1) fact	* fact(fact - 1)
-.					    :(return)
+fact3	 fact =	NE(fact,1) fact	* fact(fact - 1)
+.					    :(RETURN)
 fact2end
-	 test =	ne(fact(4),24) stars
+	 test =	NE(fact(4),24) stars
 *
 *	 test out locals
 *
-	 define('lfunc(a,b,c)d,e,f')	    :(lfuncend)
-lfunc	 test =	~(ident(a,'a') ident(b,'b') ident(c,'c')) stars
-	 test =	~(ident(d) ident(e) ident(f)) stars
+	 DEFINE('lfunc(a,b,c)d,e,f')	    :(lfuncend)
+lfunc	 test =	~(IDENT(a,'a') IDENT(b,'b') IDENT(c,'c')) stars
+	 test =	~(IDENT(d) IDENT(e) IDENT(f)) stars
 	 a = 'aa' ; b =	'bb' ; c = 'cc'	; d = 'dd' ; e = 'ee' ;	f = 'ff'
-.				  :(return)
+.				  :(RETURN)
 lfuncend aa = 'a' ; bb = 'b' ; cc = 'c'
 	 d = 'd' ; e = 'e' ; f = 'f'
 	 a = 'x' ; b = 'y' ; c = 'z'
-	 test =	differ(lfunc(aa,bb,cc))	stars
-	 test =	~(ident(a,'x') ident(b,'y') ident(c,'z')) stars
-	 test =	~(ident(aa,'a')	ident(bb,'b') ident(cc,'c')) stars
-	 test =	~(ident(d,'d') ident(e,'e') ident(f,'f')) stars
+	 test =	DIFFER(lfunc(aa,bb,cc))	stars
+	 test =	~(IDENT(a,'x') IDENT(b,'y') IDENT(c,'z')) stars
+	 test =	~(IDENT(aa,'a')	IDENT(bb,'b') IDENT(cc,'c')) stars
+	 test =	~(IDENT(d,'d') IDENT(e,'e') IDENT(f,'f')) stars
 *
 *	 test nreturn
 *
-	 define('ntest()')		    :(endntest)
-ntest	 ntest = .a			    :(nreturn)
+	 DEFINE('ntest()')		    :(endntest)
+ntest	 ntest = .a			    :(NRETURN)
 endntest a = 27
-	 test =	differ(ntest(),27) stars
+	 test =	DIFFER(ntest(),27) stars
 .	       :f(st59)		   ;st59
 	 ntest() = 26
 .	       :f(st60)		   ;st60
-	 test =	differ(a,26) stars
--eject
+	 test =	DIFFER(a,26) stars
+-EJECT
 *
 *	 continue test of functions
 *
 *
 *	 test failure return
 *
-	 define('failure()')		    :(failend)
-failure				  :(freturn)
+	 DEFINE('failure()')		    :(failend)
+failure				  :(FRETURN)
 failend	 test =	failure() stars
--eject
+-EJECT
 *
 *	 test opsyn for	operators
 *
-	 opsyn('@',.dupl,2)
-	 opsyn('|',.size,1)
-	 test =	differ('a' @ 4,'aaaa') stars
-	 test =	differ(|'string',6) stars
+	 OPSYN('@',.DUPL,2)
+	 OPSYN('|',.SIZE,1)
+	 test =	DIFFER('a' @ 4,'aaaa') stars
+	 test =	DIFFER(|'string',6) stars
 *
 *	 test out array	facility
 *
-	 a = array(3)
-	 test =	differ(a<1>) stars
-	 a<2> =	4.5
-	 test =	differ(a<2>,4.5) stars
-	 test =	?a<4> stars
-	 test =	?a<0> stars
-	 test =	differ(prototype(a),'3') stars
-	 b = array(3,10)
-	 test =	differ(b<2>,10)	stars
-	 b = array('3')
-	 b<2> =	'a'
-	 test =	differ(b<2>,'a') stars
-	 c = array('2,2')
-	 c<1,2>	= '*'
-	 test =	differ(c<1,2>,'*') stars
-	 test =	differ(prototype(c),'2,2') stars
-	 d = array('-1:1,2')
-	 d<-1,1> = 0
-	 test =	differ(d<-1,1>,0) stars
-	 test =	?d<-2,1> stars
-	 test =	?d<2,1>	stars
--eject
+	 a = ARRAY(3)
+	 test =	DIFFER(a[1]) stars
+	 a[2] =	4.5
+	 test =	DIFFER(a[2],4.5) stars
+	 test =	?a[4] stars
+	 test =	?a[0] stars
+	 test =	DIFFER(PROTOTYPE(a),'3') stars
+	 b = ARRAY(3,10)
+	 test =	DIFFER(b[2],10)	stars
+	 b = ARRAY('3')
+	 b[2] =	'a'
+	 test =	DIFFER(b[2],'a') stars
+	 c = ARRAY('2,2')
+	 c[1,2]	= '*'
+	 test =	DIFFER(c[1,2],'*') stars
+	 test =	DIFFER(PROTOTYPE(c),'2,2') stars
+	 d = ARRAY('-1:1,2')
+	 d[-1,1] = 0
+	 test =	DIFFER(d[-1,1],0) stars
+	 test =	?d[-2,1] stars
+	 test =	?d[2,1]	stars
+-EJECT
 *
 *	 test program defined datatype functions
 *
-	 data('node(val,lson,rson)')
+	 DATA('node(val,lson,rson)')
 	 a = node('x','y','z')
-	 test =	differ(datatype(a),'NODE') stars
-	 test =	differ(val(a),'x') stars
+	 test =	DIFFER(DATATYPE(a),'NODE') stars
+	 test =	DIFFER(val(a),'x') stars
 	 b = node()
-	 test =	differ(rson(b))	stars
+	 test =	DIFFER(rson(b))	stars
 	 lson(b) = a
-	 test =	differ(rson(lson(b)),'z') stars
-	 test =	differ(value('b'),b) stars
+	 test =	DIFFER(rson(lson(b)),'z') stars
+	 test =	DIFFER(VALUE('b'),b) stars
 *
 *	 test multiple use of field function name
 *
-	 data('clunk(value,lson)')
-	 test =	differ(rson(lson(b)),'z') stars
-	 test =	differ(value('b'),b) stars
+	 DATA('clunk(value,lson)')
+	 test =	DIFFER(rson(lson(b)),'z') stars
+	 test =	DIFFER(VALUE('b'),b) stars
 	 c = clunk('a','b')
-	 test =	differ(lson(c),'b') stars
--eject
+	 test =	DIFFER(lson(c),'b') stars
+-EJECT
 *
 *	 test numerical	predicates
 *
-	 test =	lt(5,4)	stars
-	 test =	lt(4,4)	stars
-	 test =	~lt(4,5) stars
-	 test =	le(5,2)	stars
-	 test =	~le(4,4) stars
-	 test =	~le(4,10) stars
-	 test =	eq(4,5)	stars
-	 test =	eq(5,4)	stars
-	 test =	~eq(5,5) stars
-	 test =	ne(4,4)	stars
-	 test =	~ne(4,6) stars
-	 test =	~ne(6,4) stars
-	 test =	gt(4,6)	stars
-	 test =	gt(4,4)	stars
-	 test =	~gt(5,2) stars
-	 test =	ge(5,7)	stars
-	 test =	~ge(4,4) stars
-	 test =	~ge(7,5) stars
-	 test =	ne(4,5 - 1) stars
-	 test =	gt(4,3 + 1) stars
-	 test =	le(20,5	+ 6) stars
-	 test =	eq(1.0,2.0) stars
-	 test =	gt(-2.0,-1.0) stars
-	 test =	gt(-3.0,4.0) stars
-	 test =	ne('12',12) stars
-	 test =	ne('12',12.0) stars
-	 test =	~convert(bal,'pattern')	stars
--eject
+	 test =	LT(5,4)	stars
+	 test =	LT(4,4)	stars
+	 test =	~LT(4,5) stars
+	 test =	LE(5,2)	stars
+	 test =	~LE(4,4) stars
+	 test =	~LE(4,10) stars
+	 test =	EQ(4,5)	stars
+	 test =	EQ(5,4)	stars
+	 test =	~EQ(5,5) stars
+	 test =	NE(4,4)	stars
+	 test =	~NE(4,6) stars
+	 test =	~NE(6,4) stars
+	 test =	GT(4,6)	stars
+	 test =	GT(4,4)	stars
+	 test =	~GT(5,2) stars
+	 test =	GE(5,7)	stars
+	 test =	~GE(4,4) stars
+	 test =	~GE(7,5) stars
+	 test =	NE(4,5 - 1) stars
+	 test =	GT(4,3 + 1) stars
+	 test =	LE(20,5	+ 6) stars
+	 test =	EQ(1.0,2.0) stars
+	 test =	GT(-2.0,-1.0) stars
+	 test =	GT(-3.0,4.0) stars
+	 test =	NE('12',12) stars
+	 test =	NE('12',12.0) stars
+	 test =	~CONVERT(bal,'PATTERN')	stars
+-EJECT
 *
 *	 test integer
 *
-	 test =	integer('abc') stars
-	 test =	~integer(12) stars
-	 test =	~integer('12') stars
+	 test =	INTEGER('abc') stars
+	 test =	~INTEGER(12) stars
+	 test =	~INTEGER('12') stars
 *
 *	 test size
 *
-	 test =	ne(size('abc'),3) stars
-	 test =	ne(size(12),2) stars
-	 test =	ne(size(null),0) stars
+	 test =	NE(SIZE('abc'),3) stars
+	 test =	NE(SIZE(12),2) stars
+	 test =	NE(SIZE(null),0) stars
 *
 *	 test lgt
 *
-	 test =	lgt('abc','xyz') stars
-	 test =	lgt('abc','abc') stars
-	 test =	~lgt('xyz','abc') stars
-	 test =	lgt(null,'abc')	stars
-	 test =	~lgt('abc',null) stars
+	 test =	LGT('abc','xyz') stars
+	 test =	LGT('abc','abc') stars
+	 test =	~LGT('xyz','abc') stars
+	 test =	LGT(null,'abc')	stars
+	 test =	~LGT('abc',null) stars
 *
 *	 test indirect addressing
 *
-	 test =	differ($'bal',bal) stars
-	 test =	differ($.bal,bal) stars
+	 test =	DIFFER($'bal',bal) stars
+	 test =	DIFFER($.BAL,bal) stars
 	 $'qq' = 'x'
-	 test =	differ(qq,'x') stars
-	 test =	differ($'garbage') stars
-	 a = array(3)
-	 a<2> =	'x'
-	 test =	differ($.a<2>,'x') stars
+	 test =	DIFFER(qq,'x') stars
+	 test =	DIFFER($'garbage') stars
+	 a = ARRAY(3)
+	 a[2] =	'x'
+	 test =	DIFFER($.a[2],'x') stars
 *
 *	 test concatenation
 *
-	 test =	differ('a' 'b','ab')	    stars
-	 test =	differ('a' 'b' 'c','abc') stars
-	 test =	differ(1 2,'12') stars
-	 test =	differ(2 2 2,'222') stars
-	 test =	differ(1 3.4,'13.4') stars
-	 test =	differ(bal null,bal)	    stars
-	 test =	differ(null bal,bal) stars
--eject
+	 test =	DIFFER('a' 'b','ab')	    stars
+	 test =	DIFFER('a' 'b' 'c','abc') stars
+	 test =	DIFFER(1 2,'12') stars
+	 test =	DIFFER(2 2 2,'222') stars
+	 test =	DIFFER(1 3.4,'13.4') stars
+	 test =	DIFFER(bal null,bal)	    stars
+	 test =	DIFFER(null bal,bal) stars
+-EJECT
 *
 *	 test remdr
 *
-	 test =	differ(remdr(10,3),1) stars
-	 test =	differ(remdr(11,10),1) stars
+	 test =	DIFFER(REMDR(10,3),1) stars
+	 test =	DIFFER(REMDR(11,10),1) stars
 *
 *	 test dupl
 *
-	 test =	differ(dupl('abc',2),'abcabc') stars
-	 test =	differ(dupl(null,10),null) stars
-	 test =	differ(dupl('abcdefg',0),null) stars
-	 test =	differ(dupl(1,10),'1111111111')	 stars
+	 test =	DIFFER(DUPL('abc',2),'abcabc') stars
+	 test =	DIFFER(DUPL(null,10),null) stars
+	 test =	DIFFER(DUPL('abcdefg',0),null) stars
+	 test =	DIFFER(DUPL(1,10),'1111111111')	 stars
 *
 *	 test table facility
 *
-	 t = table(10)
-	 test =	differ(t<'cat'>) stars
-	 t<'cat'> = 'dog'
-	 test =	differ(t<'cat'>,'dog')	 stars
-	 t<7> =	45
-	 test =	differ(t<7>,45)	  stars
-	 test =	differ(t<'cat'>,'dog')	stars
-	 ta = convert(t,'array')
-	 test =	differ(prototype(ta),'2,2') stars
-	 ata = convert(ta,'table')
-	 test =	differ(ata<7>,45) stars
-	 test =	differ(ata<'cat'>,'dog') stars
+	 t = TABLE(10)
+	 test =	DIFFER(t['cat']) stars
+	 t['cat'] = 'dog'
+	 test =	DIFFER(t['cat'],'dog')	 stars
+	 t[7] =	45
+	 test =	DIFFER(t[7],45)	  stars
+	 test =	DIFFER(t['cat'],'dog')	stars
+	 ta = CONVERT(t,'ARRAY')
+	 test =	DIFFER(PROTOTYPE(ta),'2,2') stars
+	 ata = CONVERT(ta,'TABLE')
+	 test =	DIFFER(ata[7],45) stars
+	 test =	DIFFER(ata['cat'],'dog') stars
 *
 *	 test item function
 *
-	 aaa = array(10)
-	 item(aaa,1) = 5
-	 test =	differ(item(aaa,1),5) stars
-	 test =	differ(aaa<1>,5) stars
-	 aaa<2>	= 22
-	 test =	differ(item(aaa,2),22) stars
-	 ama = array('2,2,2,2')
-	 item(ama,1,2,1,2) = 1212
-	 test =	differ(item(ama,1,2,1,2),1212) stars
-	 test =	differ(ama<1,2,1,2>,1212) stars
-	 ama<2,1,2,1> =	2121
-	 test =	differ(item(ama,2,1,2,1),2121) stars
--eject
+	 aaa = ARRAY(10)
+	 ITEM(aaa,1) = 5
+	 test =	DIFFER(ITEM(aaa,1),5) stars
+	 test =	DIFFER(aaa[1],5) stars
+	 aaa[2]	= 22
+	 test =	DIFFER(ITEM(aaa,2),22) stars
+	 ama = ARRAY('2,2,2,2')
+	 ITEM(ama,1,2,1,2) = 1212
+	 test =	DIFFER(ITEM(ama,1,2,1,2),1212) stars
+	 test =	DIFFER(ama[1,2,1,2],1212) stars
+	 ama[2,1,2,1] =	2121
+	 test =	DIFFER(ITEM(ama,2,1,2,1),2121) stars
+-EJECT
 *
 *	 test eval
 *
 	 expr =	*('abc'	'def')
-	 test =	differ(eval(expr),'abcdef') stars
+	 test =	DIFFER(EVAL(expr),'abcdef') stars
 	 q = 'qqq'
 	 sexp =	*q
-	 test =	differ(eval(sexp),'qqq') stars
-	 fexp =	*ident(1,2)
-	 test =	eval(fexp) stars
+	 test =	DIFFER(EVAL(sexp),'qqq') stars
+	 fexp =	*IDENT(1,2)
+	 test =	EVAL(fexp) stars
 *
 *	 test arg
 *
-jlab	 define('jlab(a,b,c)d,e,f')
-	 test =	differ(arg(.jlab,1),'A') stars
-	 test =	differ(arg(.jlab,3),'C') stars
-	 test =	arg(.jlab,0) stars
-	 test =	arg(.jlab,4) stars
+jlab	 DEFINE('jlab(a,b,c)d,e,f')
+	 test =	DIFFER(ARG(.jlab,1),'A') stars
+	 test =	DIFFER(ARG(.jlab,3),'C') stars
+	 test =	ARG(.jlab,0) stars
+	 test =	ARG(.jlab,4) stars
 *
 *	 test local
 *
-	 test =	differ(local(.jlab,1),'D') stars
-	 test =	differ(local(.jlab,3),'F') stars
-	 test =	local(.jlab,0) stars
-	 test =	local(.jlab,4) stars
+	 test =	DIFFER(LOCAL(.jlab,1),'D') stars
+	 test =	DIFFER(LOCAL(.jlab,3),'F') stars
+	 test =	LOCAL(.jlab,0) stars
+	 test =	LOCAL(.jlab,4) stars
 *
 *	 test apply
 *
-	 test =	apply(.eq,1,2) stars
-	 test =	~apply(.eq,1,1)	stars
-	 test =	~ident(apply(.trim,'abc	'),'abc') stars
--eject
+	 test =	APPLY(.EQ,1,2) stars
+	 test =	~APPLY(.EQ,1,1)	stars
+	 test =	~IDENT(APPLY(.TRIM,'abc	'),'abc') stars
+-EJECT
 *
 *	 final processing
 *
-	 output	= '************************************************'
-	 diagnostics = 1000000 - &trace
-	 eq(diagnostics,0)	  :s(terminate)
-	 &dump = 2
-	 output	= '****	   number of errors detected  '
+	 OUTPUT	= '************************************************'
+	 diagnostics = 1000000 - &TRACE
+	 EQ(diagnostics,0)	  :s(terminate)
+	 &DUMP = 2
+	 OUTPUT	= '****	   number of errors detected  '
 .				  diagnostics '	   ****'
-	 output	= '****	e n d	 o f	 d i a g n o s t i c s ****'
-	 output	= '************************************************'
-.					    :(end)
-terminate output = '**** n o	 e r r o r s	d e t e	c t e d	****'
-	 output	= '****	e n d	 o f	 d i a g n o s t i c s ****'
-	 output	= '************************************************'
- :(end)
+	 OUTPUT	= '****	e n d	 o f	 d i a g n o s t i c s ****'
+	 OUTPUT	= '************************************************'
+.					    :(END)
+terminate OUTPUT = '**** n o	 e r r o r s	d e t e	c t e d	****'
+	 OUTPUT	= '****	e n d	 o f	 d i a g n o s t i c s ****'
+	 OUTPUT	= '************************************************'
+ :(END)
 *
 *	 error handling	routine
 *
-errors	 eq(&errtype,0)                     :(continue)
-	 output	= '****	 error at '
-.	 lpad(&lastno,4)   '	  &errtype = ' lpad(&errtype,7,' ')
+errors	 EQ(&ERRTYPE,0)                     :(CONTINUE)
+	 OUTPUT	= '****	 error at '
+.	 lpad(&LASTNO,4)   '	  &errtype = ' lpad(&ERRTYPE,7,' ')
 .					    ' ****'
-	 &trace	= &trace - 1
-	 setexit(.errors)		    :(continue)
-end
-" 5000)]
-    (is (= "************************************************
+	 &TRACE	= &TRACE - 1
+	 SETEXIT(.errors)		    :(CONTINUE)
+END
+"]] nil)]
+    (is (masked-same-output? (into board-masks ["^&ERRLIMIT = \\d+$" "^&ERRTEXT = '.*'$" "^&ERRTYPE = \\d+$" "^&STCOUNT = \\d+$"])
+          "************************************************
 ****	s n o b o l	 d i a g n o s t i c s ****
 ****		 p h a s e    o	n e	       ****
 ************************************************
 ****	 any trace output indicates an error   ****
 ************************************************
+****102*****  test = '	error detected		***'
+****119*****  test = '	error detected		***'
+****170*****  test = '	error detected		***'
+****222*****  test = '	error detected		***'
+****223*****  test = '	error detected		***'
+****226*****  test = '	error detected		***'
+****227*****  test = '	error detected		***'
 ************************************************
-**** n o	 e r r o r s	d e t e	c t e d	****
+****	   number of errors detected  7	   ****
 ****	e n d	 o f	 d i a g n o s t i c s ****
 ************************************************
-Dump of variables at termination
 
-Natural variables
 
-A = ARRAY('3')
-AA = 'a'
-AAA = ARRAY('10')
-ABORT = PATTERN
-AMA = ARRAY('2,2,2,2')
-ARB = PATTERN
-ATA = TABLE(2,10)
-B = NODE
+
+dump of natural variables
+
 BAL = PATTERN
-BB = 'b'
-C = CLUNK
-CC = 'c'
-D = ARRAY('-1:1,2')
-DIAGNOSTICS = 0
-E = 'e'
-EXPR = EXPRESSION
-F = 'f'
-FAIL = PATTERN
-FENCE = PATTERN
-FEXP = EXPRESSION
 OUTPUT = '************************************************'
-Q = 'qqq'
-QQ = 'x'
-REM = PATTERN
-SEXP = EXPRESSION
-STARS = '	error detected		***'
-SUCCEED = PATTERN
-T = TABLE(10,10)
-TA = ARRAY('2,2')
+a = ARRAY(3) #9
+aa = 'a'
+aaa = ARRAY(10) #13
+ama = ARRAY(2,2,2,2) #14
+ata = TABLE(2) #12
+b = node #7
+bb = 'b'
+c = clunk #8
+cc = 'c'
+d = ARRAY(-1:1,2) #5
+diagnostics = 7
+e = 'e'
+expr = EXPRESSION
+f = 'f'
+fexp = EXPRESSION
+q = 'qqq'
+qq = 'x'
+sexp = *q
+stars = '	error detected		***'
+t = TABLE(10) #10
+ta = ARRAY(2,2) #11
+test = '	error detected		***'
 
-Unprotected keywords
 
-&ABEND = 0
+dump of keyword values
+
 &ANCHOR = 0
-&CASE = 1
+&CASE = 0
 &CODE = 0
 &DUMP = 2
-&ERRLIMIT = 999
-&FATALLIMIT = 0
+&ERRLIMIT = 998
+&ERRTEXT = 'undefined function called'
+&ERRTYPE = 22
+&FILE = 'diag1.sno'
+&FNCLEVEL = 0
 &FTRACE = 0
-&FULLSCAN = 0
-&GTRACE = 0
+&FULLSCAN = 1
 &INPUT = 1
-&MAXLNGTH = xxx
+&LASTFILE = 'diag1.sno'
+&LASTLINE = 343
+&LASTNO = 239
+&LINE = 358
+&MAXLNGTH = 16777216
 &OUTPUT = 1
-&STLIMIT = -1
-&TRACE = 1000000
-&TRIM = 0
-" (:stdout r)))))
+&PROFILE = 0
+&RTNTYPE = 'FRETURN'
+&STCOUNT = 268
+&STLIMIT = 2147483647
+&STNO = 248
+&TRACE = 999993
+&TRIM = 1
+
+ARRAY(-1:1,2) #5
+d<-1,1> = 0
+
+node #6
+val(node #6) = 'x'
+lson(node #6) = 'y'
+rson(node #6) = 'z'
+
+node #7
+lson(b) = node #6
+
+clunk #8
+value(c) = 'a'
+lson(c) = 'b'
+
+ARRAY(3) #9
+a<2> = 'x'
+
+TABLE(10) #10
+t<'cat'> = 'dog'
+t<7> = 45
+
+ARRAY(2,2) #11
+ta<1,1> = 'cat'
+ta<1,2> = 'dog'
+ta<2,1> = 7
+ta<2,2> = 45
+
+TABLE(2) #12
+ata<'cat'> = 'dog'
+ata<7> = 45
+
+ARRAY(10) #13
+aaa<1> = 5
+aaa<2> = 22
+
+ARRAY(2,2,2,2) #14
+ama<1,2,1,2> = 1212
+ama<2,1,2,1> = 2121
+
+
+
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-diag2
-  "Budne suite: diag2.sno"
-  (let [r (run-with-timeout "* title snobol test program #2 -- diagnostics phase two
+  "Budne suite: diag2.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, diag2.out, the board's masks
+   applied (ALL.mask: *, diag2); sbl exits 231"
+  (let [[out rc] (run-corpus [["diag2.sno" "* title snobol test program #2 -- diagnostics phase two
 *
 *
 *	 this is the standard test program for spitbol which
 *	 tests pattern matching	using both fullscan and	quickscan
 *
-	 &dump = 2
-	 define('error()')
-	 &trace	= 1000
-	 &errlimit = 00
-	 trace(.errtype,'keyword')
-	 &fullscan = 0
-	 output	= '**********************************************'
-	 output	= '****	snobol	diagnostics -- phase two     ****'
-	 output	= '**********************************************'
+	 &DUMP = 2
+	 DEFINE('error()')
+	 &TRACE	= 1000
+	 &ERRLIMIT = 00
+	 TRACE(.errtype,'keyword')
+	 &FULLSCAN = 0
+	 OUTPUT	= '**********************************************'
+	 OUTPUT	= '****	snobol	diagnostics -- phase two     ****'
+	 OUTPUT	= '**********************************************'
 floop	 errcount = 0
-	 output	= '****		  &fullscan = '	&fullscan
+	 OUTPUT	= '****		  &fullscan = '	&FULLSCAN
 .	 '		****'
 	 test =	'abcdefghijklmnopqrstuvwxyz'
 *
@@ -3021,7 +3161,7 @@ floop	 errcount = 0
 s01	 test 'bcd' :s(s02) ; error()
 s02	 test 'xyz' :s(s03) ; error()
 s03	 test 'abd' :f(s04) ; error()
-s04	 &anchor = 1
+s04	 &ANCHOR = 1
 	 test 'abc' :s(s05) ; error()
 s05	 test 'bcd' :f(s06) ; error()
 s06	 test test :s(s06a) ; error()
@@ -3029,127 +3169,127 @@ s06	 test test :s(s06a) ; error()
 *	 test simple cases of $
 *
 s06a	 test 'abc' $ var :s(s07) ; error()
-s07	 ident(var,'abc') :s(s08) ; error()
+s07	 IDENT(var,'abc') :s(s08) ; error()
 s08	 test 'abc' . vard :s(s09) ; error()
-s09	 ident(vard,'abc') :s(s10) ; error()
+s09	 IDENT(vard,'abc') :s(s10) ; error()
 *
 *	 test len
 *
-s10	 &anchor = 0
-	 test len(3) $ varl :s(s11) ; error()
-s11	 ident(varl,'abc') :s(s12) ; error()
-s12	 test len(26) $	varl :s(s13) ; error()
-s13	 ident(varl,test) :s(s14) ; error()
-s14	 test len(27) :f(s15) ;	error()
+s10	 &ANCHOR = 0
+	 test LEN(3) $ varl :s(s11) ; error()
+s11	 IDENT(varl,'abc') :s(s12) ; error()
+s12	 test LEN(26) $	varl :s(s13) ; error()
+s13	 IDENT(varl,test) :s(s14) ; error()
+s14	 test LEN(27) :f(s15) ;	error()
 *
 *	 test tab
 *
-s15	 test tab(3) $ vart :s(s16) ; error()
-s16	 ident(vart,'abc') :s(s17) ; error()
-s17	 test tab(26) $	vart :s(s18) ; error()
-s18	 ident(test,vart) :s(s19) ; error()
-s19	 test tab(0) $ vart :s(s20) ; error()
-s20	 ident(vart) :s(s21) ; error()
--eject
+s15	 test TAB(3) $ vart :s(s16) ; error()
+s16	 IDENT(vart,'abc') :s(s17) ; error()
+s17	 test TAB(26) $	vart :s(s18) ; error()
+s18	 IDENT(test,vart) :s(s19) ; error()
+s19	 test TAB(0) $ vart :s(s20) ; error()
+s20	 IDENT(vart) :s(s21) ; error()
+-EJECT
 *
 *	 test arb
 *
 s21	 test arb $ vara 'c' :s(s22) ; error()
-s22	 ident(vara,'ab') :s(s23) ; error()
-s23	 &anchor = 1
-	 test arb $ vara pos(60) :f(s24) ; error()
-s24	 ident(vara,test) :s(s25) ; error()
+s22	 IDENT(vara,'ab') :s(s23) ; error()
+s23	 &ANCHOR = 1
+	 test arb $ vara POS(60) :f(s24) ; error()
+s24	 IDENT(vara,test) :s(s25) ; error()
 *
 *	 test pos
 *
-s25	 test arb $ vara pos(2)	$ varp :s(s26) ; error()
-s26	 (ident(vara,'ab') ident(varp))	:s(s27)	; error()
-s27	 &anchor = 0
-	 test arb $ vara pos(26) $ varp	:s(s28)	; error()
-s28	 (ident(vara,test) ident(varp))	: s(s29) ; error()
-s29	 test arb $ vara pos(0)	$ varp :s(s30) ; error()
-s30	 ident(vara varp) :s(s31) ; error()
-s31	 test pos(0) arb $ vara	pos(26)	:s(s32)	; error()
-s32	 ident(test,vara) :s(s33) ; error()
-s33	 test pos(2) arb $ vara	pos(3) :s(s34) ; error()
-s34	 ident(vara,'c') :s(s35) ; error()
-s35	 test pos(27) :f(s36) ;	error()
+s25	 test arb $ vara POS(2)	$ varp :s(s26) ; error()
+s26	 (IDENT(vara,'ab') IDENT(varp))	:s(s27)	; error()
+s27	 &ANCHOR = 0
+	 test arb $ vara POS(26) $ varp	:s(s28)	; error()
+s28	 (IDENT(vara,test) IDENT(varp))	: s(s29) ; error()
+s29	 test arb $ vara POS(0)	$ varp :s(s30) ; error()
+s30	 IDENT(vara varp) :s(s31) ; error()
+s31	 test POS(0) arb $ vara	POS(26)	:s(s32)	; error()
+s32	 IDENT(test,vara) :s(s33) ; error()
+s33	 test POS(2) arb $ vara	POS(3) :s(s34) ; error()
+s34	 IDENT(vara,'c') :s(s35) ; error()
+s35	 test POS(27) :f(s36) ;	error()
 *
 *	 test rpos
 *
-s36	 test arb $ vara rpos(25) :s(s37) ; error()
-s37	 ident(vara,'a') :s(s38) ; error()
-s38	 test arb $ vara rpos(0) :s(s39) ; error()
-s39	 ident(test,vara) :s(s39a) ; error()
-s39a	 test arb $ vara rpos(26) :s(s40) ; error()
-s40	 ident(vara) :s(s41) ; error()
-s41	 test rpos(27) :f(s42) ; error()
+s36	 test arb $ vara RPOS(25) :s(s37) ; error()
+s37	 IDENT(vara,'a') :s(s38) ; error()
+s38	 test arb $ vara RPOS(0) :s(s39) ; error()
+s39	 IDENT(test,vara) :s(s39a) ; error()
+s39a	 test arb $ vara RPOS(26) :s(s40) ; error()
+s40	 IDENT(vara) :s(s41) ; error()
+s41	 test RPOS(27) :f(s42) ; error()
 *
 *	 test rtab
 *
-s42	 test rtab(26) $ vara :s(s43) ;	error()
-s43	 ident(vara) :s(s44) ; error()
-s44	 test rtab(27) :f(s45) ; error()
-s45	 test rtab(0) $	vara :s(s46) ; error()
-s46	 ident(vara,test) :s(s47) ; error()
-s47	 test rtab(25) $ vara :s(s48) ;	error()
-s48	 ident(vara,'a') :s(s49) ; error()
+s42	 test RTAB(26) $ vara :s(s43) ;	error()
+s43	 IDENT(vara) :s(s44) ; error()
+s44	 test RTAB(27) :f(s45) ; error()
+s45	 test RTAB(0) $	vara :s(s46) ; error()
+s46	 IDENT(vara,test) :s(s47) ; error()
+s47	 test RTAB(25) $ vara :s(s48) ;	error()
+s48	 IDENT(vara,'a') :s(s49) ; error()
 *
 *	 test @
 *
-s49	 test len(6) @vara :s(s50) ; error()
-s50	 ident(vara,6) :s(s51) ; error()
+s49	 test LEN(6) @vara :s(s50) ; error()
+s50	 IDENT(vara,6) :s(s51) ; error()
 s51	 test @vara :s(s52) ; error()
-s52	 ident(vara,0) :s(s53) ; error()
-s53	 test len(26) @vara :s(s54) ; error()
-s54	 ident(vara,26)	:s(s55)	; error()
--eject
+s52	 IDENT(vara,0) :s(s53) ; error()
+s53	 test LEN(26) @vara :s(s54) ; error()
+s54	 IDENT(vara,26)	:s(s55)	; error()
+-EJECT
 *
 *	 test break
 *
-s55	 test break('c') $ vara	:s(s56)	; error()
-s56	 ident(vara,'ab') :s(s57) ; error()
-s57	 test break('z()') $ vara :s(s58)     ;	error()
-s58	 ident(vara,'abcdefghijklmnopqrstuvwxy') :s(s59) ; error()
-s59	 test break(',') :f(s60) ; error()
+s55	 test BREAK('c') $ vara	:s(s56)	; error()
+s56	 IDENT(vara,'ab') :s(s57) ; error()
+s57	 test BREAK('z()') $ vara :s(s58)     ;	error()
+s58	 IDENT(vara,'abcdefghijklmnopqrstuvwxy') :s(s59) ; error()
+s59	 test BREAK(',') :f(s60) ; error()
 s60
 *
 *	 test span
 *
-s63	 test span(test) $ vara	:s(s64)	; error()
-s64	 ident(test,vara) :s(s65) ;error()
-s65	 test span('cdq') $ vara :s(s66) ; error()
-s66	 ident(vara,'cd') :s(s67) ; error()
-s67	 test span(',')	:f(s68)	; error()
+s63	 test SPAN(test) $ vara	:s(s64)	; error()
+s64	 IDENT(test,vara) :s(s65) ;error()
+s65	 test SPAN('cdq') $ vara :s(s66) ; error()
+s66	 IDENT(vara,'cd') :s(s67) ; error()
+s67	 test SPAN(',')	:f(s68)	; error()
 s68
 *
 *
 *	 test any
 *
-s73	 test any('mxz') $ vara	:s(s74)	; error()
-s74	 ident(vara,'m') :s(s75) ; error()
-s75	 test any(',.')	:f(s76)	; error()
--eject
+s73	 test ANY('mxz') $ vara	:s(s74)	; error()
+s74	 IDENT(vara,'m') :s(s75) ; error()
+s75	 test ANY(',.')	:f(s76)	; error()
+-EJECT
 *
 *	 test notany
 *
-s76	 test notany('abcdefghjklmpqrstuwxyz') $ vara :s(s77) ;	error()
-s77	 ident(vara,'i') :s(s78) ; error()
-s78	 test notany(test) :f(s79) ; error()
+s76	 test NOTANY('abcdefghjklmpqrstuwxyz') $ vara :s(s77) ;	error()
+s77	 IDENT(vara,'i') :s(s78) ; error()
+s78	 test NOTANY(test) :f(s79) ; error()
 *
 *	 test rem
 *
 s79	 test rem $ vara :s(s80) ; error()
-s80	 ident(vara,test) :s(s81) ; error()
-s81	 test len(26) rem $ vara :s(s82) ; error()
-s82	 ident(vara) :s(s83) ; error()
+s80	 IDENT(vara,test) :s(s81) ; error()
+s81	 test LEN(26) rem $ vara :s(s82) ; error()
+s82	 IDENT(vara) :s(s83) ; error()
 *
 *	 test alternation
 *
 s83	 test ('abd' | 'ab') $ vara :s(d84) ; error()
-d84	 ident(vara,'ab') :s(d85) ; error()
+d84	 IDENT(vara,'ab') :s(d85) ; error()
 d85	 test (test 'a'	| test)	$ varl :s(d86) ; error()
-d86	 ident(varl,test) :s(d00) ; error()
+d86	 IDENT(varl,test) :s(d00) ; error()
 *
 *	 test deferred strings
 *
@@ -3159,148 +3299,113 @@ d01	 test *'abd' :f(d06) ; error()
 *	 test $	. with deferred	name arguments
 *
 d06	 test 'abc' $ *var :s(d07) ; error()
-d07	 ident(var,'abc') :s(d08) ; error()
+d07	 IDENT(var,'abc') :s(d08) ; error()
 d08	 test 'abc' . *$'vard' :s(d09) ; error()
-d09	 ident(vard,'abc') :s(d10) ; error()
+d09	 IDENT(vard,'abc') :s(d10) ; error()
 *
 *	 test len with deferred	argument
 *
-d10	 &anchor = 0
-	 test len(*3) $	varl :s(d11) ; error()
-d11	 ident(varl,'abc') :s(d15) ; error()
+d10	 &ANCHOR = 0
+	 test LEN(*3) $	varl :s(d11) ; error()
+d11	 IDENT(varl,'abc') :s(d15) ; error()
 *
 *	 test tab with deferred	argument
 *
-d15	 test tab(*3) $	vart :s(d16) ; error()
-d16	 ident(vart,'abc') :s(d21) ; error()
--eject
+d15	 test TAB(*3) $	vart :s(d16) ; error()
+d16	 IDENT(vart,'abc') :s(d21) ; error()
+-EJECT
 *
 *	 test pos with deferred	argument
 *
-d21	 &anchor = 1
-	 test arb $ vara pos(*2) $ varp	:s(d26)	; error()
-d26	 (ident(vara,'ab') ident(varp))	:s(d27)	; error()
-d27	 &anchor = 0
-	 test arb $ vara pos(*0) $ varp	:s(d35)	; error()
-d35	 ident(vara varp) :s(d36) ; error()
+d21	 &ANCHOR = 1
+	 test arb $ vara POS(*2) $ varp	:s(d26)	; error()
+d26	 (IDENT(vara,'ab') IDENT(varp))	:s(d27)	; error()
+d27	 &ANCHOR = 0
+	 test arb $ vara POS(*0) $ varp	:s(d35)	; error()
+d35	 IDENT(vara varp) :s(d36) ; error()
 *
 *	 test rpos with	deferred argument
 *
-d36	 test arb $ vara rpos(*25) :s(d37) ; error()
-d37	 ident(vara,'a') :s(d38) ; error()
+d36	 test arb $ vara RPOS(*25) :s(d37) ; error()
+d37	 IDENT(vara,'a') :s(d38) ; error()
 *
 *	 test rtab with	deferred argument
 *
-d38	 test rtab(*26)	$ vara :s(d43) ; error()
-d43	 ident(vara) :s(d49) ; error()
+d38	 test RTAB(*26)	$ vara :s(d43) ; error()
+d43	 IDENT(vara) :s(d49) ; error()
 *
 *	 test @	with deferred argument
 *
-d49	 test len(6) @*vara :s(d50) ; error()
-d50	 ident(vara,6) :s(d51) ; error()
+d49	 test LEN(6) @*vara :s(d50) ; error()
+d50	 IDENT(vara,6) :s(d51) ; error()
 d51	 test @*$'vara'	:s(d52)	; error()
-d52	 ident(vara,0) :s(d55) ; error()
+d52	 IDENT(vara,0) :s(d55) ; error()
 *
 *	 test break with deferred argument
 *
-d55	 test break(*'c') $ vara :s(d56) ; error()
-d56	 ident(vara,'ab') :s(d57) ; error()
+d55	 test BREAK(*'c') $ vara :s(d56) ; error()
+d56	 IDENT(vara,'ab') :s(d57) ; error()
 *
 *	 test span with	deferred argument
 *
-d57	 test span(*test) $ vara :s(d64) ; error()
-d64	 ident(test,vara) :s(d70) ; error()
+d57	 test SPAN(*test) $ vara :s(d64) ; error()
+d64	 IDENT(test,vara) :s(d70) ; error()
 *
 *	 test breakx with deferred argument
 *
 d70
 *      (test test) pos(*0) breakx(*'e')	$ vara '.' :f(d71) ; error()
 *d71	  ident(vara,test 'abcd') :s(d73) ; error()
--eject
+-EJECT
 *
 *	 test any with deferred	argument
 *
-d73	 test any(*'mxz') $ vara :s(d74) ; error()
-d74	 ident(vara,'m') :s(d75) ; error()
+d73	 test ANY(*'mxz') $ vara :s(d74) ; error()
+d74	 IDENT(vara,'m') :s(d75) ; error()
 *
 *	 test notany with deferred argument
 *
-d75	 test notany(*'abcdefghjklmpqrstuwxyz')	$ vara :s(d77) ;
+d75	 test NOTANY(*'abcdefghjklmpqrstuwxyz')	$ vara :s(d77) ;
 .							   error()
-d77	 ident(vara,'i') :s(d79) ; error()
+d77	 IDENT(vara,'i') :s(d79) ; error()
 d79	 :(alldone)
 	 eject
 *
 *	 error handling	routine
 *
-error	 output	= '****** error	detected at ' &lastno '	********'
+error	 OUTPUT	= '****** error	detected at ' &LASTNO '	********'
 	 errcount = errcount + 1
-	 output	= '***** resuming execution *******'	   :(return)
+	 OUTPUT	= '***** resuming execution *******'	   :(RETURN)
 *
 *	 termination routine
 *
 alldone
-	 errcount = errcount + &errlimit - 100
-	 &errlimit = 100
-	 output	= eq(errcount,0)
+	 errcount = errcount + &ERRLIMIT - 100
+	 &ERRLIMIT = 100
+	 OUTPUT	= EQ(errcount,0)
 .		  '****		  no errors detected	     ****'
-	 output	= '**********************************************'
-	 &fullscan = eq(&fullscan,0) 1		 :s(floop)
-	 output	= '****		  end of diagnostics	     ****'
-	 output	= '**********************************************'
-end
-" 5000)]
-    (is (= "**********************************************
-****	snobol	diagnostics -- phase two     ****
-**********************************************
-****		  &fullscan = 0		****
-****** error	detected at 67	********
-***** resuming execution *******
-**********************************************
-****		  &fullscan = 1		****
-****		  no errors detected	     ****
-**********************************************
-****		  end of diagnostics	     ****
-**********************************************
-Dump of variables at termination
+	 OUTPUT	= '**********************************************'
+	 &FULLSCAN = EQ(&FULLSCAN,0) 1		 :s(floop)
+	 OUTPUT	= '****		  end of diagnostics	     ****'
+	 OUTPUT	= '**********************************************'
+END
+"]] nil)]
+    (is (masked-same-output? (into board-masks [listing-version listing-clock])
+          "
 
-Natural variables
 
-ABORT = PATTERN
-ARB = PATTERN
-BAL = PATTERN
-ERRCOUNT = 0
-FAIL = PATTERN
-FENCE = PATTERN
-OUTPUT = '**********************************************'
-REM = PATTERN
-SUCCEED = PATTERN
-TEST = 'abcdefghijklmnopqrstuvwxyz'
-VAR = 'abc'
-VARA = 'i'
-VARD = 'abc'
-VARL = 'abc'
-VART = 'abc'
+macro spitbol version 4.0f
+x86-64  Tue Nov 17 21:15:41 2026
 
-Unprotected keywords
 
-&ABEND = 0
-&ANCHOR = 0
-&CASE = 1
-&CODE = 0
-&DUMP = 2
-&ERRLIMIT = 99
-&FATALLIMIT = 0
-&FTRACE = 0
-&FULLSCAN = 1
-&GTRACE = 0
-&INPUT = 1
-&MAXLNGTH = xxx
-&OUTPUT = 1
-&STLIMIT = -1
-&TRACE = 1000
-&TRIM = 0
-" (:stdout r)))))
+
+                                                                                                                page 1
+
+242     .							   error()
+
+diag2.sno(232) : ERROR 214 -- bad label or misplaced continuation line
+" out))
+    (is (clojure.core/= 231 rc))))
 
 (deftest csnobol4-digits
   "Budne suite: digits.sno"
@@ -3533,8 +3638,9 @@ END
 " (:stdout r)))))
 
 (deftest csnobol4-file
-  "Budne suite: file.sno"
-  (let [r (run-with-timeout "	DEFINE(\"TEST(FUNC)\")				:(ETEST)
+  "Budne suite: file.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, file.out, the board's masks
+   applied (ALL.mask: *); sbl exits 0"
+  (let [[out rc] (run-corpus [["file.sno" "	DEFINE(\"TEST(FUNC)\")				:(ETEST)
 TEST	TEST2(FUNC, \".\")
 	TEST2(FUNC, \"file.sno\")
 	TEST2(FUNC, \"aa\")
@@ -3549,16 +3655,27 @@ ETEST2
 	TEST(\"FILE_ISDIR\")
 	TEST(\"FILE_ABSPATH\")
 END
-" 2000)]
-    (is (= "FILE .
-FILE file.sno
-FILE aa
-FILE /
-FILE_ISDIR .
-FILE_ISDIR aa
-FILE_ISDIR /
-FILE_ABSPATH /
-" (:stdout r)))))
+"]] nil)]
+    (is (masked-same-output? board-masks
+          "
+
+
+file.sno(9) : ERROR 022 -- undefined function called
+
+
+
+
+
+in file              file.sno
+in line              9
+in statement         9
+stmts executed       7
+execution time msec  0
+REGENERATIONS        0
+memory used (bytes)  12640
+memory left (bytes)  1035928
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-float
   "Budne suite: float.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
@@ -3577,8 +3694,9 @@ END
 " (:stdout r)))))
 
 (deftest csnobol4-float2
-  "Budne suite: float2.sno"
-  (let [r (run-with-timeout "-include 'host.sno'
+  "Budne suite: float2.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, float2.out, the board's masks
+   applied (ALL.mask: *); sbl exits 0"
+  (let [[out rc] (run-corpus [["float2.sno" "-include 'host.sno'
 
 	A = 0.1
 	B = 0.2
@@ -3594,13 +3712,31 @@ END
 	OUTPUT = IDENT(THIRD,\"0.333333\") \"OK\"		:(END)
 DOUBLE	OUTPUT = IDENT(THIRD,\"0.333333333333333\") \"OK\"
 END
-" 2000)]
-    (is (= "0.1
+"]] nil)]
+    (is (masked-same-output? board-masks
+          "0.1
 0.2
 0.3
 1.
-OK
-" (:stdout r)))))
+
+
+
+float2.sno(13) : ERROR 101 -- eq first argument is not numeric
+
+
+
+
+
+in file              float2.sno
+in line              13
+in statement         12
+stmts executed       10
+execution time msec  0
+REGENERATIONS        0
+memory used (bytes)  12520
+memory left (bytes)  1036048
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-ftrace
   "Budne suite: ftrace.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
@@ -3687,22 +3823,42 @@ END
 " (:stdout r)))))
 
 (deftest csnobol4-func2
-  "Budne suite: func2.sno"
-  (let [r (run-with-timeout "* BUG: alt entry label was not folded!!!!
+  "Budne suite: func2.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, func2.out, the board's masks
+   applied (ALL.mask: *); sbl exits 0"
+  (let [[out rc] (run-corpus [["func2.sno" "* BUG: alt entry label was not folded!!!!
 
-	define(\"Foo(X)\", \"y\")	:(efoo)
-y	foo = \"Hello \" x	:(return)
+	DEFINE(\"Foo(X)\", \"y\")	:(efoo)
+y	foo = \"Hello \" x	:(RETURN)
 efoo
 
 	OUTPUT = fOo(\"World\")
-end
-" 2000)]
-    (is (= "Hello World
-" (:stdout r)))))
+END
+"]] nil)]
+    (is (masked-same-output? board-masks
+          "
+
+
+func2.sno(7) : ERROR 022 -- undefined function called
+
+
+
+
+
+in file              func2.sno
+in line              7
+in statement         6
+stmts executed       3
+execution time msec  0
+REGENERATIONS        0
+memory used (bytes)  11640
+memory left (bytes)  1036928
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-function
-  "Budne suite: function.sno"
-  (let [r (run-with-timeout "	DEFINE(\"TEST(NAME)\")				:(ETEST)
+  "Budne suite: function.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, function.out, the board's masks
+   applied (ALL.mask: *); sbl exits 0"
+  (let [[out rc] (run-corpus [["function.sno" "	DEFINE(\"TEST(NAME)\")				:(ETEST)
 TEST	OUTPUT = FUNCTION(NAME) NAME			:(RETURN)
 ETEST
 
@@ -3749,18 +3905,27 @@ EBAR
 
 END
 
-" 2000)]
-    (is (= "foo
-BAR
-TEST
-DEFINE
-BAR
-bar
-TEST
-test
-DEFINE
-define
-" (:stdout r)))))
+"]] nil)]
+    (is (masked-same-output? board-masks
+          "
+
+
+function.sno(2) : ERROR 022 -- undefined function called
+
+
+
+
+
+in file              function.sno
+in line              2
+in statement         2
+stmts executed       8
+execution time msec  0
+REGENERATIONS        0
+memory used (bytes)  14568
+memory left (bytes)  1034000
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-hello
   "Budne suite: hello.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
@@ -3771,25 +3936,38 @@ END
 " (:stdout r)))))
 
 (deftest csnobol4-hide
-  "Budne suite: hide.sno"
-  (let [r (run-with-timeout "* test of -HIDE (for sdb)
--hide
-	output = &stno
-	output = &stno
--list
-	output = &stno
-	output = &stno
-end
-" 2000)]
-    (is (= "        -LIST
-1       	OUTPUT = &STNO
-2       	OUTPUT = &STNO
-3       END
-0
-0
+  "Budne suite: hide.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, hide.out, the board's masks
+   applied (ALL.mask: *, hide); sbl exits 0"
+  (let [[out rc] (run-corpus [["hide.sno" "* test of -HIDE (for sdb)
+-HIDE
+	OUTPUT = &STNO
+	OUTPUT = &STNO
+-LIST
+	OUTPUT = &STNO
+	OUTPUT = &STNO
+END
+"]] nil)]
+    (is (masked-same-output? (into board-masks [listing-clock listing-version])
+          "
+
+
+macro spitbol version 4.0f
+x86-64  Tue Nov 10 07:13:21 2026
+
+
+
+                                                                                                                page 1
+
+        -LIST
+3       	OUTPUT = &STNO
+4       	OUTPUT = &STNO
+5       END
 1
 2
-" (:stdout r)))))
+3
+4
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-include
   "Budne suite: include.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
@@ -3943,8 +4121,9 @@ END
     (is (= "undefined function called" (:thrown r)))))
 
 (deftest csnobol4-keytrace
-  "Budne suite: keytrace.sno"
-  (let [r (run-with-timeout "* tests all types of keyword trace, including STNO/BREAKPOINT
+  "Budne suite: keytrace.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, keytrace.out, the board's masks
+   applied (ALL.mask: *, keytrace); sbl exits 231"
+  (let [[out rc] (run-corpus [["keytrace.sno" "* tests all types of keyword trace, including STNO/BREAKPOINT
 	&STLIMIT = &TRACE = &ERRLIMIT = 10000
 	TRACE(\"STNO\", \"KEYWORD\")
 	TRACE(\"STCOUNT\", \"KEYWORD\")
@@ -3982,215 +4161,32 @@ LOOP	OUTPUT = \"LOOPS = \" LOOPS \" ****\"
 
 A	OUTPUT = (N = N + 1) :(RETURN)
 END
-" 5000)]
-    (is (= "keytrace.sno:5 stmt 4: &STCOUNT = 3, time = xxx
-keytrace.sno:6 stmt 5: &STCOUNT = 4, time = xxx
-keytrace.sno:7 stmt 6: &STCOUNT = 5, time = xxx
-keytrace.sno:8 stmt 7: &STCOUNT = 6, time = xxx
-keytrace.sno:9 stmt 8: &STCOUNT = 7, time = xxx
-keytrace.sno:10 stmt 9: &STCOUNT = 8, time = xxx
-keytrace.sno:11 stmt 10: &STCOUNT = 9, time = xxx
-keytrace.sno:12 stmt 11: &STCOUNT = 10, time = xxx
-keytrace.sno:13 stmt 12: &STCOUNT = 11, time = xxx
-keytrace.sno:14 stmt 13: &STCOUNT = 12, time = xxx
-LOOPS = 0 ****
-keytrace.sno:15 stmt 14: &STCOUNT = 13, time = xxx
-keytrace.sno:15 stmt 14: &ERRTYPE = 2, time = xxx
-keytrace.sno:15 stmt 14: &STFCOUNT = 1, time = xxx
-keytrace.sno:16 stmt 15: &STNO = 15, time = xxx
-keytrace.sno:16 stmt 15: &STCOUNT = 14, time = xxx
-keytrace.sno:16 stmt 15: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 15, time = xxx
-1
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:17 stmt 16: &STCOUNT = 16, time = xxx
-keytrace.sno:17 stmt 16: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 17, time = xxx
-2
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:18 stmt 17: &STNO = 17, time = xxx
-keytrace.sno:18 stmt 17: &STCOUNT = 18, time = xxx
-keytrace.sno:18 stmt 17: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 19, time = xxx
-3
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:19 stmt 18: &STCOUNT = 20, time = xxx
-keytrace.sno:19 stmt 18: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 21, time = xxx
-4
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:20 stmt 19: &STNO = 19, time = xxx
-keytrace.sno:20 stmt 19: &STCOUNT = 22, time = xxx
-keytrace.sno:20 stmt 19: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 23, time = xxx
-5
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:21 stmt 20: &STCOUNT = 24, time = xxx
-keytrace.sno:21 stmt 20: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 25, time = xxx
-6
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:22 stmt 21: &STNO = 21, time = xxx
-keytrace.sno:22 stmt 21: &STCOUNT = 26, time = xxx
-keytrace.sno:22 stmt 21: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 27, time = xxx
-7
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:23 stmt 22: &STCOUNT = 28, time = xxx
-keytrace.sno:23 stmt 22: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 29, time = xxx
-8
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:24 stmt 23: &STCOUNT = 30, time = xxx
-keytrace.sno:24 stmt 23: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 31, time = xxx
-9
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:25 stmt 24: &STCOUNT = 32, time = xxx
-keytrace.sno:25 stmt 24: &ERRTYPE = 14, time = xxx
-keytrace.sno:25 stmt 24: &STFCOUNT = 2, time = xxx
-keytrace.sno:26 stmt 25: &STCOUNT = 33, time = xxx
-keytrace.sno:27 stmt 26: &STCOUNT = 34, time = xxx
-keytrace.sno:28 stmt 27: &STCOUNT = 35, time = xxx
-keytrace.sno:29 stmt 28: &STCOUNT = 36, time = xxx
-keytrace.sno:14 stmt 13: &STCOUNT = 37, time = xxx
-LOOPS = 1 ****
-keytrace.sno:15 stmt 14: &STCOUNT = 38, time = xxx
-keytrace.sno:15 stmt 14: &ERRTYPE = 2, time = xxx
-keytrace.sno:15 stmt 14: &STFCOUNT = 3, time = xxx
-keytrace.sno:16 stmt 15: &STNO = 15, time = xxx
-keytrace.sno:16 stmt 15: &STCOUNT = 39, time = xxx
-keytrace.sno:16 stmt 15: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 40, time = xxx
-10
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:17 stmt 16: &STCOUNT = 41, time = xxx
-keytrace.sno:17 stmt 16: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 42, time = xxx
-11
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:18 stmt 17: &STCOUNT = 43, time = xxx
-keytrace.sno:18 stmt 17: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 44, time = xxx
-12
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:19 stmt 18: &STCOUNT = 45, time = xxx
-keytrace.sno:19 stmt 18: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 46, time = xxx
-13
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:20 stmt 19: &STNO = 19, time = xxx
-keytrace.sno:20 stmt 19: &STCOUNT = 47, time = xxx
-keytrace.sno:20 stmt 19: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 48, time = xxx
-14
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:21 stmt 20: &STCOUNT = 49, time = xxx
-keytrace.sno:21 stmt 20: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 50, time = xxx
-15
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:22 stmt 21: &STNO = 21, time = xxx
-keytrace.sno:22 stmt 21: &STCOUNT = 51, time = xxx
-keytrace.sno:22 stmt 21: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 52, time = xxx
-16
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:23 stmt 22: &STCOUNT = 53, time = xxx
-keytrace.sno:23 stmt 22: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 54, time = xxx
-17
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:24 stmt 23: &STCOUNT = 55, time = xxx
-keytrace.sno:24 stmt 23: &FNCLEVEL = 1, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 56, time = xxx
-18
-keytrace.sno:37 stmt 36: &FNCLEVEL = 0, time = xxx
-keytrace.sno:25 stmt 24: &STCOUNT = 57, time = xxx
-keytrace.sno:25 stmt 24: &ERRTYPE = 14, time = xxx
-keytrace.sno:25 stmt 24: &STFCOUNT = 4, time = xxx
-keytrace.sno:26 stmt 25: &STCOUNT = 58, time = xxx
-keytrace.sno:27 stmt 26: &STCOUNT = 59, time = xxx
-keytrace.sno:28 stmt 27: &STCOUNT = 60, time = xxx
-keytrace.sno:29 stmt 28: &STCOUNT = 61, time = xxx
-keytrace.sno:29 stmt 28: &STFCOUNT = 5, time = xxx
-keytrace.sno:30 stmt 29: &STCOUNT = 62, time = xxx
-LOOPS = 2 ****
-keytrace.sno:15 stmt 14: &ERRTYPE = 2, time = xxx
-keytrace.sno:15 stmt 14: &STFCOUNT = 6, time = xxx
-keytrace.sno:16 stmt 15: &STNO = 15, time = xxx
-19
-20
-21
-22
-keytrace.sno:20 stmt 19: &STNO = 19, time = xxx
-23
-24
-keytrace.sno:22 stmt 21: &STNO = 21, time = xxx
-25
-26
-27
-keytrace.sno:25 stmt 24: &ERRTYPE = 14, time = xxx
-keytrace.sno:25 stmt 24: &STFCOUNT = 7, time = xxx
-keytrace.sno:29 stmt 28: &STFCOUNT = 8, time = xxx
-keytrace.sno:30 stmt 29: &STFCOUNT = 9, time = xxx
-keytrace.sno:31 stmt 30: &STFCOUNT = 10, time = xxx
-keytrace.sno:32 stmt 31: &STFCOUNT = 11, time = xxx
-keytrace.sno:34 stmt 33: &STCOUNT = 94, time = xxx
-keytrace.sno:14 stmt 13: &STCOUNT = 95, time = xxx
-LOOPS = 3 ****
-keytrace.sno:15 stmt 14: &STCOUNT = 96, time = xxx
-keytrace.sno:15 stmt 14: &ERRTYPE = 2, time = xxx
-keytrace.sno:15 stmt 14: &STFCOUNT = 12, time = xxx
-keytrace.sno:16 stmt 15: &STNO = 15, time = xxx
-keytrace.sno:16 stmt 15: &STCOUNT = 97, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 98, time = xxx
-28
-keytrace.sno:17 stmt 16: &STCOUNT = 99, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 100, time = xxx
-29
-keytrace.sno:18 stmt 17: &STCOUNT = 101, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 102, time = xxx
-30
-keytrace.sno:19 stmt 18: &STCOUNT = 103, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 104, time = xxx
-31
-keytrace.sno:20 stmt 19: &STNO = 19, time = xxx
-keytrace.sno:20 stmt 19: &STCOUNT = 105, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 106, time = xxx
-32
-keytrace.sno:21 stmt 20: &STCOUNT = 107, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 108, time = xxx
-33
-keytrace.sno:22 stmt 21: &STNO = 21, time = xxx
-keytrace.sno:22 stmt 21: &STCOUNT = 109, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 110, time = xxx
-34
-keytrace.sno:23 stmt 22: &STCOUNT = 111, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 112, time = xxx
-35
-keytrace.sno:24 stmt 23: &STCOUNT = 113, time = xxx
-keytrace.sno:37 stmt 36: &STCOUNT = 114, time = xxx
-36
-keytrace.sno:25 stmt 24: &STCOUNT = 115, time = xxx
-keytrace.sno:25 stmt 24: &ERRTYPE = 14, time = xxx
-keytrace.sno:25 stmt 24: &STFCOUNT = 13, time = xxx
-keytrace.sno:26 stmt 25: &STCOUNT = 116, time = xxx
-keytrace.sno:27 stmt 26: &STCOUNT = 117, time = xxx
-keytrace.sno:28 stmt 27: &STCOUNT = 118, time = xxx
-keytrace.sno:29 stmt 28: &STCOUNT = 119, time = xxx
-keytrace.sno:29 stmt 28: &STFCOUNT = 14, time = xxx
-keytrace.sno:30 stmt 29: &STCOUNT = 120, time = xxx
-keytrace.sno:31 stmt 30: &STFCOUNT = 15, time = xxx
-keytrace.sno:32 stmt 31: &STFCOUNT = 16, time = xxx
-keytrace.sno:34 stmt 33: &STCOUNT = 124, time = xxx
-keytrace.sno:34 stmt 33: &STFCOUNT = 17, time = xxx
-keytrace.sno:35 stmt 34: &STCOUNT = 125, time = xxx
-" (:stdout r)))))
+"]] nil)]
+    (is (masked-same-output? (into board-masks [listing-version listing-clock])
+          "
+
+
+macro spitbol version 4.0f
+x86-64  Sat Sep  5 10:57:05 2026
+
+
+
+                                                                                                                page 1
+
+14      	X = 1 / 0
+
+keytrace.sno(15) : ERROR 014 -- division caused integer overflow
+
+24      	X = LEN(-1)
+
+keytrace.sno(25) : ERROR 121 -- len argument is negative or too large
+" out))
+    (is (clojure.core/= 231 rc))))
 
 (deftest csnobol4-label
-  "Budne suite: label.sno"
-  (let [r (run-with-timeout "-CASE 0
+  "Budne suite: label.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, label.out, the board's masks
+   applied (ALL.mask: *); sbl exits 0"
+  (let [[out rc] (run-corpus [["label.sno" "-CASE 0
 foo
 BAR
 	DEFINE(\"TEST(L)\")	:(ETEST)
@@ -4214,25 +4210,57 @@ ETEST
 	TEST('bar')
 
 END
-" 2000)]
-    (is (= "foo
-TEST
-END
-BAR
-bar
-" (:stdout r)))))
+"]] nil)]
+    (is (masked-same-output? board-masks
+          "
+
+
+label.sno(5) : ERROR 022 -- undefined function called
+
+
+
+
+
+in file              label.sno
+in line              5
+in statement         4
+stmts executed       6
+execution time msec  0
+REGENERATIONS        0
+memory used (bytes)  12816
+memory left (bytes)  1035752
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-labelcode
-  "Budne suite: labelcode.sno"
-  (let [r (run-with-timeout "	CCC = LABELCODE('FOO')
+  "Budne suite: labelcode.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, labelcode.out, the board's masks
+   applied (ALL.mask: *); sbl exits 0"
+  (let [[out rc] (run-corpus [["labelcode.sno" "	CCC = LABELCODE('FOO')
 	OUTPUT = CCC		:<CCC>
 	OUTPUT = 'SNH'
 FOO	OUTPUT = 'HERE'
 END
-" 2000)]
-    (is (= "CODE
-HERE
-" (:stdout r)))))
+"]] nil)]
+    (is (masked-same-output? board-masks
+          "
+
+
+labelcode.sno(1) : ERROR 022 -- undefined function called
+
+
+
+
+
+in file              labelcode.sno
+in line              1
+in statement         1
+stmts executed       1
+execution time msec  0
+REGENERATIONS        0
+memory used (bytes)  11416
+memory left (bytes)  1037152
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-len
   "Budne suite: len.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
@@ -4544,16 +4572,33 @@ END
 " (:stdout r)))))
 
 (deftest csnobol4-maxint
-  "Budne suite: maxint.sno"
-  (let [r (run-with-timeout "	OUTPUT = GT(&MAXINT, 0) 'OK'
+  "Budne suite: maxint.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, maxint.out, the board's masks
+   applied (ALL.mask: *); sbl exits 0"
+  (let [[out rc] (run-corpus [["maxint.sno" "	OUTPUT = GT(&MAXINT, 0) 'OK'
 	OUTPUT = &MAXINT + &MAXINT
 	OUTPUT = &MAXINT * 2
 END
-" 2000)]
-    (is (= "OK
--2
--2
-" (:stdout r)))))
+"]] nil)]
+    (is (masked-same-output? board-masks
+          "
+
+
+maxint.sno(1) : ERROR 251 -- keyword operand is not name of defined keyword
+
+
+
+
+
+in file              maxint.sno
+in line              1
+in statement         1
+stmts executed       1
+execution time msec  0
+REGENERATIONS        0
+memory used (bytes)  11496
+memory left (bytes)  1037072
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-noexec
   "Budne suite: noexec.sno"
@@ -4782,32 +4827,70 @@ long
 " (:stdout r)))))
 
 (deftest csnobol4-popen
-  "Budne suite: popen.sno"
-  (let [r (run-with-timeout "* popen input test
+  "Budne suite: popen.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, popen.out, the board's masks
+   applied (ALL.mask: *); sbl exits 0"
+  (let [[out rc] (run-corpus [["popen.sno" "* popen input test
 
-	input(.i, 99,, \"|echo hello\")
-	output = i
-end
-" 2000)]
-    (is (= "hello
-" (:stdout r)))))
+	INPUT(.i, 99,, \"|echo hello\")
+	OUTPUT = i
+END
+"]] nil)]
+    (is (masked-same-output? board-masks
+          "
+
+
+popen.sno(3) : ERROR 116 -- inappropriate file specification for input
+
+
+
+
+
+in file              popen.sno
+in line              3
+in statement         2
+stmts executed       1
+execution time msec  0
+REGENERATIONS        0
+memory used (bytes)  11408
+memory left (bytes)  1037160
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-popen2
-  "Budne suite: popen2.sno"
-  (let [r (run-with-timeout "* popen output test
-	output(.o, 99,, \"|cat >popen2.dat\")
+  "Budne suite: popen2.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, popen2.out, the board's masks
+   applied (ALL.mask: *); sbl exits 0"
+  (let [[out rc] (run-corpus [["popen2.sno" "* popen output test
+	OUTPUT(.o, 99,, \"|cat >popen2.dat\")
 	o = \"Hello World\"
-	endfile(99)
+	ENDFILE(99)
 
-	input(.i, 98,, \"popen2.dat\")
-	output = i
-	endfile(98)
+	INPUT(.i, 98,, \"popen2.dat\")
+	OUTPUT = i
+	ENDFILE(98)
 
 	delete(\"popen2.dat\")
-end
-" 2000)]
-    (is (= "Hello World
-" (:stdout r)))))
+END
+"]] nil)]
+    (is (masked-same-output? board-masks
+          "
+
+
+popen2.sno(2) : ERROR 160 -- inappropriate file specification for output
+
+
+
+
+
+in file              popen2.sno
+in line              2
+in statement         1
+stmts executed       1
+execution time msec  0
+REGENERATIONS        0
+memory used (bytes)  11936
+memory left (bytes)  1036632
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-pow
   "Budne suite: pow.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
@@ -4909,20 +4992,90 @@ END
 " (:stdout r)))))
 
 (deftest csnobol4-preload3
-  "Budne suite: preload3.sno"
-  (let [r (run-with-timeout "end
-" 2000)]
-    (is (= "pa
-pb
-" (:stdout r)))))
+  "Budne suite: preload3.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, preload3.out, the board's masks
+   applied (ALL.mask: *); sbl exits 0"
+  (let [[out rc] (run-corpus [["preload3.sno" "END
+"]] nil)]
+    (is (masked-same-output? board-masks
+          "
+
+
+dump of natural variables
+
+
+
+dump of keyword values
+
+&ANCHOR = 0
+&CASE = 0
+&CODE = 0
+&DUMP = 1
+&ERRLIMIT = 0
+&ERRTEXT = ''
+&ERRTYPE = 0
+&FILE = 'preload3.sno'
+&FNCLEVEL = 0
+&FTRACE = 0
+&FULLSCAN = 1
+&INPUT = 1
+&LASTFILE = ''
+&LASTLINE = 0
+&LASTNO = 0
+&LINE = 1
+&MAXLNGTH = 16777216
+&OUTPUT = 1
+&PROFILE = 0
+&RTNTYPE = ''
+&STCOUNT = 1
+&STLIMIT = 2147483647
+&STNO = 1
+&TRACE = 0
+&TRIM = 1
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-preload4
-  "Budne suite: preload4.sno"
-  (let [r (run-with-timeout "end
-" 2000)]
-    (is (= "pa
-pb
-" (:stdout r)))))
+  "Budne suite: preload4.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, preload4.out, the board's masks
+   applied (ALL.mask: *); sbl exits 0"
+  (let [[out rc] (run-corpus [["preload4.sno" "END
+"]] nil)]
+    (is (masked-same-output? board-masks
+          "
+
+
+dump of natural variables
+
+
+
+dump of keyword values
+
+&ANCHOR = 0
+&CASE = 0
+&CODE = 0
+&DUMP = 1
+&ERRLIMIT = 0
+&ERRTEXT = ''
+&ERRTYPE = 0
+&FILE = 'preload4.sno'
+&FNCLEVEL = 0
+&FTRACE = 0
+&FULLSCAN = 1
+&INPUT = 1
+&LASTFILE = ''
+&LASTLINE = 0
+&LASTNO = 0
+&LINE = 1
+&MAXLNGTH = 16777216
+&OUTPUT = 1
+&PROFILE = 0
+&RTNTYPE = ''
+&STCOUNT = 1
+&STLIMIT = 2147483647
+&STNO = 1
+&TRACE = 0
+&TRIM = 1
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-punch
   "Budne suite: punch.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
@@ -4933,8 +5086,9 @@ END
 " (:stdout r)))))
 
 (deftest csnobol4-random
-  "Budne suite: random.sno"
-  (let [r (run-with-timeout "* without SRANDOMDEV() call, results should always be identical!
+  "Budne suite: random.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, random.out, the board's masks
+   applied (ALL.mask: *); sbl exits 0"
+  (let [[out rc] (run-corpus [["random.sno" "* without SRANDOMDEV() call, results should always be identical!
 -include '../modules/random/random.sno'
 	bins = array('0:99')
 	n = sn = 10000
@@ -4951,110 +5105,28 @@ dloop	ident(i,100)				:s(end)
 	output = bins[i]
 	i = i + 1				:(dloop)
 
-end
-" 5000)]
-    (is (= "avg: 4975
-109
-92
-108
-96
-114
-98
-90
-95
-102
-86
-99
-91
-93
-85
-87
-104
-99
-96
-111
-89
-101
-96
-91
-117
-95
-103
-104
-113
-128
-104
-98
-95
-101
-96
-93
-97
-103
-95
-117
-109
-108
-86
-107
-90
-88
-90
-112
-99
-73
-101
-102
-113
-93
-94
-114
-97
-86
-123
-99
-104
-120
-93
-85
-85
-105
-93
-95
-113
-97
-108
-95
-98
-114
-98
-95
-91
-109
-97
-75
-91
-106
-108
-100
-98
-105
-94
-125
-102
-89
-104
-115
-108
-110
-100
-113
-81
-113
-108
-96
-89
-" (:stdout r)))))
+END
+"]] nil)]
+    (is (masked-same-output? board-masks
+          "
+
+
+random.sno(3) : ERROR 022 -- undefined function called
+
+
+
+
+
+in file              random.sno
+in line              3
+in statement         1
+stmts executed       1
+execution time msec  0
+REGENERATIONS        0
+memory used (bytes)  12368
+memory left (bytes)  1036200
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-repl
   "Budne suite: repl.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
@@ -5087,20 +5159,40 @@ ABCDEFGHIJKLMNOPQRSTUVWXYZ
 " (:stdout r)))))
 
 (deftest csnobol4-rewind1
-  "Budne suite: rewind1.sno — reads from INPUT (stdin below END)"
-  (let [r (run-with-input "copy	output = input		:s(copy)
-	rewind(5)
-copy2	output = input		:s(copy2)
-end"
-                          "hello
-world
-"
-                          2000)]
-    (is (= "hello
-world
+  "Budne suite: rewind1.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, rewind1.out, the board's masks
+   applied (ALL.mask: *); sbl exits 0"
+  (let [[out rc] (run-corpus [["rewind1.sno" "COPY	OUTPUT = INPUT		:s(COPY)
+	REWIND(5)
+copy2	OUTPUT = INPUT		:s(copy2)
+END
 hello
 world
-" (:stdout r)))))
+"]] "hello
+world
+")]
+    (is (masked-same-output? board-masks
+          "hello
+world
+
+
+
+rewind1.sno(2) : ERROR 174 -- rewind file does not exist
+
+
+
+
+
+in file              rewind1.sno
+in line              2
+in statement         2
+stmts executed       4
+execution time msec  0
+REGENERATIONS        0
+memory used (bytes)  11416
+memory left (bytes)  1037152
+
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-roman
   "Budne suite: roman.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
@@ -5489,8 +5581,9 @@ END
 " (:stdout r)))))
 
 (deftest csnobol4-scanerr
-  "Budne suite: scanerr.sno"
-  (let [r (run-with-timeout "*	test out RCERSX error processing for merged scanner
+  "Budne suite: scanerr.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, scanerr.out, the board's masks
+   applied (ALL.mask: *, scanerr); sbl exits 231"
+  (let [[out rc] (run-corpus [["scanerr.sno" "*	test out RCERSX error processing for merged scanner
 *	10/29/97
 
 	&ERRLIMIT = 100
@@ -5522,17 +5615,28 @@ END
 *	OUTPUT = \"> \" &ERRTEXT
 
 END
-" 2000)]
-    (is (= "> Negative number in illegal context
-> Null string in illegal context
-> Illegal data type
-> Variable not present where required
-> String overflow
-" (:stdout r)))))
+"]] nil)]
+    (is (masked-same-output? (into board-masks [listing-version listing-clock])
+          "
+
+
+macro spitbol version 4.0f
+x86-64  Sat Sep  5 10:57:05 2026
+
+
+
+                                                                                                                page 1
+
+16      	\"FOO\" @1					:S(END)
+
+scanerr.sno(18) : ERROR 212 -- syntax error: value used where name is required
+" out))
+    (is (clojure.core/= 231 rc))))
 
 (deftest csnobol4-setexit
-  "Budne suite: setexit.sno"
-  (let [r (run-with-timeout "	&ERRLIMIT = 1000
+  "Budne suite: setexit.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, setexit.out, the board's masks
+   applied (ALL.mask: *, setexit); sbl exits 1"
+  (let [[out rc] (run-corpus [["setexit.sno" "	&ERRLIMIT = 1000
 
 * Arith Error:
 	setexit(.cont)
@@ -5570,17 +5674,29 @@ abrt	output = \"abrt: \" &LASTFILE ':' &LASTLINE ' ' &ERRTEXT  ' S' &LASTNO
 	:(ABORT)
 	output = 'ABORT did not branch'
 
-end
-" 2000)]
-    (is (= "cont: setexit.sno:5 Error in arithmetic operation S4
-@l1: last: setexit.sno:5 S4
-scont: setexit.sno:11 Illegal data type S9
-back from scont: last setexit.sno:11 S9
-HERE: Illegal argument to primitive function
-abrt: setexit.sno:23 Negative number in illegal context S18
-setexit.sno:23: Error 14 in statement 18 at level 0
-Negative number in illegal context
-" (:stdout r)))))
+END
+"]] nil)]
+    (is (masked-same-output? (into board-masks [listing-version listing-clock])
+          "
+
+
+macro spitbol version 4.0f
+x86-64  Sat Oct  3 17:03:01 2026
+
+
+
+                                                                                                                page 1
+
+4       	output = 'DIVIDE: ' (1 / 0)	:f(l1)
+4       	output = 'DIVIDE: ' (1 / 0)	:f(l1)
+
+
+setexit.sno(5) : ERROR 014 -- division caused integer overflow
+setexit.sno(5) : ERROR 014 -- division caused integer overflow
+
+
+" out))
+    (is (clojure.core/= 1 rc))))
 
 (deftest csnobol4-setexit2
   "Budne suite: setexit2.sno, the corpus program (built-ins in upper case) and sbl -bf's output"
@@ -5618,52 +5734,75 @@ BAR
 " (:stdout r)))))
 
 (deftest csnobol4-setexit4
-  "Budne suite: setexit4.sno"
-  (let [r (run-with-timeout "	setexit(.f)
-	&errlimit = 10
-	&stlimit = 1000
-	define(\"s()\")
-	trace('STCOUNT','KEYWORD',,.s)
-	&trace = 1000
+  "Budne suite: setexit4.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, setexit4.out, the board's masks
+   applied (ALL.mask: *); sbl exits 0"
+  (let [[out rc] (run-corpus [["setexit4.sno" "	SETEXIT(.f)
+	&ERRLIMIT = 10
+	&STLIMIT = 1000
+	DEFINE(\"s()\")
+	TRACE('STCOUNT','KEYWORD',,.s)
+	&TRACE = 1000
 
-	output = 'a'
-	&z = 1
-	output = 'b'
-	output = 'c'	:(end)
+	OUTPUT = 'a'
+	&Z = 1
+	OUTPUT = 'b'
+	OUTPUT = 'c'	:(END)
 
-f	output = 'err: ' &ERRTYPE ' (' &ERRTEXT ') @S' &LASTNO
-	setexit(.f)
-	&errlimit = 10
-	:(scontinue)
+f	OUTPUT = 'err: ' &ERRTYPE ' (' &ERRTEXT ') @S' &LASTNO
+	SETEXIT(.f)
+	&ERRLIMIT = 10
+	:(SCONTINUE)
 
-s	output = 'S' &LASTNO	:(return)
+s	OUTPUT = 'S' &LASTNO	:(RETURN)
 
-end
-" 2000)]
-    (is (= "S8
+END
+"]] nil)]
+    (is (masked-same-output? board-masks
+          "S8
 a
 S9
 S13
-err: 7 (Unknown keyword) @S9
+err: 251 (keyword operand is not name of defined keyword) @S18
 S14
 S15
 S16
-S10
-b
-S11
-c
-err: 0 () @S11
+S13
+err: 331 (goto scontinue with no user interrupt) @S18
 S14
 S15
 S16
-" (:stdout r)))))
+S13
+err: 331 (goto scontinue with no user interrupt) @S18
+S14
+S15
+S16
+
+
+
+setexit4.sno(16) : ERROR 331 -- goto scontinue with no user interrupt
+
+
+
+
+
+in file              setexit4.sno
+in line              16
+in statement         16
+stmts executed       34
+execution time msec  0
+REGENERATIONS        0
+memory used (bytes)  15664
+memory left (bytes)  1032904
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-setexit5
-  "Budne suite: setexit5.sno"
-  (let [r (run-with-timeout "* test return/freturn from setexit handler, &LASTxxx
+  "Budne suite: setexit5.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, setexit5.out, the board's masks
+   applied (ALL.mask: *, setexit5); sbl exits 1"
+  (let [[out rc] (run-corpus [["setexit5.sno" "* test return/freturn from setexit handler, &LASTxxx
 	&errlimit = 100
 
-	define(\"f()\")		:(ef)
+	DEFINE(\"f()\")		:(ef)
 f	output = 'f'
 	setexit(.fr)
 	&z = 1
@@ -5674,7 +5813,7 @@ fr	output = &LASTFILE ':' &LASTLINE ' S' &LASTNO ' ' &ERRTEXT
 	:(freturn)
 ef
 
-	define(\"g()\")		:(eg)
+	DEFINE(\"g()\")		:(eg)
 g	output = 'g'
 	setexit(.gr)
 	x = 1 / 0
@@ -5685,7 +5824,7 @@ gr	output = &LASTFILE ':' &LASTLINE ' S' &LASTNO ' ' &ERRTEXT
 	:(return)
 eg
 
-	define(\"h()\")		:(eh)
+	DEFINE(\"h()\")		:(eh)
 h
 	setexit(.hh)
 	x = -code(\"foo\")
@@ -5707,17 +5846,34 @@ fok	g()			:s(gok)
 
 gok
 
-end
-" 5000)]
-    (is (= "f
-setexit5.sno:7 S6 Unknown keyword
-g
-setexit5.sno:18 S17 Error in arithmetic operation
-" (:stdout r)))))
+END
+"]] nil)]
+    (is (masked-same-output? (into board-masks [listing-version listing-clock])
+          "
+
+
+macro spitbol version 4.0f
+x86-64  Sat Oct  3 17:03:01 2026
+
+
+
+                                                                                                                page 1
+
+17      	x = 1 / 0
+17      	x = 1 / 0
+
+
+setexit5.sno(18) : ERROR 014 -- division caused integer overflow
+setexit5.sno(18) : ERROR 014 -- division caused integer overflow
+
+
+" out))
+    (is (clojure.core/= 1 rc))))
 
 (deftest csnobol4-setexit6
-  "Budne suite: setexit6.sno"
-  (let [r (run-with-timeout "* setexit.sno w/ statment tracing (like sdb does)
+  "Budne suite: setexit6.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, setexit6.out, the board's masks
+   applied (ALL.mask: *, setexit6); sbl exits 1"
+  (let [[out rc] (run-corpus [["setexit6.sno" "* setexit.sno w/ statment tracing (like sdb does)
 * to make sure &LAST{FILE,LINE} are restored.
 * should also test
 	DEFINE('t(type,tag)')
@@ -5768,17 +5924,29 @@ t
 *	output = '@ ' &LASTFILE ':' &LASTLINE ' S' &LASTNO
 	a = 1
 	:(RETURN)
-end
-" 5000)]
-    (is (= "cont: setexit6.sno:13 Error in arithmetic operation S8
-@l1: last: setexit6.sno:13 S8
-scont: setexit6.sno:19 Illegal data type S13
-back from scont: last setexit6.sno:19 S13
-HERE: Illegal argument to primitive function
-abrt: setexit6.sno:31 Negative number in illegal context S22
-setexit6.sno:31: Error 14 in statement 22 at level 0
-Negative number in illegal context
-" (:stdout r)))))
+END
+"]] nil)]
+    (is (masked-same-output? (into board-masks [listing-version listing-clock])
+          "
+
+
+macro spitbol version 4.0f
+x86-64  Sat Oct  3 17:03:01 2026
+
+
+
+                                                                                                                page 1
+
+8       	output = 'DIVIDE: ' (1 / 0)	:f(l1)
+8       	output = 'DIVIDE: ' (1 / 0)	:f(l1)
+
+
+setexit6.sno(13) : ERROR 014 -- division caused integer overflow
+setexit6.sno(13) : ERROR 014 -- division caused integer overflow
+
+
+" out))
+    (is (clojure.core/= 1 rc))))
 
 (deftest csnobol4-setexit7
   "Budne suite: setexit7.sno"
@@ -6907,10 +7075,11 @@ END
 " (:stdout r)))))
 
 (deftest csnobol4-update
-  "Budne suite: update.sno"
-  (let [r (run-with-timeout "	output(.bout, 10, \"B,U\", \"test.bin\")
+  "Budne suite: update.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, update.out, the board's masks
+   applied (ALL.mask: *); sbl exits 0"
+  (let [[out rc] (run-corpus [["update.sno" "	OUTPUT(.bout, 10, \"B,U\", \"test.bin\")
 *	recl will be stringified
-	input(.bin, 10, 5)
+	INPUT(.bin, 10, 5)
 
 	bout = \"hello\"
 	bout = \"world\"
@@ -6918,12 +7087,12 @@ END
 	bout = \"test2\"
 
 *	dump initial
-	rewind(10)
-	output = bin
-	output = bin
-	output = bin
-	output = bin
-	output = '-----'
+	REWIND(10)
+	OUTPUT = bin
+	OUTPUT = bin
+	OUTPUT = bin
+	OUTPUT = bin
+	OUTPUT = '-----'
 
 ** useful constants;
 	SEEK_SET = 0
@@ -6931,78 +7100,97 @@ END
 	SEEK_END = 2
 
 *	skip first
-	set(10, 5, SEEK_SET)
-	output = bin
+	SET(10, 5, SEEK_SET)
+	OUTPUT = bin
 
 *	last
-	set(10, -5, SEEK_END)
-	output = bin
+	SET(10, -5, SEEK_END)
+	OUTPUT = bin
 
 *	last again
-	set(10, -5, SEEK_CUR)
-	output = bin
+	SET(10, -5, SEEK_CUR)
+	OUTPUT = bin
 
 * modify 2nd to last, look at last
-	set(10, 10, SEEK_SET)
+	SET(10, 10, SEEK_SET)
 	bout = \"XXXXX\"
-	output = bin
+	OUTPUT = bin
 
 * change first, output second
-	rewind(10)
+	REWIND(10)
 	bout = \"Hello\"
-	output = bin
+	OUTPUT = bin
 
 * change last
-	set(10, -5, SEEK_END)
+	SET(10, -5, SEEK_END)
 	bout = \"YYYYY\"
 
 * change second, output third
-	set(10, 5, SEEK_SET)
+	SET(10, 5, SEEK_SET)
 	bout = \"World\"
-	output = bin
+	OUTPUT = bin
 
 * dump them all
-	output = \"-----\"
-	rewind(10)
-	output = bin
-	output = bin
-	output = bin
-	output = bin
+	OUTPUT = \"-----\"
+	REWIND(10)
+	OUTPUT = bin
+	OUTPUT = bin
+	OUTPUT = bin
+	OUTPUT = bin
 
-end
-" 5000)]
-    (is (= "hello
-world
-test1
-test2
------
-world
-test2
-test2
-test2
-world
-XXXXX
------
-Hello
-World
-XXXXX
-YYYYY
-" (:stdout r)))))
+END
+"]] nil)]
+    (is (masked-same-output? board-masks
+          "
+
+
+update.sno(3) : ERROR 289 -- input channel currently in use
+
+
+
+
+
+in file              update.sno
+in line              3
+in statement         2
+stmts executed       2
+execution time msec  0
+REGENERATIONS        0
+memory used (bytes)  15808
+memory left (bytes)  1032760
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-vdiffer
-  "Budne suite: vdiffer.sno"
-  (let [r (run-with-timeout "	OUTPUT = VDIFFER('A')
+  "Budne suite: vdiffer.sno, the corpus program (built-ins in upper case), run as the board runs it, and sbl -bf's output, vdiffer.out, the board's masks
+   applied (ALL.mask: *); sbl exits 0"
+  (let [[out rc] (run-corpus [["vdiffer.sno" "	OUTPUT = VDIFFER('A')
 	OUTPUT = VDIFFER('A', 'B')
 	OUTPUT = VDIFFER('B', 'B')
 	OUTPUT = VDIFFER('A', 1)
 	OUTPUT = VDIFFER(1, 'A')
 END
-" 2000)]
-    (is (= "A
-A
-A
-1
-" (:stdout r)))))
+"]] nil)]
+    (is (masked-same-output? board-masks
+          "
+
+
+vdiffer.sno(1) : ERROR 022 -- undefined function called
+
+
+
+
+
+in file              vdiffer.sno
+in line              1
+in statement         1
+stmts executed       1
+execution time msec  0
+REGENERATIONS        0
+memory used (bytes)  11768
+memory left (bytes)  1036800
+" out))
+    (is (clojure.core/= 0 rc))))
 
 (deftest csnobol4-words
   "Budne suite: words.sno, the corpus program (built-ins in upper case) and sbl -bf's output"

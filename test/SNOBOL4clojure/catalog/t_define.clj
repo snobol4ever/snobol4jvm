@@ -86,100 +86,108 @@
 )
 
 (deftest worm_define_square_4
-  "SQ(N) with arg 4 => 16"
-  (prog
+  "SQUARE(...) calls a function never defined: DEFINE('SQ(N)') names SQ, and SQUARE is only its entry label, so the call is ERROR 022 and R is never
+   assigned (manual ch. 19, DEFINE; MEASURED on sbl -bf: ERROR 022 -- undefined function called)"
+  (let [r (prog
     "        DEFINE('SQ(N)') :(SQUARE_END)"
     "SQUARE   SQ = N * N   :(RETURN)"
     "SQUARE_END"
     "        R = SQUARE(4)"
     "end"
-  )
-    (is (= 16 ($$ (quote R))))
-)
+  )]
+    (is (= "undefined function called" (:thrown r)))
+    (is (= "" ($$ (quote R))))))
 
 (deftest worm_define_square_3
-  "SQ(N) with arg 3 => 9"
-  (prog
+  "SQUARE(...) calls a function never defined: DEFINE('SQ(N)') names SQ, and SQUARE is only its entry label, so the call is ERROR 022 and R is never
+   assigned (manual ch. 19, DEFINE; MEASURED on sbl -bf: ERROR 022 -- undefined function called)"
+  (let [r (prog
     "        DEFINE('SQ(N)') :(SQUARE_END)"
     "SQUARE   SQ = N * N   :(RETURN)"
     "SQUARE_END"
     "        R = SQUARE(3)"
     "end"
-  )
-    (is (= 9 ($$ (quote R))))
-)
+  )]
+    (is (= "undefined function called" (:thrown r)))
+    (is (= "" ($$ (quote R))))))
 
 (deftest worm_define_square_0
-  "SQ(N) with arg 0 => 0"
-  (prog
+  "SQUARE(...) calls a function never defined: DEFINE('SQ(N)') names SQ, and SQUARE is only its entry label, so the call is ERROR 022 and R is never
+   assigned (manual ch. 19, DEFINE; MEASURED on sbl -bf: ERROR 022 -- undefined function called)"
+  (let [r (prog
     "        DEFINE('SQ(N)') :(SQUARE_END)"
     "SQUARE   SQ = N * N   :(RETURN)"
     "SQUARE_END"
     "        R = SQUARE(0)"
     "end"
-  )
-    (is (= 0 ($$ (quote R))))
-)
+  )]
+    (is (= "undefined function called" (:thrown r)))
+    (is (= "" ($$ (quote R))))))
 
 (deftest worm_define_negate_5
-  "NEG(N) with arg 5 => -5"
-  (prog
+  "NEGATE(...) calls a function never defined: DEFINE('NEG(N)') names NEG, and NEGATE is only its entry label, so the call is ERROR 022 and R is never
+   assigned (manual ch. 19, DEFINE; MEASURED on sbl -bf: ERROR 022 -- undefined function called)"
+  (let [r (prog
     "        DEFINE('NEG(N)') :(NEGATE_END)"
     "NEGATE   NEG = 0 - N   :(RETURN)"
     "NEGATE_END"
     "        R = NEGATE(5)"
     "end"
-  )
-    (is (= -5 ($$ (quote R))))
-)
+  )]
+    (is (= "undefined function called" (:thrown r)))
+    (is (= "" ($$ (quote R))))))
 
 (deftest worm_define_negate_neg_3
-  "NEG(N) with arg -3 => 3"
-  (prog
+  "NEGATE(...) calls a function never defined: DEFINE('NEG(N)') names NEG, and NEGATE is only its entry label, so the call is ERROR 022 and R is never
+   assigned (manual ch. 19, DEFINE; MEASURED on sbl -bf: ERROR 022 -- undefined function called)"
+  (let [r (prog
     "        DEFINE('NEG(N)') :(NEGATE_END)"
     "NEGATE   NEG = 0 - N   :(RETURN)"
     "NEGATE_END"
     "        R = NEGATE(-3)"
     "end"
-  )
-    (is (= 3 ($$ (quote R))))
-)
+  )]
+    (is (= "undefined function called" (:thrown r)))
+    (is (= "" ($$ (quote R))))))
 
 (deftest worm_define_addone_0
-  "INC(N) with arg 0 => 1"
-  (prog
+  "ADDONE(...) calls a function never defined: DEFINE('INC(N)') names INC, and ADDONE is only its entry label, so the call is ERROR 022 and R is never
+   assigned (manual ch. 19, DEFINE; MEASURED on sbl -bf: ERROR 022 -- undefined function called)"
+  (let [r (prog
     "        DEFINE('INC(N)') :(ADDONE_END)"
     "ADDONE   INC = N + 1   :(RETURN)"
     "ADDONE_END"
     "        R = ADDONE(0)"
     "end"
-  )
-    (is (= 1 ($$ (quote R))))
-)
+  )]
+    (is (= "undefined function called" (:thrown r)))
+    (is (= "" ($$ (quote R))))))
 
 (deftest worm_define_addone_9
-  "INC(N) with arg 9 => 10"
-  (prog
+  "ADDONE(...) calls a function never defined: DEFINE('INC(N)') names INC, and ADDONE is only its entry label, so the call is ERROR 022 and R is never
+   assigned (manual ch. 19, DEFINE; MEASURED on sbl -bf: ERROR 022 -- undefined function called)"
+  (let [r (prog
     "        DEFINE('INC(N)') :(ADDONE_END)"
     "ADDONE   INC = N + 1   :(RETURN)"
     "ADDONE_END"
     "        R = ADDONE(9)"
     "end"
-  )
-    (is (= 10 ($$ (quote R))))
-)
+  )]
+    (is (= "undefined function called" (:thrown r)))
+    (is (= "" ($$ (quote R))))))
 
 (deftest worm_define_addone_99
-  "INC(N) with arg 99 => 100"
-  (prog
+  "ADDONE(...) calls a function never defined: DEFINE('INC(N)') names INC, and ADDONE is only its entry label, so the call is ERROR 022 and R is never
+   assigned (manual ch. 19, DEFINE; MEASURED on sbl -bf: ERROR 022 -- undefined function called)"
+  (let [r (prog
     "        DEFINE('INC(N)') :(ADDONE_END)"
     "ADDONE   INC = N + 1   :(RETURN)"
     "ADDONE_END"
     "        R = ADDONE(99)"
     "end"
-  )
-    (is (= 100 ($$ (quote R))))
-)
+  )]
+    (is (= "undefined function called" (:thrown r)))
+    (is (= "" ($$ (quote R))))))
 
 (deftest worm_freturn_causes_failure
   "FRETURN makes calling statement fail"

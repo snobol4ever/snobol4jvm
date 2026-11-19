@@ -124,15 +124,16 @@
   (is (= "success" ($$ 'R2))))
 
 (deftest apply-single-arg
-  ;; GT requires 2 args — single arg causes statement failure, R1/R2 stay ""
+  ;; a missing argument is the null string, which GT reads as 0, so GT(3) and APPLY('GT',3) succeed (manual ch. 4, function calls; MEASURED on sbl -bf:
+  ;; R1=success R2=success)
   (prog
     "        A = 'GT'"
     "        B = 3"
     "        R1 = GT(B)       'success'"
     "        R2 = APPLY(A,B)  'success'"
     "end")
-  (is (= "" ($$ 'R1)))
-  (is (= "" ($$ 'R2))))
+  (is (= "success" ($$ 'R1)))
+  (is (= "success" ($$ 'R2))))
 
 (deftest apply-user-defined-fn
   (prog

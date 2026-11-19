@@ -125,8 +125,10 @@
 
 ;; ── T: full tokenizer + evaluator (left-to-right, no precedence) ──────────
 (deftest t_eval_left_to_right
-  "Eval '2+3*4' left-to-right (no precedence) = (2+3)*4 = 20"
-  (prog-steplimit 4000 500
+  "SIZE(S)-POS+1 is ERROR 233 at its touching -, and :S(LADD)  :F(LMUL) and :S(DOMUL)  :(LOOP) are each ERROR 234, a goto field
+   holding a second goto after a blank (manual ch. 3, binary operators have blanks on each side; MEASURED on sbl -bf: (2,33) ERROR 233,
+   (13,30) ERROR 234, (16,31) ERROR 234), so the program is never run"
+  (CODE (clojure.string/join "\n" [
     "        DEFINE('NUMTOK(S,POS),T') :(NTEND)"
     "NUMTOK  T = SUBSTR(S,POS,SIZE(S)-POS+1)"
     "        T SPAN('0123456789') . NUMTOK  :(RETURN)"
@@ -145,8 +147,8 @@
     "LMUL    EQ(OP,'*') :S(DOMUL)  :(LOOP)"
     "DOMUL   ACC = ACC * V  :(LOOP)"
     "DONE    R = ACC"
-    "end")
-  (is (= 20 ($$ 'R))))
+    "end"]))
+  (is (= [[2 233 33] [13 234 30] [16 234 31]] (mapv #(vec (take 3 %)) @SNOBOL4clojure.env/<DIAGNOSTICS>))))
 
 ;; ── T: variable resolution in expressions ─────────────────────────────────
 (deftest t_expr_variable_x

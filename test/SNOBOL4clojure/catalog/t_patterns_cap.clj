@@ -14,12 +14,12 @@
 ;; All tests run under 2000ms wall-clock budget (default prog macro).
 
 (deftest worm_capture_dot_cap_from_hello_wo
-  "Capture with . : world on 'hello world'"
+  "Capture with . : the pattern world is the variable world, unset and so null, which matches at the start: C is '' (MEASURED on sbl -bf: C=[])"
   (prog
     "        'hello world' world . C"
     "end"
   )
-    (is (= "world" ($$ (quote C))))
+    (is (= "" ($$ (quote C))))
 )
 
 (deftest worm_capture_dot_cap_from_abcde
