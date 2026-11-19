@@ -853,14 +853,16 @@
 (defmethod DATATYPE "class clojure.lang.PersistentHashMap"        [X] (get X :__type__ "TABLE"))
 (defmethod DATATYPE "class clojure.lang.PersistentVector"         [_] "PATTERN")
 (defmethod DATATYPE "class clojure.lang.Symbol"                   [_] "NAME")
+;; BREAKX builds its backtracking node BREAKX# (patterns.clj), a PATTERN as BREAK's is (sbl -bf: DATATYPE(BREAKX('a')) is PATTERN; it read EXPRESSION)
 (defmethod DATATYPE "class clojure.lang.PersistentList"           [X]
-  (if ('#{SEQ ALT CAPTURE CAPTURE-IMM CAPTURE-COND CURSOR-IMM! COLLECT!
-          ANY$ NOTANY$ SPAN$ NSPAN$ BREAK$ BREAKX$
-          LEN# POS# RPOS# TAB# RTAB# BOL# EOL#
-          FENCE! ARBNO! ARB! BAL! REM! ABORT!
-          SUCCEED! FAIL! X} (first X))
-    "PATTERN"
-    "EXPRESSION"))
+  (cond
+    ('#{SEQ ALT CAPTURE CAPTURE-IMM CAPTURE-COND CURSOR-IMM! COLLECT!
+        ANY$ NOTANY$ SPAN$ NSPAN$ BREAK$ BREAKX$ BREAKX#
+        LEN# POS# RPOS# TAB# RTAB# BOL# EOL#
+        FENCE! ARBNO! ARB! BAL! REM! ABORT!
+        SUCCEED! FAIL! X} (first X)) "PATTERN"
+    (:pattern (meta X))             "PATTERN"   ; a pattern function's element deferred to the match (patterns.clj deferred-pattern)
+    :else                           "EXPRESSION"))
 (defmethod DATATYPE "class clojure.lang.PersistentList$EmptyList" [_] "EXPRESSION")
 
 ;; The values SPITBOL compares by identity, as IDENT, DIFFER and a table's key do: a pattern, an expression, and the name of a keyword, a new one each time it is

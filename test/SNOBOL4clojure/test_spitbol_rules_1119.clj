@@ -42,3 +42,18 @@
     (is (clojure.string/starts-with? out "f307b f307b\n"))
     (is (clojure.string/includes? out "(4) : ERROR 307 -- ln produced real overflow"))
     (is (not (clojure.string/includes? out "not ")))))
+
+;; A pattern function's value is a PATTERN, BREAKX's and one given a deferred argument too, where *X alone is an EXPRESSION, and EVAL refuses a pattern with 103.
+;; MEASURED on sbl -bf, these programs' whole output: DATATYPE(BREAKX('a')) is PATTERN (snobol4jvm read EXPRESSION); BREAK(*X), ANY(*X), SPAN(*X), NOTANY(*X),
+;; LEN(*X), POS(*X), TAB(*X), ARBNO(*X), *X | 'a' and FENCE(*X) are PATTERNs; EVAL(BREAK(*X)) and EVAL(LEN(*N)) are 103.
+(deftest a-pattern-functions-value-is-a-pattern-deferred-or-not
+  (is (= "PATTERN PATTERN PATTERN\nxx\n"
+         (first (run-sno (str "        OUTPUT = DATATYPE(BREAKX('a')) ' ' DATATYPE(BREAK('a')) ' ' DATATYPE(BREAKX(*X))\n        X = 'a'\n"
+                              "        'xxa' BREAKX('a') . Y\n        OUTPUT = Y\nEND\n")))))
+  (is (= "EXPRESSION PATTERN PATTERN PATTERN PATTERN\nPATTERN PATTERN PATTERN PATTERN PATTERN PATTERN\n"
+         (first (run-sno (str "        OUTPUT = DATATYPE(*X) ' ' DATATYPE(BREAK(*X)) ' ' DATATYPE(ANY(*X)) ' ' DATATYPE(SPAN(*X)) ' ' DATATYPE(NOTANY(*X))\n"
+                              "        OUTPUT = DATATYPE(LEN(*X)) ' ' DATATYPE(POS(*X)) ' ' DATATYPE(TAB(*X)) ' ' DATATYPE(ARBNO(*X)) ' ' DATATYPE(*X | 'a') ' '"
+                              " DATATYPE(FENCE(*X))\nEND\n")))))
+  (is (= "brk 103 STRING\nlen 103\n"
+         (first (run-sno (str "        &ERRLIMIT = 10\n        X = 'a'\n        Y = EVAL(BREAK(*X))\n        OUTPUT = 'brk ' &ERRTYPE ' ' DATATYPE(Y)\n        &ERRTYPE = 0\n"
+                              "        Y = EVAL(LEN(*N))\n        OUTPUT = 'len ' &ERRTYPE\nEND\n"))))))

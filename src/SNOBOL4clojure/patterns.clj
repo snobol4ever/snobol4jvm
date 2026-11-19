@@ -12,6 +12,9 @@
 ;; Instead wrap the whole constructor in a DEFER so the engine re-evaluates
 ;; the pattern (and re-builds the charset) at match time from the live value.
 (defn- deferred? [S] (and (list? S) (clojure.core/= (first S) 'DEFER!)))
+;; A pattern function given a deferred argument builds its element as the match reaches it, and is a PATTERN all the same, where *X alone is an EXPRESSION
+;; (MEASURED on sbl -bf: DATATYPE of BREAK(*X), ANY(*X), SPAN(*X), NOTANY(*X), BREAKX(*X), LEN(*X), POS(*X) and TAB(*X) is PATTERN, of *X EXPRESSION; env DATATYPE)
+(defn- deferred-pattern [f] (with-meta (list 'DEFER! f) {:pattern true}))
 
 ;; The argument is a string: an integer converts to its digits, a real as SPITBOL writes it and the name of a natural variable to its name; a null one, or any
 ;; other value, the name of a keyword or an element among them, is the function's "argument is not a string or expression" (59 ANY, 151 NOTANY, 188 SPAN, 69
@@ -23,14 +26,14 @@
 
 (defn- set-pattern-of [op S bad ebad]
   (if (deferred? S)
-    (list 'DEFER! (fn [] (when-some [v ((second S))] (list op (set-of v ebad)))))
+    (deferred-pattern (fn [] (when-some [v ((second S))] (list op (set-of v ebad)))))
     (list op (set-of S bad))))
 
 (defn ANY    [S] (set-pattern-of 'ANY$    S  59 43))
 (defn BREAK  [S] (set-pattern-of 'BREAK$  S  69 44))
 (defn BREAKX [S] (set-pattern-of 'BREAKX# S  70 45))   ; backtracking form
 (defn NOTANY [S] (set-pattern-of 'NOTANY$ S 151 49))
-(defn NSPAN  [S] (if (deferred? S) (list 'DEFER! (fn [] (NSPAN  (str ((second S))))))  (list 'NSPAN$  (charset S))))   ; 0-or-more span
+(defn NSPAN  [S] (if (deferred? S) (deferred-pattern (fn [] (NSPAN  (str ((second S))))))  (list 'NSPAN$  (charset S))))   ; 0-or-more span
 (defn SPAN   [S] (set-pattern-of 'SPAN$   S 188 56))
 
 ;; ── Length / position patterns ────────────────────────────────────────────────
@@ -51,7 +54,7 @@
 ;; A deferred argument that fails fails the pattern there, and the match backtracks, as a deferred argument of ANY does (sbl -bf: 'abc' ? (LEN(*EVAL('1 / N')) |
 ;; 'c') . R assigns c; the engine read the failure as the null string, 0).
 (defn- int-pattern-of [op I [bad big ebad ebig]]
-  (if (deferred? I) (list 'DEFER! (fn [] (when-some [v ((second I))] (int-pattern op v ebad ebig)))) (int-pattern op I bad big)))
+  (if (deferred? I) (deferred-pattern (fn [] (when-some [v ((second I))] (int-pattern op v ebad ebig)))) (int-pattern op I bad big)))
 
 (defn LEN  [I] (int-pattern-of 'LEN#  I [120 121 47 48]))
 (defn POS  [I] (int-pattern-of 'POS#  I [162 163 50 51]))

@@ -1326,7 +1326,8 @@
 ;; callers hand EVAL the IR, a vector or an operator's list, which is evaluated.
 (defn EVAL [X]
   (cond
-    (deferred? X) (evaluated-or-fail (second X))
+    ;; a pattern function's element deferred to the match is a PATTERN, which EVAL refuses below (sbl -bf: EVAL(BREAK(*X)) and EVAL(LEN(*N)) are 103)
+    (and (deferred? X) (not (:pattern (meta X)))) (evaluated-or-fail (second X))
     ;; a string ending in a colon or a semicolon is refused before it is compiled, so 103 is an error at run time, fatal at &ERRLIMIT 0 (sbl -bf: EVAL('4 ;')
     ;; and .EVAL('X ;') end the program with 103; under &ERRLIMIT the label SETEXIT armed takes it)
     (string? X)   (if (ends-in-mark? X)
