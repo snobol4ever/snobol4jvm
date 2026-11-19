@@ -1,18 +1,17 @@
 (ns SNOBOL4clojure.runtime
-  "The four execution engines over one IR: the interpreter, the transpiler, the VM and JVM bytecode."
+  "The two execution engines over one IR: the interpreter, the reference, and JVM bytecode, the low-level one."
   (:require [SNOBOL4clojure.env :as env :refer [<STNO> <LABL> <CODE> <DISPNO> block-end compile-error &STCOUNT &STLIMIT &TRACE &STNO &LASTNO &ERRLIMIT &ERRTYPE &ERRTEXT <POS> &FILE &LASTFILE
                                                 &LINE &LASTLINE &FNCLEVEL snobol-return! snobol-freturn! snobol-nreturn! snobol-end! snobol-steplimit! fire-label! fire-keyword!
                                                 statement-trace-active?]]
-            [SNOBOL4clojure.operators :as ops :refer [EVAL! INVOKE error-decided]]
+            [SNOBOL4clojure.operators :refer [EVAL! INVOKE error-decided]]
             [clojure.string :as str]
-            [clojure.edn :as edn]
             [SNOBOL4clojure.compiler :as comp])
   (:import  [clojure.asm ClassWriter MethodVisitor Label Opcodes]
             [clojure.lang DynamicClassLoader IFn RT]))
 
 
 ;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-;; Stage 1: the interpreter
+;; The interpreter
 ;;
 ;; The SNOBOL4 GOTO-driven statement interpreter.
 ;;
@@ -329,394 +328,12 @@
 
 
 ;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-;; Stage 2: the transpiler, IR to a Clojure loop/case
+;; JVM bytecode, part 1: the instruction list
 ;;
-;; Stage 23B — SNOBOL4 IR → Clojure source transpiler.
-;;
-;; The IR produced by CODE! is already homoiconic Clojure prefix data.
-;; The transpiler walks it and emits a single Clojure namespace containing
-;; one `run!` function — a loop/case over statement indices.
-;;
-;; Each SNOBOL4 statement becomes one case clause:
-;;   [(= I (+ I 1))  {:S :LOOP}]
-;;   →
-;;   (let [r (ops/EVAL! '(= I (+ I 1)))]
-;;     (if r (recur :LOOP) (recur <next>)))
-;;
-;; The generated function is a real Clojure fn — the JVM JIT compiles it to
-;; native code on first invocation.  Hot loops benefit immediately.
-;;
-;; ## Public API
-;;
-;;   (transpile src)         → Clojure source string (inspect/save)
-;;   (transpile-ir ir)       → Clojure source string from pre-compiled IR
-;;   (load-transpiled! src)  → compile, transpile, eval, return run! fn
-;;   (run-transpiled! src)   → compile, transpile, eval, invoke run!
-;;   (bench-compare src n)   → {:interpreter ms :transpiled ms :ratio}
-;;
-;; ## Design invariant
-;;
-;; The transpiled program MUST produce identical output to the interpreter
-;; (runtime.clj RUN) on every input.  The interpreter is the semantic oracle;
-;; the transpiler is a performance optimisation only.  Every transpiled program
-;; is validated against RUN before being returned.
-;;
-;; ## What the transpiled code looks like
-;;
-;; Given SNOBOL4 source:
-;;   I = 1
-;;   LOOP  OUTPUT = I
-;;         I = I + 1
-;;         LE(I,5) :S(LOOP)
-;;   END
-;;
-;; The transpiler emits:
-;;   (ns snobol4.gen.prog-abc123
-;;     (:require [SNOBOL4clojure.operators :as ops]
-;;               [SNOBOL4clojure.env       :as env]))
-;;   (defn run! []
-;;     (loop [pc 1]
-;;       (case pc
-;;         1 (do (ops/EVAL! '(= I 1))        (recur 2))
-;;         2 (do (ops/EVAL! '(= OUTPUT I))   (recur 3))
-;;         3 (do (ops/EVAL! '(= I (+ I 1)))  (recur 4))
-;;         4 (let [r (ops/EVAL! '(LE I 5))]
-;;             (if r (recur 2) (recur 5)))
-;;         :LOOP (recur 2)
-;;         :END  :done
-;;         nil)))
-;;
-;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-;; ── Helpers ───────────────────────────────────────────────────────────────────
-
-(defn- label->pc
-  "Map a goto target (keyword or string) to a case key."
-  [tgt] tgt)
-
-(defn- next-pc
-  "The fall-through PC after statement at integer index n."
-  [n] (inc n))
-
-(defn- emit-goto
-  "Emit the recur expression for a goto target.
-   Integers recur to that statement number; keywords recur to the label case."
-  [tgt]
-  (cond
-    (nil? tgt)     nil
-    (keyword? tgt) `(recur ~tgt)
-    (integer? tgt) `(recur ~tgt)
-    (string? tgt)  `(recur ~(keyword tgt))
-    :else          `(recur ~tgt)))
-
-(defn- special-target? [tgt]
-  (when (and tgt (not (integer? tgt)))
-    (let [s (str/upper-case (name tgt))]
-      (contains? #{"RETURN" "FRETURN" "NRETURN" "END"} s))))
-
-(defn- emit-special [tgt]
-  (case (str/upper-case (name tgt))
-    "RETURN"  `(env/snobol-return!)
-    "FRETURN" `(env/snobol-freturn!)
-    "NRETURN" `(env/snobol-nreturn!)
-    "END"     `(env/snobol-end!)))
-
-(defn- safe-recur [tgt fallthrough]
-  (cond
-    (nil? tgt)              `(recur ~fallthrough)
-    (special-target? tgt)   (emit-special tgt)
-    :else                   (emit-goto tgt)))
-
-;; ── Statement code-generator ─────────────────────────────────────────────────
-;;
-;; Each statement is [body goto] where:
-;;   body  — a Clojure IR list, or nil
-;;   goto  — {:G tgt} | {:S s :F f} | {:S s} | {:F f} | nil
-
-(defn- codegen-stmt
-  "Generate the Clojure expression for one SNOBOL4 statement.
-   n       — integer statement number (for fall-through)
-   body    — IR body (list/nil)
-   goto    — goto map (may be nil)
-   Returns a Clojure form."
-  [n body goto]
-  (let [g-tgt  (:G goto)
-        s-tgt  (:S goto)
-        f-tgt  (:F goto)
-        fall   (next-pc n)]
-    (cond
-      ;; Pure unconditional GOTO, no body
-      (and (nil? body) g-tgt)
-      (safe-recur g-tgt fall)
-
-      ;; Pure unconditional GOTO with no targets at all (blank label line)
-      (and (nil? body) (nil? goto))
-      `(recur ~fall)
-
-      ;; Body with unconditional goto (ignore success/fail)
-      (and body g-tgt)
-      `(do (ops/EVAL! (quote ~body)) ~(safe-recur g-tgt fall))
-
-      ;; Body with no goto — execute, always fall through
-      (and body (nil? s-tgt) (nil? f-tgt) (nil? g-tgt))
-      `(do (ops/EVAL! (quote ~body)) (recur ~fall))
-
-      ;; Body with conditional goto — test result, branch
-      body
-      (let [s-recur (safe-recur (or s-tgt fall) fall)
-            f-recur (safe-recur (or f-tgt fall) fall)]
-        `(let [r# (ops/EVAL! (quote ~body))]
-           (if r# ~s-recur ~f-recur)))
-
-      ;; No body, conditional goto (e.g. blank line with :S/:F — unusual but legal)
-      :else
-      `(recur ~fall))))
-
-;; ── IR → case clauses ────────────────────────────────────────────────────────
-
-(defn- ir->cases
-  "Convert [codes nos labels] triple into a seq of [pc form] pairs
-   suitable for use in (case pc ...).
-
-   IR structure:
-     codes  — {key -> [body goto]}  keys are integer or keyword
-     nos    — {:LABEL -> int-no}    which integer slot each label occupies
-     labels — {int-no -> :LABEL}    reverse of nos
-
-   Integer slots may or may not appear in codes:
-     - If int-no is in codes AND not in labels  → own body at that slot
-     - If int-no is in labels                   → redirect to keyword label
-     - If int-no is in labels AND in codes      → codes holds label body (shouldn't happen)
-   Keyword slots always hold their own body in codes."
-  [[codes nos labels]]
-  (let [label->int  nos      ; {:LOOP 2, :END 5}
-        int->label  labels   ; {2 :LOOP, 5 :END}
-        ;; All integer slots: union of integer keys in codes + all values in nos
-        all-int-slots (sort (into (set (filter integer? (keys codes)))
-                                  (vals nos)))
-        kw-keys     (filter keyword? (keys codes))]
-    (concat
-      ;; Integer slots
-      (map (fn [n]
-             (let [lbl    (get int->label n)   ; is this slot a label placeholder?
-                   code   (get codes n)        ; does codes have a body here?
-                   form   (cond
-                            ;; This slot is reserved for a label → redirect to kw case
-                            lbl  `(recur ~lbl)
-                            ;; Has own body in codes
-                            code (let [[body goto] code]
-                                   (codegen-stmt n body goto))
-                            ;; Slot exists only in nos/labels but not codes → redirect
-                            :else `(recur ~(next-pc n)))]
-               [n form]))
-           all-int-slots)
-      ;; Keyword slots: own body, fall-through is int-slot + 1
-      (map (fn [kw]
-             (let [[body goto] (get codes kw)
-                   int-no      (get label->int kw)
-                   fall        (when int-no (next-pc int-no))
-                   form        (cond
-                                 ;; Empty/nil label (END, blank) → stop or advance
-                                 (and (nil? body) (nil? goto))
-                                 (if fall `(recur ~fall) `nil)
-                                 ;; Has body
-                                 :else
-                                 (if int-no
-                                   (codegen-stmt int-no body goto)
-                                   (codegen-stmt 0 body goto)))]
-               [kw form]))
-           kw-keys))))
-
-;; ── Namespace name generator ──────────────────────────────────────────────────
-
-(defn- gen-ns-name [src]
-  (symbol (str "snobol4.gen.p" (format "%x" (Math/abs (hash src))))))
-
-;; ── Top-level transpiler ─────────────────────────────────────────────────────
-
-(defn transpile-ir
-  "Transpile a pre-compiled [codes nos labels] IR triple to a Clojure source string.
-   The emitted namespace contains a single (run!) function.
-
-   ns-name — optional symbol, default generated from IR hash."
-  ([[codes nos labels :as ir]]
-   (transpile-ir ir (symbol (str "snobol4.gen.p" (Math/abs (hash ir))))))
-  ([[codes nos labels :as ir] ns-name]
-   (let [cases     (ir->cases ir)
-         ;; Build the case dispatch body
-         ;; case requires literal keys — emit as flat key/expr pairs
-         case-body (mapcat (fn [[k form]] [k form]) cases)
-         ;; Start PC — lowest integer key, or 1
-         int-keys  (sort (filter integer? (keys codes)))
-         start-pc  (if (seq int-keys) (first int-keys) 1)
-         run-fn    `(defn ~'run! []
-                      (reset! env/&STCOUNT 0)
-                      (loop [~'pc ~start-pc]
-                        (let [~'n (swap! env/&STCOUNT inc)]
-                          (when (> ~'n @env/&STLIMIT)
-                            (env/snobol-steplimit! ~'n)))
-                        (case ~'pc
-                          ~@case-body
-                          ;; default: unknown PC → stop
-                          nil)))
-         ns-form   `(~'ns ~ns-name
-                      (:require [~'SNOBOL4clojure.operators :as ~'ops]
-                                [~'SNOBOL4clojure.env       :as ~'env]))]
-     (str (pr-str ns-form) "\n\n" (pr-str run-fn) "\n"))))
-
-(defn transpile
-  "Transpile SNOBOL4 source text to a Clojure source string.
-   Runs CODE! internally (or uses CODE-memo cache).
-   Returns the Clojure source as a string."
-  [src]
-  (let [ir      (comp/CODE! src)
-        ns-name (gen-ns-name src)]
-    (transpile-ir ir ns-name)))
-
-;; ── Load and execute transpiled code ─────────────────────────────────────────
-
-(defn load-transpiled!
-  "Transpile src, evaluate the generated Clojure namespace in the current JVM,
-   and return the run! function.
-
-   The namespace is created fresh each call (using a hash-based name).
-   Repeated calls with the same src reuse the same generated ns — idempotent.
-
-   Returns the run! var (callable as (run-fn))."
-  [src]
-  (let [ns-name (gen-ns-name src)
-        ;; Check if already loaded
-        existing (find-ns ns-name)]
-    (when-not existing
-      (let [ir       (comp/CODE! src)
-            clj-src  (transpile-ir ir ns-name)]
-        ;; eval the ns declaration + defn
-        (binding [*ns* *ns*]
-          (load-string clj-src))))
-    (ns-resolve (find-ns ns-name) 'run!)))
-
-(defn run-transpiled!
-  "Transpile src, load the generated namespace, reset runtime state, and
-   invoke run!.  Returns the string output (same as RUN + CODE).
-
-   This is the main entry point for benchmarking and validation."
-  [src]
-  (let [run-var (load-transpiled! src)
-        gen-ns  (.ns run-var)]
-    ;; Register the generated namespace as the SNOBOL4 variable store
-    (env/GLOBALS gen-ns)
-    (reset! env/STNO 0)
-    (reset! env/<STNO> {})
-    (reset! env/<LABL> {})
-    (reset! env/<CODE> {})
-    (reset! env/<FUNS> {})
-    (reset! env/&STCOUNT 0)
-    (with-out-str
-      (try
-        ((var-get run-var))
-        (catch clojure.lang.ExceptionInfo e
-          (when-not (contains? #{:end :return :freturn :nreturn}
-                               (get (ex-data e) :snobol/signal))
-            (throw e)))))))
-
-;; ── Benchmark ────────────────────────────────────────────────────────────────
-
-(defn bench-compare
-  "Run src through both the interpreter (RUN+CODE-memo) and the transpiler
-   (run-transpiled!) n times each.  Returns:
-     {:interpreter-ms  avg-ms
-      :transpiled-ms   avg-ms
-      :ratio           speedup-factor
-      :outputs-match   boolean}
-
-   Used to validate correctness and measure speedup."
-  [src n]
-  (let [;; Warm up both paths
-        _ (dotimes [_ 5]
-            (env/GLOBALS (find-ns 'SNOBOL4clojure.runtime))
-            (reset! env/STNO 0) (reset! env/<STNO> {})
-            (reset! env/<LABL> {}) (reset! env/<CODE> {}) (reset! env/<FUNS> {})
-            (with-out-str (RUN (comp/CODE-memo src))))
-        _ (dotimes [_ 5] (run-transpiled! src))
-
-        ;; Time interpreter
-        t0 (System/nanoTime)
-        interp-out (atom "")
-        _ (dotimes [_ n]
-            (env/GLOBALS (find-ns 'SNOBOL4clojure.runtime))
-            (reset! env/STNO 0) (reset! env/<STNO> {})
-            (reset! env/<LABL> {}) (reset! env/<CODE> {}) (reset! env/<FUNS> {})
-            (reset! interp-out (with-out-str (RUN (comp/CODE-memo src)))))
-        interp-ms (/ (/ (- (System/nanoTime) t0) n) 1e6)
-
-        ;; Time transpiled
-        t1 (System/nanoTime)
-        trans-out (atom "")
-        _ (dotimes [_ n]
-            (reset! trans-out (run-transpiled! src)))
-        trans-ms  (/ (/ (- (System/nanoTime) t1) n) 1e6)]
-
-    {:interpreter-ms  (double interp-ms)
-     :transpiled-ms   (double trans-ms)
-     :ratio           (double (/ interp-ms trans-ms))
-     :outputs-match   (clojure.core/= @interp-out @trans-out)}))
-
-
-;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-;; Stage 3: the VM, flat integer bytecode
-;;
-;; Stage 23C — Clojure Stack Machine (CSM)
-;;
-;; The interpreter (runtime.clj RUN) dispatches via maps and keyword lookups
-;; on every statement.  The transpiler (transpiler.clj) compiles to Clojure
-;; source that the JVM JIT eventually optimises — but each statement still
-;; calls EVAL! which re-walks the IR list every time.
-;;
-;; The CSM flattens the [codes nos labels] IR into a dense integer-indexed
-;; bytecode vector and dispatches via a single case expression on an integer
-;; opcode.  This eliminates:
-;;   - Map lookups on every goto
-;;   - Keyword->integer resolution on every branch
-;;   - Seq walking overhead inside EVAL! for simple IR nodes
-;;
-;; ## Bytecode format
-;;
-;; The bytecode is a Clojure vector of instruction records.  Each instruction
-;; is a map:
-;;
-;;   {:op   <opcode int>
-;;    :body <EVAL! argument, or nil>
-;;    :s    <success jump target int, or nil>
-;;    :f    <failure jump target int, or nil>}
-;;
-;; Opcodes (integer constants):
-;;   0  HALT    — program end (maps to END / fall-off)
-;;   1  EXEC    — eval body, always fall through to pc+1
-;;   2  EXEC-S  — eval body; success → :s, failure → pc+1
-;;   3  EXEC-F  — eval body; success → pc+1, failure → :f
-;;   4  EXEC-SF — eval body; success → :s, failure → :f
-;;   5  JUMP    — unconditional goto :s (body ignored)
-;;   6  SIGNAL  — throw snobol/signal stored in :body
-;;
-;; ## Compilation
-;;
-;;   (compile-ir ir)    → bytecode vector
-;;   (compile-src src)  → bytecode vector (uses CODE-memo cache)
-;;
-;; ## Execution
-;;
-;;   (run-vm! bc)       → nil (output via *out*)
-;;
-;; ## Public benchmark / validation API
-;;
-;;   (bench-compare-vm src n) → {:interpreter-ms :vm-ms :ratio :outputs-match}
-;;
-;; ## Design invariant
-;;
-;; The CSM must produce identical output to the interpreter (runtime.clj RUN)
-;; on every program.  The interpreter is the semantic oracle; the VM is a
-;; performance optimisation only.
-;;
+;; The IR's statements flattened to one vector the class generator below walks, each a map {:op :body :s :f}: every label goto resolved to
+;; its index, and each statement's goto shape one of seven opcodes (HALT, EXEC, EXEC-S, EXEC-F, EXEC-SF, JUMP, SIGNAL). It was the front end of
+;; the VM engine, a loop that ran this vector; the VM was deleted 2026-11-19 (Lon: "delete the memoizer, EDN cache, VM and transpiler"),
+;; the bytecode engine being the low-level one kept. To go: the generator reading the IR itself, an ASM Label a statement.
 ;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 ;; ── Opcode constants ─────────────────────────────────────────────────────────
@@ -867,127 +484,13 @@
       (conj instrs {:op OP-HALT :body nil :s nil :f nil}))))
 
 (defn compile-src
-  "Compile SNOBOL4 source to bytecode.  Uses CODE-memo for IR caching."
+  "Compile SNOBOL4 source to the instruction list."
   [src]
   (compile-ir (comp/CODE! src)))
 
-;; ── VM executor ──────────────────────────────────────────────────────────────
-
-(defn run-vm!
-  "Execute a bytecode vector produced by compile-ir.
-   Side effects: writes to *out* (OUTPUT), mutates SNOBOL4 variables.
-   Returns nil.  Throws ExceptionInfo for :step-limit."
-  [^clojure.lang.PersistentVector bc]
-  (reset! &STCOUNT 0)
-  (let [bc-len (count bc)]
-    (loop [pc 0]
-      (when (< pc bc-len)
-        (let [{:keys [op body s f s-sig f-sig]} (bc pc)]
-          (let [n (swap! &STCOUNT inc)]
-            (when (> n @&STLIMIT)
-              (snobol-steplimit! n)))
-          (case (int op)
-            0 nil  ; HALT
-            1      ; EXEC — eval, always advance
-            (do (when body (EVAL! body))
-                (recur s))
-            2      ; EXEC-S — success->s, failure->f(=fall)
-            (let [r (when body (EVAL! body))]
-              (if r
-                (if s-sig (throw (ex-info (name s-sig) {:snobol/signal s-sig}))
-                    (recur s))
-                (recur f)))
-            3      ; EXEC-F — success->s(=fall), failure->f
-            (let [r (when body (EVAL! body))]
-              (if r
-                (recur s)
-                (if f-sig (throw (ex-info (name f-sig) {:snobol/signal f-sig}))
-                    (recur f))))
-            4      ; EXEC-SF — success->s, failure->f
-            (let [r (when body (EVAL! body))]
-              (if r
-                (if s-sig (throw (ex-info (name s-sig) {:snobol/signal s-sig}))
-                    (recur s))
-                (if f-sig (throw (ex-info (name f-sig) {:snobol/signal f-sig}))
-                    (recur f))))
-            5      ; JUMP — unconditional goto s (body may have been eval'd)
-            (do (when body (EVAL! body))
-                (recur (int s)))
-            6      ; SIGNAL — throw :snobol/signal
-            (throw (ex-info (name body) {:snobol/signal body}))
-            ;; default
-            nil))))))
-
-(defn run-program!
-  "Reset runtime state and run src through the VM.
-   Returns captured stdout string."
-  [src]
-  (env/GLOBALS (find-ns 'SNOBOL4clojure.runtime))
-  (reset! env/STNO 0)
-  (reset! env/<STNO> {})
-  (reset! env/<LABL> {})
-  (reset! env/<CODE> {})
-  (reset! env/<FUNS> {})
-  (reset! &STCOUNT 0)
-  (let [bc (compile-src src)]
-    (with-out-str
-      (try
-        (run-vm! bc)
-        (catch clojure.lang.ExceptionInfo e
-          (when-not (contains? #{:end :return :freturn :nreturn}
-                               (get (ex-data e) :snobol/signal))
-            (throw e)))))))
-
-;; ── Benchmark ────────────────────────────────────────────────────────────────
-
-(defn bench-compare-vm
-  "Compare interpreter (RUN+CODE-memo) vs VM (compile-ir+run-vm!) on src.
-   Returns {:interpreter-ms :vm-ms :ratio :outputs-match}."
-  [src n]
-  (let [bc (compile-src src)
-
-        interp-reset! (fn []
-                        (env/GLOBALS (find-ns 'SNOBOL4clojure.runtime))
-                        (reset! env/STNO 0) (reset! env/<STNO> {})
-                        (reset! env/<LABL> {}) (reset! env/<CODE> {})
-                        (reset! env/<FUNS> {}))
-
-        run-interp (fn []
-                     (interp-reset!)
-                     (with-out-str
-                       (try (RUN (comp/CODE-memo src))
-                            (catch clojure.lang.ExceptionInfo e
-                              (when-not (contains? #{:end :return :freturn :nreturn}
-                                                   (get (ex-data e) :snobol/signal))
-                                (throw e))))))
-        run-vm     (fn []
-                     (interp-reset!)
-                     (with-out-str
-                       (try (run-vm! bc)
-                            (catch clojure.lang.ExceptionInfo e
-                              (when-not (contains? #{:end :return :freturn :nreturn}
-                                                   (get (ex-data e) :snobol/signal))
-                                (throw e))))))]
-
-    ;; Warm up
-    (dotimes [_ 20] (run-interp))
-    (dotimes [_ 20] (run-vm))
-
-    (let [i-out (atom "") v-out (atom "")
-          t0 (System/nanoTime)
-          _  (dotimes [_ n] (reset! i-out (run-interp)))
-          i-ms (/ (/ (- (System/nanoTime) t0) n) 1e6)
-          t1 (System/nanoTime)
-          _  (dotimes [_ n] (reset! v-out (run-vm)))
-          v-ms (/ (/ (- (System/nanoTime) t1) n) 1e6)]
-      {:interpreter-ms (double i-ms)
-       :vm-ms          (double v-ms)
-       :ratio          (double (/ i-ms v-ms))
-       :outputs-match  (clojure.core/= @i-out @v-out)})))
-
 
 ;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-;; Stage 4: JVM bytecode through clojure.asm
+;; JVM bytecode, part 2: the class, through clojure.asm
 ;;
 ;; Stage 23D — JVM Bytecode Generation
 ;;
@@ -1674,7 +1177,7 @@
 ;; ── Benchmark ────────────────────────────────────────────────────────────────
 
 (defn bench-compare-jvm
-  "Compare interpreter (RUN+CODE-memo) vs JVM-compiled (run-jvm!) on src.
+  "Compare interpreter (RUN+CODE) vs JVM-compiled (run-jvm!) on src.
    Warms both paths before timing.
    Returns {:interpreter-ms :jvm-ms :ratio :outputs-match}."
   [src n]
@@ -1687,7 +1190,7 @@
         run-interp (fn []
                      (reset-env!)
                      (with-out-str
-                       (try (RUN (comp/CODE-memo src))
+                       (try (RUN (comp/CODE src))
                             (catch clojure.lang.ExceptionInfo e
                               (when-not (contains? #{:end :return :freturn :nreturn}
                                                    (get (ex-data e) :snobol/signal))

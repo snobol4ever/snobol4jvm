@@ -10,7 +10,7 @@ SNOBOL4 was invented at Bell Labs in the 1960s by Ralph Griswold, Ivan Polonsky,
 Farber. It introduced pattern matching as a first-class data type — patterns that compose,
 backtrack, capture intermediate results, reference themselves recursively, and can express
 BNF grammars directly. snobol4jvm runs the real language on any platform Java runs on,
-with a four-stage acceleration pipeline that pushes toward native speed.
+with an interpreter and a JVM bytecode compiler over one IR.
 
 ---
 
@@ -49,45 +49,28 @@ sugar. This is a full backtracking engine.
 
 ---
 
-## Architecture: The Four-Stage Pipeline
+## Architecture: Two Engines over One IR
 
-snobol4jvm runs SNOBOL4 through four increasingly optimized execution engines. Each stage
-is a complete, correct implementation. The pipeline is additive — later stages delegate to
-earlier ones for correctness and add speed on top.
+snobol4jvm compiles SNOBOL4 source to an IR of plain Clojure data and runs it with one of two engines, both in
+`runtime.clj`. The transpiler, the stack VM and the IR caches of earlier sprints were deleted on 2026-11-19.
 
 ```
 SNOBOL4 source
-      │
+      │  compiler.clj: statements, -INCLUDE, grammar, constant folding, emitter
       ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  Stage 1: Interpreter  (runtime.clj)                                │
-│  GOTO-driven statement dispatch. Faithful to original semantics.    │
-│  All features are proven here first.                                │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │  EDN cache (22× cold-start speedup)
-                               ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  Stage 2: Transpiler  (runtime.clj)                                 │
-│  SNOBOL4 IR → Clojure loop/case. The JVM JIT compiles it to        │
-│  native code on first call. Hot loops benefit immediately.          │
-│  Speedup: 3.5–6× vs interpreter.                                   │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  Stage 3: Stack VM  (runtime.clj)                                   │
-│  Flat integer-indexed bytecode vector. Single integer dispatch.     │
-│  Eliminates map lookups, keyword resolution, seq walking.           │
-│  Speedup: 2–6× vs interpreter.                                      │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  Stage 4: JVM Bytecode  (runtime.clj)                               │
-│  SNOBOL4 → .class bytecode via ASM. DynamicClassLoader at runtime. │
-│  The JVM JIT sees real bytecode and applies full optimization.      │
-│  Speedup: 7.6× vs interpreter. Cold-start cumulative: ~190×.       │
-└─────────────────────────────────────────────────────────────────────┘
+IR  {1 [(= OUTPUT "Hello world!") nil], :END [nil nil]}  plus the label tables
+      │
+      ├──────────────────────────────────────┐
+      ▼                                      ▼
+┌──────────────────────────────┐   ┌──────────────────────────────────────────────┐
+│  The interpreter (RUN)       │   │  JVM bytecode (run-jvm!)                     │
+│  GOTO-driven dispatch over   │   │  part 1: the IR flattened to an instruction  │
+│  the statement store. Every  │   │  list, every label resolved to an index      │
+│  feature is proven here; the │   │  part 2: one .class per program via ASM,     │
+│  boards grade this engine.   │   │  loaded by DynamicClassLoader; bodies inlined│
+│                              │   │  or called through EVAL! (no error trapping, │
+│                              │   │  traces or -main endings yet)                │
+└──────────────────────────────┘   └──────────────────────────────────────────────┘
 ```
 
 ### The Pattern Engine: operators.clj
@@ -113,45 +96,9 @@ Actions: `:proceed` (enter) · `:recede` (backtrack) · `:succeed` (matched) · 
 This is the **Byrd Box model** — described by Lawrence Byrd in 1980 for Prolog debugging
 and generalized by Todd Proebsting in 1996 as a code generation strategy for goal-directed
 languages. The same four-port model describes SNOBOL4 pattern matching, Icon generators,
-and Prolog unification. In snobol4jvm the interpreter runs it explicitly; in the JVM
-bytecode stage, each Byrd box becomes labeled JVM instructions wired at compile time.
+and Prolog unification. In snobol4jvm the interpreter runs it explicitly.
 
-### Stage 2: The Transpiler
-
-The transpiler compiles SNOBOL4 IR to a Clojure namespace containing one `run!` function —
-a `loop/case` over statement indices. Each SNOBOL4 statement becomes one case clause:
-
-```clojure
-; SNOBOL4:   LOOP  I = I + 1  :S(LOOP)
-;
-; Transpiled:
-(case pc
-  ...
-  42 (let [r (ops/EVAL! '(= I (+ I 1)))]
-       (if r (recur :LOOP) (recur 43)))
-  ...)
-```
-
-This is a real Clojure function. The JVM JIT compiles it to native code on first invocation.
-
-### Stage 3: The Stack VM
-
-The VM flattens the IR into a dense integer-indexed bytecode vector with seven opcodes:
-
-| Opcode | Meaning |
-|--------|---------|
-| `HALT`    | Program end |
-| `EXEC`    | Eval body, always fall through |
-| `EXEC-S`  | Eval; success → jump, failure → fall through |
-| `EXEC-F`  | Eval; success → fall through, failure → jump |
-| `EXEC-SF` | Eval; success → jump1, failure → jump2 |
-| `JUMP`    | Unconditional goto |
-| `SIGNAL`  | Throw SNOBOL4 signal |
-
-A single integer dispatch per statement eliminates the map lookups, keyword-to-integer
-resolution, and seq-walking overhead that the interpreter pays on every statement.
-
-### Stage 4: JVM Bytecode
+### JVM Bytecode
 
 `runtime.clj`'s jvm_codegen section compiles SNOBOL4 IR to `.class` bytecode using the ASM library directly.
 Each program becomes one Java class with a static `run()` method. `DynamicClassLoader`
@@ -264,6 +211,8 @@ repository. The same numbers are kept in the org's `.github/findings/JVM-BENCH-T
 
 <details>
 <summary>Earlier figures (2026-10-17): in-process, after warm-up, on four tiny programs; not re-run and not about the default engine</summary>
+
+These figures are history: the transpiler, the stack VM and the EDN cache they name were deleted on 2026-11-19, and none of the figures was measured as an instruction count.
 
 Benchmarks on Linux / OpenJDK 21 / Leiningen 2.12.0. SPITBOL and CSNOBOL4 times include ~15 ms process-spawn overhead. The `Transpil`, `Stack VM` and `JVM code` columns are backends
 reachable from the API, not from the command line; `--engine vm` is the only other engine the command line selects, and it counted within 4% of `interp` on the two programs tried.
@@ -444,7 +393,7 @@ cd snobol4jvm
 **Run a SNOBOL4 program:**
 
 ```bash
-lein run program.sno < input.txt     # INPUT reads stdin; --engine vm picks the Stage 3 VM
+lein run program.sno < input.txt     # INPUT reads stdin; the interpreter runs it
 ```
 
 **Build a standalone jar:**
@@ -468,7 +417,7 @@ src/SNOBOL4clojure/        one namespace a file, in load order
                  TRACE, and the listing, error report and &DUMP sbl -bf writes
   compiler.clj   Grammar (instaparse), compile error numbers, emitter (parse tree → IR), compiler
   operators.clj  The pattern engine (one loop/case) and EVAL / EVAL! / INVOKE, the central dispatch
-  runtime.clj    The four engines: interpreter, transpiler, stack VM, ASM .class bytecode
+  runtime.clj    The two engines: the interpreter and ASM .class bytecode
   core.clj       Public facade and -main
   main.clj       Uberjar entry point
   snocone.clj    Snocone front end: lexer, expression grammar, emitter of SNOBOL4 source

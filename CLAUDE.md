@@ -45,9 +45,8 @@ timeout -k 2 30 /home/resources/x64/bin/sbl -bf prog.sno < input.txt > sbl.out; 
   - start every engine run under `timeout -k 2 <secs>`;
   - run it in the foreground, one JVM at a time;
   - a hang left behind in the background burns a core until someone kills it.
-- **`-main` arguments:** `[--engine interp|vm] [-u STR] <file.sno> [program args…]`.
-  - The default engine is the Stage 1 interpreter, the one the test suite runs.
-  - `--engine vm` runs the Stage 3 VM, which drops every statement after a `DEFINE`'s goto.
+- **`-main` arguments:** `[--engine interp] [-u STR] <file.sno> [program args…]`.
+  - The engine is the interpreter, the one every board grades. JVM bytecode is reached from the API (`run-jvm!`), not yet from the command line.
   - `-u STR` is what `HOST(0)` returns. Without it, `HOST(0)` joins the program arguments.
   - `-INCLUDE` resolves against the program's own directory, then `$SNO_LIB`, then the current directory.
   - A program with a compile error is not run, and `-main` returns 231, as `sbl -bf` exits.
@@ -83,7 +82,7 @@ This seat runs its own boards (CEO-1912). The engine arm is `../harness/scripts/
 | `env.clj` | The runtime: its state (variables, keywords, channels, `ARRAY`, `TABLE`, `DATATYPE`, `GLOBALS`), the error texts, the built-in functions, the pattern constructors and scanners, `TRACE`, and what `sbl -bf` writes besides the program's output (the listing, an error's report, the `&DUMP` dump). |
 | `compiler.clj` | The front end: the grammar, the compile error numbers, the emitter and the compiler. |
 | `operators.clj` | The matcher (`engine`) and the evaluator (`EVAL!`, `INVOKE` and the operators). |
-| `runtime.clj` | The four execution engines. |
+| `runtime.clj` | The two execution engines: the interpreter and JVM bytecode. |
 | `core.clj` | The public facade, which re-exports the API, and `-main`. |
 | `main.clj` | The uberjar's entry point. |
 | `snocone.clj` | The Snocone front end. |
@@ -117,20 +116,16 @@ The IR is plain homoiconic Clojure data: prefix lists such as `(= I (+ I 1))`, t
 - `<LABL>`: number to label;
 - `STNO`: the running counter.
 
-`CODE` appends to that store; it does not replace it. Runtime `CODE()` depends on this, and it is also why state leaks between runs. The IR is pure EDN, so `CODE-memo` (in memory) and `CODE-cached` / `compile-to-file` (on disk) cache it and skip parsing.
+`CODE` appends to that store; it does not replace it. Runtime `CODE()` depends on this, and it is also why state leaks between runs. `CODE-ir` loads a triple built elsewhere (IR written as Clojure data) without parsing. Nothing caches IR: the in-memory memo and the on-disk EDN cache were deleted on 2026-11-19 (a memo hit skipped `<DIAGNOSTICS>` and never saw an edited `-INCLUDE` file, and no board used either).
 
-### Four execution engines
+### Two execution engines
 
-All four engines read the same IR, and each one evaluates statement bodies with `operators/EVAL!`:
+Both engines read the same IR and evaluate statement bodies with `operators/EVAL!`; both live in `runtime.clj`. The transpiler (IR to Clojure source) and the VM engine (a loop over an instruction vector) were deleted on 2026-11-19 (Lon: "delete the memoizer, EDN cache, VM and transpiler"); the VM's flattener stays as the bytecode's first part.
 
-All four live in `runtime.clj`, one section each.
-
-| Stage | Section | Mechanism |
+| Engine | Section | Mechanism |
 |-------|-----------|-----------|
-| 1 | runtime (`RUN`) | Interpreter. A `loop` over the statement store resolves gotos (labels, strings, numbers, and variables that hold labels) and counts `&STCOUNT` against `&STLIMIT`. Every feature is proven here first. |
-| 2 | transpiler | Emits a Clojure namespace with one `run!` function, a `loop`/`case` over statement indices. |
-| 3 | vm | Flat integer bytecode with 7 opcodes (`HALT`, `EXEC`, `EXEC-S`, `EXEC-F`, `EXEC-SF`, `JUMP`, `SIGNAL`). |
-| 4 | jvm_codegen | Writes a real `.class` file with `clojure.asm` (Clojure's bundled ASM, not an external dependency) and loads it with `DynamicClassLoader`. Generated code calls back through a static `IFn` field (`EVAL_FN`), so its constant pool never names `operators`. |
+| interpreter | The interpreter (`RUN`) | Interpreter. A `loop` over the statement store resolves gotos (labels, strings, numbers, and variables that hold labels) and counts `&STCOUNT` against `&STLIMIT`. Every feature is proven here first. |
+| JVM bytecode | part 1, the instruction list; part 2, the class | Part 1 flattens the IR to a vector with 7 opcodes (`HALT`, `EXEC`, `EXEC-S`, `EXEC-F`, `EXEC-SF`, `JUMP`, `SIGNAL`), every label resolved to its index. Part 2 writes a real `.class` file with `clojure.asm` (Clojure's bundled ASM, not an external dependency) and loads it with `DynamicClassLoader`. Generated code calls back through a static `IFn` field (`EVAL_FN`), so its constant pool never names `operators`. It has none of the interpreter's error trapping, traces or `-main` endings yet. |
 
 Control flow (`RETURN`, `FRETURN`, `NRETURN`, `END`, the step limit) travels as `ExceptionInfo` whose `ex-data` carries `:snobol/signal`. The `snobol-*!` helpers in `env.clj` throw these signals. Every engine and every test helper catches them by that key.
 

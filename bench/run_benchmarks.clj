@@ -15,9 +15,6 @@
   (:require [SNOBOL4clojure.harness    :as h]
             [SNOBOL4clojure.compiler   :as comp]
             [SNOBOL4clojure.runtime    :as rt]
-            [SNOBOL4clojure.runtime :as tr]
-            [SNOBOL4clojure.runtime         :as vm]
-            [SNOBOL4clojure.runtime :as jc]
             [SNOBOL4clojure.env        :as env]
             [clojure.string            :as str]
             [clojure.java.shell        :as sh]))
@@ -110,26 +107,14 @@
 (defn run-interpreter [src]
   (reset-env!)
   (with-out-str
-    (try (rt/RUN (comp/CODE-memo src))
-         (catch clojure.lang.ExceptionInfo e
-           (when-not (#{:end :return :freturn :nreturn}
-                      (:snobol/signal (ex-data e)))
-             (throw e))))))
-
-(defn run-transpiler [src]
-  (with-out-str (tr/run-transpiled! src)))
-
-(defn run-stack-vm [src]
-  (reset-env!)
-  (with-out-str
-    (try (vm/run-vm! (vm/compile-src src))
+    (try (rt/RUN (comp/CODE src))
          (catch clojure.lang.ExceptionInfo e
            (when-not (#{:end :return :freturn :nreturn}
                       (:snobol/signal (ex-data e)))
              (throw e))))))
 
 (defn run-jvm-codegen [src]
-  (jc/run-jvm-captured! src))
+  (rt/run-jvm-captured! src))
 
 ;; ── Benchmark runner ─────────────────────────────────────────────────────────
 
@@ -149,8 +134,6 @@
 
         ;; Clojure backend timings
         interp-ms  (try (timed-ms reps (run-interpreter   src)) (catch Exception e (do (println "  INTERP ERR:" (.getMessage e)) nil)))
-        trans-ms   (try (timed-ms reps (run-transpiler     src)) (catch Exception e (do (println "  TRANS ERR:" (.getMessage e))  nil)))
-        vm-ms      (try (timed-ms reps (run-stack-vm       src)) (catch Exception e (do (println "  VM ERR:"    (.getMessage e))  nil)))
         jvm-ms     (try (timed-ms reps (run-jvm-codegen    src)) (catch Exception e (do (println "  JVM ERR:"   (.getMessage e))  nil)))
 
         fmt  (fn [ms baseline]
@@ -164,13 +147,11 @@
     (println (format "   %-22s %s" "SPITBOL v4.0f"       (fmt sp-ms  nil)))
     (println (format "   %-22s %s" "CSNOBOL4 2.3.3"      (fmt cs-ms  nil)))
     (println (format "   %-22s %s" "Clojure interpreter"  (fmt interp-ms baseline)))
-    (println (format "   %-22s %s" "Clojure transpiler"   (fmt trans-ms  baseline)))
-    (println (format "   %-22s %s" "Clojure stack VM"     (fmt vm-ms     baseline)))
     (println (format "   %-22s %s" "Clojure JVM codegen"  (fmt jvm-ms    baseline)))
 
     {:id id :label label
      :spitbol sp-ms :csnobol4 cs-ms
-     :interpreter interp-ms :transpiler trans-ms :stack-vm vm-ms :jvm-codegen jvm-ms}))
+     :interpreter interp-ms :jvm-codegen jvm-ms}))
 
 ;; ── Summary grid ─────────────────────────────────────────────────────────────
 
@@ -178,21 +159,20 @@
   (println "\n\n╔══════════════════════════════════════════════════════════════════════════════╗")
   (println   "║               SNOBOL4 ENGINE BENCHMARK GRID  (ms per run, lower = faster)  ║")
   (println   "╠══════════════════════════════════════════════════════════════════════════════╣")
-  (println   "║ Program            SPITBOL  CSNOBOL4  Interp   Trans    VM      JVM         ║")
+  (println   "║ Program            SPITBOL  CSNOBOL4  Interp   JVM                          ║")
   (println   "╠══════════════════════════════════════════════════════════════════════════════╣")
-  (doseq [{:keys [id spitbol csnobol4 interpreter transpiler stack-vm jvm-codegen]} results]
+  (doseq [{:keys [id spitbol csnobol4 interpreter jvm-codegen]} results]
     (let [f #(if % (format "%7.2f" %) "    N/A")]
-      (println (format "║ %-18s %s  %s  %s  %s  %s  %s ║"
+      (println (format "║ %-18s %s  %s  %s  %s                    ║"
                        (subs id 0 (min 18 (count id)))
-                       (f spitbol) (f csnobol4) (f interpreter)
-                       (f transpiler) (f stack-vm) (f jvm-codegen)))))
+                       (f spitbol) (f csnobol4) (f interpreter) (f jvm-codegen)))))
   (println   "╚══════════════════════════════════════════════════════════════════════════════╝"))
 
 ;; ── Main ─────────────────────────────────────────────────────────────────────
 
 (println "\nSNOBOL4 Backend Benchmark")
 (println "=========================")
-(println "Engines:  SPITBOL v4.0f  |  CSNOBOL4 2.3.3  |  SNOBOL4clojure (4 backends)")
+(println "Engines:  SPITBOL v4.0f  |  CSNOBOL4 2.3.3  |  SNOBOL4clojure (2 backends)")
 (println "Platform:" (System/getProperty "java.vm.name") (System/getProperty "java.version"))
 (println)
 

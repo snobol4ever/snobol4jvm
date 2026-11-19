@@ -105,7 +105,7 @@
 
 (defn run-clojure
   "Run src through SNOBOL4clojure. Returns {:stdout :stderr :exit :thrown}.
-   Uses CODE-memo (Stage 23A) so grammar+emitter run only once per unique src."
+   Compiles src with CODE on every call."
   [src]
   (try
     (reset-runtime!)
@@ -114,7 +114,7 @@
               (deliver stdout-p
                 (with-out-str
                   (try
-                    (sno/RUN (sno/CODE-memo src))
+                    (sno/RUN (sno/CODE src))
                     (catch clojure.lang.ExceptionInfo e
                       (when-not (= (get (ex-data e) :snobol/signal) :end)
                         (throw e)))))))]
@@ -1139,18 +1139,7 @@
 (defn run-interpreter [src]
   (reset-to! 'snobol4.bench.interp)
   (with-out-str
-    (try (rt/RUN (comp/CODE-memo src))
-         (catch clojure.lang.ExceptionInfo e
-           (when-not (#{:end :return :freturn :nreturn}
-                      (:snobol/signal (ex-data e))) (throw e))))))
-
-(defn run-transpiler [src]
-  (with-out-str (rt/run-transpiled! src)))
-
-(defn run-stack-vm [src]
-  (reset-to! 'snobol4.bench.vm)
-  (with-out-str
-    (try (rt/run-vm! (rt/compile-src src))
+    (try (rt/RUN (comp/CODE src))
          (catch clojure.lang.ExceptionInfo e
            (when-not (#{:end :return :freturn :nreturn}
                       (:snobol/signal (ex-data e))) (throw e))))))
@@ -1215,8 +1204,6 @@
   (let [sp (time-fn #(run-spitbol  src) reps)
         cs (time-fn #(run-csnobol4 src) reps)
         i  (time-fn #(run-interpreter src) reps)
-        t  (time-fn #(run-transpiler  src) reps)
-        v  (time-fn #(run-stack-vm    src) reps)
         j  (time-fn #(run-jvm         src) reps)
         fmt (fn [ms ref]
               (if ms
@@ -1226,25 +1213,20 @@
     (println (format "   %-30s %s" "SPITBOL v4.0f"          (fmt sp nil)))
     (println (format "   %-30s %s" "CSNOBOL4 2.3.3"         (fmt cs nil)))
     (println (format "   %-30s %s" "SNOBOL4clj interpreter" (fmt i  i)))
-    (println (format "   %-30s %s" "SNOBOL4clj transpiler"  (fmt t  i)))
-    (println (format "   %-30s %s" "SNOBOL4clj stack VM"    (fmt v  i)))
     (println (format "   %-30s %s" "SNOBOL4clj JVM codegen" (fmt j  i)))
-    {:id id :spitbol sp :csnobol4 cs :interp i :trans t :vm v :jvm j}))
+    {:id id :spitbol sp :csnobol4 cs :interp i :jvm j}))
 
 (defn print-grid [results]
   (let [f #(if % (format "%8.2f" %) "     N/A")]
     (println)
-    (println "╔══════════════════════════════════════════════════════════════════════════════════════╗")
-    (println "║       SNOBOL4 ENGINE BENCHMARK GRID  (ms / run — lower = faster)                    ║")
-    (println "╠═══════════════════════╦══════════╦══════════╦══════════╦══════════╦══════════╦══════════╣")
-    (println "║ Program               ║ SPITBOL  ║ CSNOBOL4 ║ Interp   ║ Transpil ║ Stack VM ║ JVM code ║")
-    (println "╠═══════════════════════╬══════════╬══════════╬══════════╬══════════╬══════════╬══════════╣")
-    (doseq [{:keys [id spitbol csnobol4 interp trans vm jvm]} results]
-      (println (format "║ %-21s ║%s ║%s ║%s ║%s ║%s ║%s ║"
+    (println "╔═══════════════════════╦══════════╦══════════╦══════════╦══════════╗")
+    (println "║ Program               ║ SPITBOL  ║ CSNOBOL4 ║ Interp   ║ JVM code ║")
+    (println "╠═══════════════════════╬══════════╬══════════╬══════════╬══════════╣")
+    (doseq [{:keys [id spitbol csnobol4 interp jvm]} results]
+      (println (format "║ %-21s ║%s ║%s ║%s ║%s ║"
                        (subs id 0 (min 21 (count id)))
-                       (f spitbol) (f csnobol4) (f interp)
-                       (f trans) (f vm) (f jvm))))
-    (println "╚═══════════════════════╩══════════╩══════════╩══════════╩══════════╩══════════╩══════════╝")
+                       (f spitbol) (f csnobol4) (f interp) (f jvm))))
+    (println "╚═══════════════════════╩══════════╩══════════╩══════════╩══════════╝")
     (println)
     (println "Ratios vs Clojure interpreter shown per-program above.")
     (println "SPITBOL/CSNOBOL4 include process-spawn overhead (~15ms/run).")
@@ -1258,7 +1240,7 @@
   (println "Warming up Clojure backends...")
   (let [w "        I = 0\nLOOP    I = I + 1\n        LT(I,100) :S(LOOP)\nEND\n"]
     (dotimes [_ 3]
-      (run-interpreter w) (run-transpiler w) (run-stack-vm w) (run-jvm w)))
+      (run-interpreter w) (run-jvm w)))
   (println "Warmup done.\n")
   (let [results (mapv bench-program PROGRAMS)]
     (print-grid results))

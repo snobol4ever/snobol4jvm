@@ -153,17 +153,7 @@
 (def CODE!             comp/CODE!)
 (def CODE              comp/CODE)
 (def RUN               rt/RUN)
-;; Stage 23A — EDN cache
-(def ir->edn           comp/ir->edn)
-(def edn->ir           comp/edn->ir)
-(def CODE-ir           comp/CODE-ir)
-(def CODE-memo         comp/CODE-memo)
-(def CODE-cached       comp/CODE-cached)
-(def compile-to-file   comp/compile-to-file)
-(def load-ir           comp/load-ir)
-(def clear-memo!       comp/clear-memo!)
-(def memo-stats        comp/memo-stats)
-(def precompile-corpus! comp/precompile-corpus!)
+(def CODE-ir           comp/CODE-ir)   ; IR built as Clojure data, loaded without parsing
 ;; Sprint 25A — -INCLUDE preprocessor
 (def preprocess-includes comp/preprocess-includes)
 
@@ -191,8 +181,8 @@
           false (clojure.string/split-lines src)))
 
 (defn -main
-  "SNOBOL4/Clojure — run a .sno file: [--engine interp|vm] <file.sno>.
-   The default engine is the Stage 1 interpreter, the one the test suite runs.
+  "SNOBOL4/Clojure — run a .sno file: [--engine interp] <file.sno>.
+   The engine is the interpreter, the one every board grades (the vm engine was deleted 2026-11-19; JVM bytecode is reached through run-jvm!).
    -INCLUDE files resolve against the program's own directory, then SNO_LIB,
    then the current one. INPUT reads stdin."
   [& args]
@@ -217,9 +207,9 @@
                                 (and (first as) (re-matches #"-(?:[bfnelsx]+|[dsimt]\d+[kmgKMG]?)" (first as))) (recur engine u (next as))
                                 :else                                                                [engine u as]))
         [file & prog-args] args]
-    (when (or (nil? file) (not (#{"interp" "vm"} engine)))
+    (when (or (nil? file) (not (#{"interp"} engine)))
       (binding [*out* *err*]
-        (println "Usage: lein run [--engine interp|vm] <file.sno>"))
+        (println "Usage: lein run [--engine interp] <file.sno>"))
       (System/exit 1))
     (let [src (slurp file :encoding "ISO-8859-1")   ; a program is bytes
           dir (or (.getParent (java.io.File. ^String file)) ".")]
@@ -289,33 +279,10 @@
                          ;; the run ends with the exit code &CODE holds, however it ends, modulo 256 and 0 when negative (manual ch. 7, &CODE: "the end-of-job code";
                          ;; MEASURED on sbl -bf: &CODE = 3 exits 3, after an execution error or the statement limit too; 300 exits 44, 256 and -5 exit 0; corpus
                          ;; gate_cases_snobol4 test_gate_harness_road_lib_reads_the_per_process_verdict__code)
-                         (let [c (long (or @exit-code @env/&CODE)) c (if (neg? c) 0 (mod c 256))] (when (pos? c) c))))))
-        "vm"     (print (rt/run-program! src)))]
+                         (let [c (long (or @exit-code @env/&CODE)) c (if (neg? c) 0 (mod c 256))] (when (pos? c) c)))))))]
         (flush)
         (when sink (.close ^java.io.Writer sink))
         (when (integer? rc) rc)))))
-
-;; ── Re-export transpiler (Stage 23B) ─────────────────────────────────────────
-(def transpile          rt/transpile)
-(def transpile-ir       rt/transpile-ir)
-(def load-transpiled!   rt/load-transpiled!)
-(def run-transpiled!    rt/run-transpiled!)
-(def bench-compare      rt/bench-compare)
-
-;; ── Re-export VM (Stage 23C) ──────────────────────────────────────────────────
-(def compile-ir         rt/compile-ir)
-(def compile-src        rt/compile-src)
-(def run-vm!            rt/run-vm!)
-(def run-program!       rt/run-program!)
-(def bench-compare-vm   rt/bench-compare-vm)
-;; Opcode constants
-(def OP-HALT            rt/OP-HALT)
-(def OP-EXEC            rt/OP-EXEC)
-(def OP-EXEC-S          rt/OP-EXEC-S)
-(def OP-EXEC-F          rt/OP-EXEC-F)
-(def OP-EXEC-SF         rt/OP-EXEC-SF)
-(def OP-JUMP            rt/OP-JUMP)
-(def OP-SIGNAL          rt/OP-SIGNAL)
 
 ;; ── Re-export JVM codegen (Stage 23D) ───────────────────────────────────────
 (def compile-to-class    rt/compile-to-class)

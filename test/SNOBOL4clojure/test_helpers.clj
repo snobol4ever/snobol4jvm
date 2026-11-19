@@ -81,7 +81,7 @@
       (bisect-divergence src 1 100 'I #(clojure.core/= % 5))
   "
   (:require [clojure.test :refer [is]]
-            [SNOBOL4clojure.core :refer [RUN CODE CODE-memo preprocess-includes]]))
+            [SNOBOL4clojure.core :refer [RUN CODE preprocess-includes]]))
 
 ;; ── Low-level timed executor ───────────────────────────────────────────────────
 
@@ -107,7 +107,7 @@
                            (let [err-buf (java.io.StringWriter.)
                                  stdout  (with-out-str
                                            (binding [*err* (java.io.PrintWriter. err-buf true)]
-                                             (RUN (CODE-memo src))))]
+                                             (RUN (CODE src))))]
                              {:exit :ok :stdout stdout :stderr (str err-buf)})
                            (catch clojure.lang.ExceptionInfo e
                              (case (get (ex-data e) :snobol/signal)

@@ -356,7 +356,7 @@
         (spit (.getPath tmp) "alpha\nbeta\ngamma\n")
         (let [stdout (with-out-str
                        (try
-                         (RUN (CODE-memo
+                         (RUN (CODE
                                 (str "        INPUT(.LINE, 5, '" (.getPath tmp) "')\n"
                                      "LOOP    OUTPUT = LINE          :S(LOOP)\n"
                                      "END\n")))
