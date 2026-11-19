@@ -2,8 +2,8 @@
   "Sprint 10 — operator completeness: ~P optional, @N cursor, *expr deferred (CONJ, from no SNOBOL4, is gone: CEO-2028).
    Tests derived from Snobol4.Net reference suite and SNOBOL4 language spec."
   (:require [clojure.test             :refer :all]
-            [SNOBOL4clojure.match     :refer [SEARCH FULLMATCH MATCH COLLECT!]]
-            [SNOBOL4clojure.patterns  :refer [ANY SPAN LEN POS RPOS ARB ARBNO
+            [SNOBOL4clojure.operators     :refer [SEARCH FULLMATCH MATCH COLLECT!]]
+            [SNOBOL4clojure.env  :refer [ANY SPAN LEN POS RPOS ARB ARBNO
                                               CURSOR DEFER FAIL]]
             [SNOBOL4clojure.operators :refer [| tilde]]
             [SNOBOL4clojure.env       :refer [GLOBALS ε $$ snobol-set!]])

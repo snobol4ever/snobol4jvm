@@ -3,7 +3,7 @@
   ;; Each scanner takes [Σ Δ Π] and returns [σ δ] on success
   ;; or [σ (- -1 δ)] (negative δ) on failure.
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.primitives :refer :all]))
+            [SNOBOL4clojure.env :refer [ANY$ BREAK$ FAIL! LEN# LIT$ NOTANY$ POS# REM! RPOS# RTAB# SPAN$ SUCCEED! TAB# charset]]))
 
 ;; ── Helpers ───────────────────────────────────────────────────────────────────
 (defn ok?   [[_ δ]] (>= δ 0))

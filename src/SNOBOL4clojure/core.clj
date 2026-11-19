@@ -3,25 +3,12 @@
    Loads all sub-namespaces and re-exports the public API via def aliases
    so that (require '[SNOBOL4clojure.core :refer :all]) works unchanged."
   (:gen-class)
-  (:require [clojure.pprint            :as pp]
-            [SNOBOL4clojure.env        :as env]
-            [SNOBOL4clojure.primitives :as prim]
-            [SNOBOL4clojure.match      :as match]
-            [SNOBOL4clojure.patterns   :as pat]
-            [SNOBOL4clojure.operators  :as ops]
-            [SNOBOL4clojure.functions  :as fns]
-            [SNOBOL4clojure.grammar    :as gram]
-            [SNOBOL4clojure.emitter    :as emit]
-            [SNOBOL4clojure.compiler   :as comp]
-            [SNOBOL4clojure.runtime    :as rt]
-            [SNOBOL4clojure.dump       :as dump]
-            [SNOBOL4clojure.fatal      :as fatal]
-            [SNOBOL4clojure.listing    :as listing]
-            [SNOBOL4clojure.trace      :as trace]
-            [SNOBOL4clojure.transpiler :as xpile]
-            [SNOBOL4clojure.vm         :as vm]
-            [SNOBOL4clojure.jvm-codegen :as jvmc])
-  (:refer-clojure :exclude [= + - * / num]))
+  (:refer-clojure :exclude [= + - * / num])
+  (:require [clojure.pprint :as pp]
+            [SNOBOL4clojure.env :as env]
+            [SNOBOL4clojure.operators :as ops]
+            [SNOBOL4clojure.compiler :as comp]
+            [SNOBOL4clojure.runtime :as rt]))
 
 ;; ── Re-export env ─────────────────────────────────────────────────────────────
 (def  ε          env/ε)
@@ -57,7 +44,7 @@
 (def DATATYPE    env/DATATYPE)
 (def ARRAY       env/ARRAY)
 (def TABLE       env/TABLE)
-(def SET         fns/SET)   ; SPITBOL's SET(channel, offset, whence); env/SET is the engine's own set constructor
+(def SET         env/SET)   ; SPITBOL's SET(channel, offset, whence); env/empty-set is the engine's own set constructor
 (def $$          env/$$)
 (def equal       env/equal)
 (def not-equal   env/not-equal)
@@ -67,34 +54,33 @@
 (def reference   env/reference)
 
 ;; ── Re-export patterns ────────────────────────────────────────────────────────
-(def ANY     pat/ANY)
-(def BREAK   pat/BREAK)
-(def BREAKX  pat/BREAKX)
-(def NOTANY  pat/NOTANY)
-(def NSPAN   pat/NSPAN)
-(def SPAN    pat/SPAN)
-(def ARBNO   pat/ARBNO)
-(def FENCE   pat/FENCE)
-(def LEN     pat/LEN)
-(def POS     pat/POS)
-(def RPOS    pat/RPOS)
-(def RTAB    pat/RTAB)
-(def TAB     pat/TAB)
-(def ARB     pat/ARB)
-(def BAL     pat/BAL)
-(def BOL     pat/BOL)
-(def EOL     pat/EOL)
-(def REM     pat/REM)
-(def ABORT   pat/ABORT)
-(def FAIL    pat/FAIL)
-(def SUCCEED pat/SUCCEED)
+(def ANY     env/ANY)
+(def BREAK   env/BREAK)
+(def BREAKX  env/BREAKX)
+(def NOTANY  env/NOTANY)
+(def NSPAN   env/NSPAN)
+(def SPAN    env/SPAN)
+(def ARBNO   env/ARBNO)
+(def FENCE   env/FENCE)
+(def LEN     env/LEN)
+(def POS     env/POS)
+(def RPOS    env/RPOS)
+(def RTAB    env/RTAB)
+(def TAB     env/TAB)
+(def ARB     env/ARB)
+(def BAL     env/BAL)
+(def BOL     env/BOL)
+(def EOL     env/EOL)
+(def REM     env/REM)
+(def ABORT   env/ABORT)
+(def FAIL    env/FAIL)
+(def SUCCEED env/SUCCEED)
 
 ;; ── Re-export match engine ────────────────────────────────────────────────────
-(def MATCH      match/MATCH)
-(def SEARCH     match/SEARCH)
-(def FULLMATCH  match/FULLMATCH)
-(def REPLACE    match/REPLACE)
-(def COLLECT!  match/COLLECT!)
+(def MATCH      ops/MATCH)
+(def SEARCH     ops/SEARCH)
+(def FULLMATCH  ops/FULLMATCH)
+(def COLLECT!  ops/COLLECT!)
 
 ;; ── Re-export operators / EVAL ────────────────────────────────────────────────
 (def =     ops/=)
@@ -134,34 +120,34 @@
 (def APPLY  ops/APPLY)
 
 ;; ── Re-export functions ───────────────────────────────────────────────────────
-(def SIZE    fns/SIZE)
-(def REPLACE fns/REPLACE)
-(def DUPL    fns/DUPL)
-(def TRIM    fns/TRIM)
-(def REVERSE fns/REVERSE)
-(def DATA    fns/DATA)
-(def DATA!   fns/DATA!)
-(def FIELD   fns/FIELD)
-(def CHAR    fns/CHAR)
-(def ORD     fns/ORD)
-(def REMDR   fns/REMDR)
-(def ATAN    fns/ATAN)
-(def CHOP    fns/CHOP)
-(def COS     fns/COS)
-(def EXP     fns/EXP)
-(def LN      fns/LN)
-(def SIN     fns/SIN)
-(def SQRT    fns/SQRT)
-(def TAN     fns/TAN)
-(def INTEGER fns/INTEGER)
-(def REAL    fns/REAL)
-(def CONVERT fns/CONVERT)
-(def COPY    fns/COPY)
-(def SORT    fns/SORT)
-(def RSORT   fns/RSORT)
-(def ITEM    fns/ITEM)
-(def PROTOTYPE fns/PROTOTYPE)
-(def data-type-registry fns/data-type-registry)
+(def SIZE    env/SIZE)
+(def REPLACE env/REPLACE)
+(def DUPL    env/DUPL)
+(def TRIM    env/TRIM)
+(def REVERSE env/REVERSE)
+(def DATA    env/DATA)
+(def DATA!   env/DATA!)
+(def FIELD   env/FIELD)
+(def CHAR    env/CHAR)
+(def ORD     env/ORD)
+(def REMDR   env/REMDR)
+(def ATAN    env/ATAN)
+(def CHOP    env/CHOP)
+(def COS     env/COS)
+(def EXP     env/EXP)
+(def LN      env/LN)
+(def SIN     env/SIN)
+(def SQRT    env/SQRT)
+(def TAN     env/TAN)
+(def INTEGER env/INTEGER)
+(def REAL    env/REAL)
+(def CONVERT env/CONVERT)
+(def COPY    env/COPY)
+(def SORT    env/SORT)
+(def RSORT   env/RSORT)
+(def ITEM    env/ITEM)
+(def PROTOTYPE env/PROTOTYPE)
+(def data-type-registry env/data-type-registry)
 
 ;; ── Re-export compiler / runtime ─────────────────────────────────────────────
 (def CODE!             comp/CODE!)
@@ -252,7 +238,7 @@
                      ;; written as the program is compiled, a compile error on its page in sbl -bf's shape, and a program with one is not run; -main answers 231,
                      ;; sbl's exit code for it
                      (let [entry (comp/CODE src (include-dirs dir (System/getenv "SNO_LIB")) file)]
-                       (listed #(listing/write-listing! file))
+                       (listed #(env/write-listing! file))
                        (cond
                          ;; a source with no END statement is not run: sbl -bf writes its one line on standard error, nothing on standard output, and exits 1
                          ;; (MEASURED: "        X = 1" / "        OUTPUT = X" with no END prints "No END statement found in source file(s)." on stderr, rc 1;
@@ -291,63 +277,63 @@
                                       (reset! env/&ERRTEXT text)
                                       ;; the statement the limit stops is not executed
                                       ;; the limit's overrun leaves &STCOUNT at the limit, as sbl's stcov does
-                                      (listed #(fatal/report! code text @env/&STCOUNT t0))))))
+                                      (listed #(env/report! code text @env/&STCOUNT t0))))))
                                 ;; "246 stack overflow" (sbl -bf, a function that calls itself with no end): the run is over, a SETEXIT handler is not entered,
                                 ;; and the report is the one every execution error ends with
                                 (catch StackOverflowError _
                                   (let [text (env/error-message 246)]
                                     (reset! env/&ERRTYPE 246)
                                     (reset! env/&ERRTEXT text)
-                                    (listed #(fatal/report! 246 text @env/&STCOUNT t0))))
-                                (finally (when (and (nil? @exit-code) (pos? (long @env/&DUMP))) (listed #(print (dump/dump-text @env/&DUMP)))))))
+                                    (listed #(env/report! 246 text @env/&STCOUNT t0))))
+                                (finally (when (and (nil? @exit-code) (pos? (long @env/&DUMP))) (listed #(print (env/dump-text @env/&DUMP)))))))
                          ;; the run ends with the exit code &CODE holds, however it ends, modulo 256 and 0 when negative (manual ch. 7, &CODE: "the end-of-job code";
                          ;; MEASURED on sbl -bf: &CODE = 3 exits 3, after an execution error or the statement limit too; 300 exits 44, 256 and -5 exit 0; corpus
                          ;; gate_cases_snobol4 test_gate_harness_road_lib_reads_the_per_process_verdict__code)
                          (let [c (long (or @exit-code @env/&CODE)) c (if (neg? c) 0 (mod c 256))] (when (pos? c) c))))))
-        "vm"     (print (vm/run-program! src)))]
+        "vm"     (print (rt/run-program! src)))]
         (flush)
         (when sink (.close ^java.io.Writer sink))
         (when (integer? rc) rc)))))
 
 ;; ── Re-export transpiler (Stage 23B) ─────────────────────────────────────────
-(def transpile          xpile/transpile)
-(def transpile-ir       xpile/transpile-ir)
-(def load-transpiled!   xpile/load-transpiled!)
-(def run-transpiled!    xpile/run-transpiled!)
-(def bench-compare      xpile/bench-compare)
+(def transpile          rt/transpile)
+(def transpile-ir       rt/transpile-ir)
+(def load-transpiled!   rt/load-transpiled!)
+(def run-transpiled!    rt/run-transpiled!)
+(def bench-compare      rt/bench-compare)
 
 ;; ── Re-export VM (Stage 23C) ──────────────────────────────────────────────────
-(def compile-ir         vm/compile-ir)
-(def compile-src        vm/compile-src)
-(def run-vm!            vm/run-vm!)
-(def run-program!       vm/run-program!)
-(def bench-compare-vm   vm/bench-compare-vm)
+(def compile-ir         rt/compile-ir)
+(def compile-src        rt/compile-src)
+(def run-vm!            rt/run-vm!)
+(def run-program!       rt/run-program!)
+(def bench-compare-vm   rt/bench-compare-vm)
 ;; Opcode constants
-(def OP-HALT            vm/OP-HALT)
-(def OP-EXEC            vm/OP-EXEC)
-(def OP-EXEC-S          vm/OP-EXEC-S)
-(def OP-EXEC-F          vm/OP-EXEC-F)
-(def OP-EXEC-SF         vm/OP-EXEC-SF)
-(def OP-JUMP            vm/OP-JUMP)
-(def OP-SIGNAL          vm/OP-SIGNAL)
+(def OP-HALT            rt/OP-HALT)
+(def OP-EXEC            rt/OP-EXEC)
+(def OP-EXEC-S          rt/OP-EXEC-S)
+(def OP-EXEC-F          rt/OP-EXEC-F)
+(def OP-EXEC-SF         rt/OP-EXEC-SF)
+(def OP-JUMP            rt/OP-JUMP)
+(def OP-SIGNAL          rt/OP-SIGNAL)
 
 ;; ── Re-export JVM codegen (Stage 23D) ───────────────────────────────────────
-(def compile-to-class    jvmc/compile-to-class)
-(def load-program        jvmc/load-program)
-(def run-jvm!            jvmc/run-jvm!)
-(def run-jvm-captured!   jvmc/run-jvm-captured!)
-(def bench-compare-jvm   jvmc/bench-compare-jvm)
-(def clear-class-cache!  jvmc/clear-class-cache!)
-(def jvm-gen-class-name  jvmc/gen-class-name)
+(def compile-to-class    rt/compile-to-class)
+(def load-program        rt/load-program)
+(def run-jvm!            rt/run-jvm!)
+(def run-jvm-captured!   rt/run-jvm-captured!)
+(def bench-compare-jvm   rt/bench-compare-jvm)
+(def clear-class-cache!  rt/clear-class-cache!)
+(def jvm-gen-class-name  rt/gen-class-name)
 
 ;; ── Re-export trace API ───────────────────────────────────────────────────────
 ;; These are available to SNOBOL4 programs via INVOKE and to Clojure tests.
-(def trace-register!     trace/trace!)
-(def trace-stop!         trace/stoptr!)
-(def trace-clear!        trace/clear-all-traces!)
-(def trace-enable-full!  trace/enable-full-trace!)
-(def trace-disable-full! trace/disable-full-trace!)
-(def trace-output        trace/*trace-output*)
+(def trace-register!     env/trace!)
+(def trace-stop!         env/stoptr!)
+(def trace-clear!        env/clear-all-traces!)
+(def trace-enable-full!  env/enable-full-trace!)
+(def trace-disable-full! env/disable-full-trace!)
+(def trace-output        env/*trace-output*)
 
 ;; ── Re-export debug/probe API ─────────────────────────────────────────────────
 (def snapshot!  env/snapshot!)

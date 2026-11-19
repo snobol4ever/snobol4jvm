@@ -5,7 +5,7 @@
   Each test verifies that a Snocone expression compiles to the correct
   SNOBOL4 source string."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.snocone-emitter :refer [sc->snobol4]]))
+            [SNOBOL4clojure.snocone :refer [sc->snobol4]]))
 
 ;; ===========================================================================
 ;; 1. Literals pass through unchanged

@@ -49,8 +49,8 @@
   (is true))
 
 (deftest diag-arbno-ir
-  (let [ast (SNOBOL4clojure.grammar/parse-statement "        S ARBNO('ab') . R 'XY'")
-        ir  (SNOBOL4clojure.emitter/emitter ast)]
+  (let [ast (SNOBOL4clojure.compiler/parse-statement "        S ARBNO('ab') . R 'XY'")
+        ir  (SNOBOL4clojure.compiler/emitter ast)]
     (println "ARBNO IR:" ir))
   (is true))
 
@@ -74,10 +74,10 @@
 
 (deftest diag-arbno-trace
   ;; Direct API call to see if CAPTURE-COND + ARBNO works at the Clojure level
-  (let [result (SNOBOL4clojure.match/SEARCH
+  (let [result (SNOBOL4clojure.operators/SEARCH
                  "ababXY"
                  (list 'CAPTURE-COND
-                       (SNOBOL4clojure.patterns/ARBNO "ab")
+                       (SNOBOL4clojure.env/ARBNO "ab")
                        'CAPTURED2))]
     (println "Direct SEARCH result:" result)
     (println "CAPTURED2 after SEARCH:" ($$ 'CAPTURED2))

@@ -15,9 +15,9 @@
   (:require [SNOBOL4clojure.harness    :as h]
             [SNOBOL4clojure.compiler   :as comp]
             [SNOBOL4clojure.runtime    :as rt]
-            [SNOBOL4clojure.transpiler :as tr]
-            [SNOBOL4clojure.vm         :as vm]
-            [SNOBOL4clojure.jvm-codegen :as jc]
+            [SNOBOL4clojure.runtime :as tr]
+            [SNOBOL4clojure.runtime         :as vm]
+            [SNOBOL4clojure.runtime :as jc]
             [SNOBOL4clojure.env        :as env]
             [clojure.string            :as str]
             [clojure.java.shell        :as sh]))

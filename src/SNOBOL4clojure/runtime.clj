@@ -1,25 +1,34 @@
 (ns SNOBOL4clojure.runtime
-  "The SNOBOL4 GOTO-driven statement interpreter.
+  "The four execution engines over one IR: the interpreter, the transpiler, the VM and JVM bytecode."
+  (:require [SNOBOL4clojure.env :as env :refer [<STNO> <LABL> <CODE> <DISPNO> block-end compile-error &STCOUNT &STLIMIT &TRACE &STNO &LASTNO &ERRLIMIT &ERRTYPE &ERRTEXT <POS> &FILE &LASTFILE
+                                                &LINE &LASTLINE &FNCLEVEL snobol-return! snobol-freturn! snobol-nreturn! snobol-end! snobol-steplimit! fire-label! fire-keyword!
+                                                statement-trace-active?]]
+            [SNOBOL4clojure.operators :as ops :refer [EVAL! INVOKE error-decided]]
+            [clojure.string :as str]
+            [clojure.edn :as edn]
+            [SNOBOL4clojure.compiler :as comp])
+  (:import  [clojure.asm ClassWriter MethodVisitor Label Opcodes]
+            [clojure.lang DynamicClassLoader IFn RT]))
 
-  ## &STCOUNT / &STLIMIT  (18B.1-18B.2)
-  &STCOUNT is reset to 0 at RUN entry and incremented on every statement
-  execution (the inner when-let [stmt ...] branch — i.e. every real statement
-  body dispatch, not blank/comment lines).
-  When &STCOUNT exceeds &STLIMIT a :step-limit ExceptionInfo is thrown.
-  Default &STLIMIT is 2147483647 (effectively unlimited).
-  Tests set it low to catch infinite loops without waiting for wall-clock timeout.
 
-  ## &TRACE / TRACE hooks  (18B TRACE feature)
-  LABEL traces fire at every statement whose key has a registration.
-  Statement-level trace (wildcard '*') prints each statement number + label.
-  Pattern traces are handled in match.clj via *trace* dynamic var."
-  (:require [SNOBOL4clojure.env   :refer [<STNO> <LABL> <CODE> <DISPNO> block-end compile-error
-                                           &STCOUNT &STLIMIT &TRACE &STNO &LASTNO &ERRLIMIT &ERRTYPE &ERRTEXT <POS> &FILE &LASTFILE &LINE &LASTLINE &FNCLEVEL
-                                           snobol-return! snobol-freturn!
-                                           snobol-nreturn! snobol-end!
-                                           snobol-steplimit!]]
-            [SNOBOL4clojure.trace :refer [fire-label! fire-keyword! statement-trace-active?]]
-            [SNOBOL4clojure.operators :refer [EVAL! INVOKE error-decided]]))
+;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+;; Stage 1: the interpreter
+;;
+;; The SNOBOL4 GOTO-driven statement interpreter.
+;;
+;; ## &STCOUNT / &STLIMIT  (18B.1-18B.2)
+;; &STCOUNT is reset to 0 at RUN entry and incremented on every statement
+;; execution (the inner when-let [stmt ...] branch — i.e. every real statement
+;; body dispatch, not blank/comment lines).
+;; When &STCOUNT exceeds &STLIMIT a :step-limit ExceptionInfo is thrown.
+;; Default &STLIMIT is 2147483647 (effectively unlimited).
+;; Tests set it low to catch infinite loops without waiting for wall-clock timeout.
+;;
+;; ## &TRACE / TRACE hooks  (18B TRACE feature)
+;; LABEL traces fire at every statement whose key has a registration.
+;; Statement-level trace (wildcard '*') prints each statement number + label.
+;; Pattern traces are handled in match.clj via *trace* dynamic var.
+;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 ;; Special goto targets that trigger control-flow signals rather than label jumps. "If case-folding is in effect, they may appear with any combination of upper- or
 ;; lower-case letters" (manual ch. 16, Special names); without folding, as sbl -bf runs, RETURN, FRETURN and NRETURN are special in capitals only (:(return) is a label, or
@@ -270,7 +279,7 @@
               ;; and with an STCOUNT trace armed, or profiling on, SPITBOL counts every statement and stops at the one whose count reaches the limit, where it
               ;; otherwise counts in steps the limit's own size and stops at the one after (sbl.min stgcc, stgo4; MEASURED on sbl -bf: &STLIMIT = 5 and a loop
               ;; print &STCOUNT 2 to 5 and end at the sixth; with TRACE('STCOUNT','KEYWORD') the trace writes 3 and 4 and the fifth statement ends the run)
-              (let [step (if (or (SNOBOL4clojure.trace/stcount-traced?) (not (zero? (long @SNOBOL4clojure.env/&PROFILE)))) 1 0)
+              (let [step (if (or (SNOBOL4clojure.env/stcount-traced?) (not (zero? (long @SNOBOL4clojure.env/&PROFILE)))) 1 0)
                     over (when (and (pos? (long @&STLIMIT)) (> (+ (long n) step) (long @&STLIMIT))) (overrun n))
                     _    (when (and (not over) (pos? (long @&TRACE)) (not (neg? (long @&STLIMIT)))) (fire-keyword! "STCOUNT" n))]
                 ;; ── LABEL trace ────────────────────────────────────────────────
@@ -317,3 +326,1399 @@
 ;; The handler h of the error e, serial k, running at the error (operators.clj at-error): ::resume when it continues; it leaves any other way by a signal, a
 ;; Transfer among them.
 (defn RUN-AT-ERROR [h k e] (run* h {:resume k :ex e} k))
+
+
+;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+;; Stage 2: the transpiler, IR to a Clojure loop/case
+;;
+;; Stage 23B — SNOBOL4 IR → Clojure source transpiler.
+;;
+;; The IR produced by CODE! is already homoiconic Clojure prefix data.
+;; The transpiler walks it and emits a single Clojure namespace containing
+;; one `run!` function — a loop/case over statement indices.
+;;
+;; Each SNOBOL4 statement becomes one case clause:
+;;   [(= I (+ I 1))  {:S :LOOP}]
+;;   →
+;;   (let [r (ops/EVAL! '(= I (+ I 1)))]
+;;     (if r (recur :LOOP) (recur <next>)))
+;;
+;; The generated function is a real Clojure fn — the JVM JIT compiles it to
+;; native code on first invocation.  Hot loops benefit immediately.
+;;
+;; ## Public API
+;;
+;;   (transpile src)         → Clojure source string (inspect/save)
+;;   (transpile-ir ir)       → Clojure source string from pre-compiled IR
+;;   (load-transpiled! src)  → compile, transpile, eval, return run! fn
+;;   (run-transpiled! src)   → compile, transpile, eval, invoke run!
+;;   (bench-compare src n)   → {:interpreter ms :transpiled ms :ratio}
+;;
+;; ## Design invariant
+;;
+;; The transpiled program MUST produce identical output to the interpreter
+;; (runtime.clj RUN) on every input.  The interpreter is the semantic oracle;
+;; the transpiler is a performance optimisation only.  Every transpiled program
+;; is validated against RUN before being returned.
+;;
+;; ## What the transpiled code looks like
+;;
+;; Given SNOBOL4 source:
+;;   I = 1
+;;   LOOP  OUTPUT = I
+;;         I = I + 1
+;;         LE(I,5) :S(LOOP)
+;;   END
+;;
+;; The transpiler emits:
+;;   (ns snobol4.gen.prog-abc123
+;;     (:require [SNOBOL4clojure.operators :as ops]
+;;               [SNOBOL4clojure.env       :as env]))
+;;   (defn run! []
+;;     (loop [pc 1]
+;;       (case pc
+;;         1 (do (ops/EVAL! '(= I 1))        (recur 2))
+;;         2 (do (ops/EVAL! '(= OUTPUT I))   (recur 3))
+;;         3 (do (ops/EVAL! '(= I (+ I 1)))  (recur 4))
+;;         4 (let [r (ops/EVAL! '(LE I 5))]
+;;             (if r (recur 2) (recur 5)))
+;;         :LOOP (recur 2)
+;;         :END  :done
+;;         nil)))
+;;
+;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+;; ── Helpers ───────────────────────────────────────────────────────────────────
+
+(defn- label->pc
+  "Map a goto target (keyword or string) to a case key."
+  [tgt] tgt)
+
+(defn- next-pc
+  "The fall-through PC after statement at integer index n."
+  [n] (inc n))
+
+(defn- emit-goto
+  "Emit the recur expression for a goto target.
+   Integers recur to that statement number; keywords recur to the label case."
+  [tgt]
+  (cond
+    (nil? tgt)     nil
+    (keyword? tgt) `(recur ~tgt)
+    (integer? tgt) `(recur ~tgt)
+    (string? tgt)  `(recur ~(keyword tgt))
+    :else          `(recur ~tgt)))
+
+(defn- special-target? [tgt]
+  (when (and tgt (not (integer? tgt)))
+    (let [s (str/upper-case (name tgt))]
+      (contains? #{"RETURN" "FRETURN" "NRETURN" "END"} s))))
+
+(defn- emit-special [tgt]
+  (case (str/upper-case (name tgt))
+    "RETURN"  `(env/snobol-return!)
+    "FRETURN" `(env/snobol-freturn!)
+    "NRETURN" `(env/snobol-nreturn!)
+    "END"     `(env/snobol-end!)))
+
+(defn- safe-recur [tgt fallthrough]
+  (cond
+    (nil? tgt)              `(recur ~fallthrough)
+    (special-target? tgt)   (emit-special tgt)
+    :else                   (emit-goto tgt)))
+
+;; ── Statement code-generator ─────────────────────────────────────────────────
+;;
+;; Each statement is [body goto] where:
+;;   body  — a Clojure IR list, or nil
+;;   goto  — {:G tgt} | {:S s :F f} | {:S s} | {:F f} | nil
+
+(defn- codegen-stmt
+  "Generate the Clojure expression for one SNOBOL4 statement.
+   n       — integer statement number (for fall-through)
+   body    — IR body (list/nil)
+   goto    — goto map (may be nil)
+   Returns a Clojure form."
+  [n body goto]
+  (let [g-tgt  (:G goto)
+        s-tgt  (:S goto)
+        f-tgt  (:F goto)
+        fall   (next-pc n)]
+    (cond
+      ;; Pure unconditional GOTO, no body
+      (and (nil? body) g-tgt)
+      (safe-recur g-tgt fall)
+
+      ;; Pure unconditional GOTO with no targets at all (blank label line)
+      (and (nil? body) (nil? goto))
+      `(recur ~fall)
+
+      ;; Body with unconditional goto (ignore success/fail)
+      (and body g-tgt)
+      `(do (ops/EVAL! (quote ~body)) ~(safe-recur g-tgt fall))
+
+      ;; Body with no goto — execute, always fall through
+      (and body (nil? s-tgt) (nil? f-tgt) (nil? g-tgt))
+      `(do (ops/EVAL! (quote ~body)) (recur ~fall))
+
+      ;; Body with conditional goto — test result, branch
+      body
+      (let [s-recur (safe-recur (or s-tgt fall) fall)
+            f-recur (safe-recur (or f-tgt fall) fall)]
+        `(let [r# (ops/EVAL! (quote ~body))]
+           (if r# ~s-recur ~f-recur)))
+
+      ;; No body, conditional goto (e.g. blank line with :S/:F — unusual but legal)
+      :else
+      `(recur ~fall))))
+
+;; ── IR → case clauses ────────────────────────────────────────────────────────
+
+(defn- ir->cases
+  "Convert [codes nos labels] triple into a seq of [pc form] pairs
+   suitable for use in (case pc ...).
+
+   IR structure:
+     codes  — {key -> [body goto]}  keys are integer or keyword
+     nos    — {:LABEL -> int-no}    which integer slot each label occupies
+     labels — {int-no -> :LABEL}    reverse of nos
+
+   Integer slots may or may not appear in codes:
+     - If int-no is in codes AND not in labels  → own body at that slot
+     - If int-no is in labels                   → redirect to keyword label
+     - If int-no is in labels AND in codes      → codes holds label body (shouldn't happen)
+   Keyword slots always hold their own body in codes."
+  [[codes nos labels]]
+  (let [label->int  nos      ; {:LOOP 2, :END 5}
+        int->label  labels   ; {2 :LOOP, 5 :END}
+        ;; All integer slots: union of integer keys in codes + all values in nos
+        all-int-slots (sort (into (set (filter integer? (keys codes)))
+                                  (vals nos)))
+        kw-keys     (filter keyword? (keys codes))]
+    (concat
+      ;; Integer slots
+      (map (fn [n]
+             (let [lbl    (get int->label n)   ; is this slot a label placeholder?
+                   code   (get codes n)        ; does codes have a body here?
+                   form   (cond
+                            ;; This slot is reserved for a label → redirect to kw case
+                            lbl  `(recur ~lbl)
+                            ;; Has own body in codes
+                            code (let [[body goto] code]
+                                   (codegen-stmt n body goto))
+                            ;; Slot exists only in nos/labels but not codes → redirect
+                            :else `(recur ~(next-pc n)))]
+               [n form]))
+           all-int-slots)
+      ;; Keyword slots: own body, fall-through is int-slot + 1
+      (map (fn [kw]
+             (let [[body goto] (get codes kw)
+                   int-no      (get label->int kw)
+                   fall        (when int-no (next-pc int-no))
+                   form        (cond
+                                 ;; Empty/nil label (END, blank) → stop or advance
+                                 (and (nil? body) (nil? goto))
+                                 (if fall `(recur ~fall) `nil)
+                                 ;; Has body
+                                 :else
+                                 (if int-no
+                                   (codegen-stmt int-no body goto)
+                                   (codegen-stmt 0 body goto)))]
+               [kw form]))
+           kw-keys))))
+
+;; ── Namespace name generator ──────────────────────────────────────────────────
+
+(defn- gen-ns-name [src]
+  (symbol (str "snobol4.gen.p" (format "%x" (Math/abs (hash src))))))
+
+;; ── Top-level transpiler ─────────────────────────────────────────────────────
+
+(defn transpile-ir
+  "Transpile a pre-compiled [codes nos labels] IR triple to a Clojure source string.
+   The emitted namespace contains a single (run!) function.
+
+   ns-name — optional symbol, default generated from IR hash."
+  ([[codes nos labels :as ir]]
+   (transpile-ir ir (symbol (str "snobol4.gen.p" (Math/abs (hash ir))))))
+  ([[codes nos labels :as ir] ns-name]
+   (let [cases     (ir->cases ir)
+         ;; Build the case dispatch body
+         ;; case requires literal keys — emit as flat key/expr pairs
+         case-body (mapcat (fn [[k form]] [k form]) cases)
+         ;; Start PC — lowest integer key, or 1
+         int-keys  (sort (filter integer? (keys codes)))
+         start-pc  (if (seq int-keys) (first int-keys) 1)
+         run-fn    `(defn ~'run! []
+                      (reset! env/&STCOUNT 0)
+                      (loop [~'pc ~start-pc]
+                        (let [~'n (swap! env/&STCOUNT inc)]
+                          (when (> ~'n @env/&STLIMIT)
+                            (env/snobol-steplimit! ~'n)))
+                        (case ~'pc
+                          ~@case-body
+                          ;; default: unknown PC → stop
+                          nil)))
+         ns-form   `(~'ns ~ns-name
+                      (:require [~'SNOBOL4clojure.operators :as ~'ops]
+                                [~'SNOBOL4clojure.env       :as ~'env]))]
+     (str (pr-str ns-form) "\n\n" (pr-str run-fn) "\n"))))
+
+(defn transpile
+  "Transpile SNOBOL4 source text to a Clojure source string.
+   Runs CODE! internally (or uses CODE-memo cache).
+   Returns the Clojure source as a string."
+  [src]
+  (let [ir      (comp/CODE! src)
+        ns-name (gen-ns-name src)]
+    (transpile-ir ir ns-name)))
+
+;; ── Load and execute transpiled code ─────────────────────────────────────────
+
+(defn load-transpiled!
+  "Transpile src, evaluate the generated Clojure namespace in the current JVM,
+   and return the run! function.
+
+   The namespace is created fresh each call (using a hash-based name).
+   Repeated calls with the same src reuse the same generated ns — idempotent.
+
+   Returns the run! var (callable as (run-fn))."
+  [src]
+  (let [ns-name (gen-ns-name src)
+        ;; Check if already loaded
+        existing (find-ns ns-name)]
+    (when-not existing
+      (let [ir       (comp/CODE! src)
+            clj-src  (transpile-ir ir ns-name)]
+        ;; eval the ns declaration + defn
+        (binding [*ns* *ns*]
+          (load-string clj-src))))
+    (ns-resolve (find-ns ns-name) 'run!)))
+
+(defn run-transpiled!
+  "Transpile src, load the generated namespace, reset runtime state, and
+   invoke run!.  Returns the string output (same as RUN + CODE).
+
+   This is the main entry point for benchmarking and validation."
+  [src]
+  (let [run-var (load-transpiled! src)
+        gen-ns  (.ns run-var)]
+    ;; Register the generated namespace as the SNOBOL4 variable store
+    (env/GLOBALS gen-ns)
+    (reset! env/STNO 0)
+    (reset! env/<STNO> {})
+    (reset! env/<LABL> {})
+    (reset! env/<CODE> {})
+    (reset! env/<FUNS> {})
+    (reset! env/&STCOUNT 0)
+    (with-out-str
+      (try
+        ((var-get run-var))
+        (catch clojure.lang.ExceptionInfo e
+          (when-not (contains? #{:end :return :freturn :nreturn}
+                               (get (ex-data e) :snobol/signal))
+            (throw e)))))))
+
+;; ── Benchmark ────────────────────────────────────────────────────────────────
+
+(defn bench-compare
+  "Run src through both the interpreter (RUN+CODE-memo) and the transpiler
+   (run-transpiled!) n times each.  Returns:
+     {:interpreter-ms  avg-ms
+      :transpiled-ms   avg-ms
+      :ratio           speedup-factor
+      :outputs-match   boolean}
+
+   Used to validate correctness and measure speedup."
+  [src n]
+  (let [;; Warm up both paths
+        _ (dotimes [_ 5]
+            (env/GLOBALS (find-ns 'SNOBOL4clojure.runtime))
+            (reset! env/STNO 0) (reset! env/<STNO> {})
+            (reset! env/<LABL> {}) (reset! env/<CODE> {}) (reset! env/<FUNS> {})
+            (with-out-str (RUN (comp/CODE-memo src))))
+        _ (dotimes [_ 5] (run-transpiled! src))
+
+        ;; Time interpreter
+        t0 (System/nanoTime)
+        interp-out (atom "")
+        _ (dotimes [_ n]
+            (env/GLOBALS (find-ns 'SNOBOL4clojure.runtime))
+            (reset! env/STNO 0) (reset! env/<STNO> {})
+            (reset! env/<LABL> {}) (reset! env/<CODE> {}) (reset! env/<FUNS> {})
+            (reset! interp-out (with-out-str (RUN (comp/CODE-memo src)))))
+        interp-ms (/ (/ (- (System/nanoTime) t0) n) 1e6)
+
+        ;; Time transpiled
+        t1 (System/nanoTime)
+        trans-out (atom "")
+        _ (dotimes [_ n]
+            (reset! trans-out (run-transpiled! src)))
+        trans-ms  (/ (/ (- (System/nanoTime) t1) n) 1e6)]
+
+    {:interpreter-ms  (double interp-ms)
+     :transpiled-ms   (double trans-ms)
+     :ratio           (double (/ interp-ms trans-ms))
+     :outputs-match   (clojure.core/= @interp-out @trans-out)}))
+
+
+;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+;; Stage 3: the VM, flat integer bytecode
+;;
+;; Stage 23C — Clojure Stack Machine (CSM)
+;;
+;; The interpreter (runtime.clj RUN) dispatches via maps and keyword lookups
+;; on every statement.  The transpiler (transpiler.clj) compiles to Clojure
+;; source that the JVM JIT eventually optimises — but each statement still
+;; calls EVAL! which re-walks the IR list every time.
+;;
+;; The CSM flattens the [codes nos labels] IR into a dense integer-indexed
+;; bytecode vector and dispatches via a single case expression on an integer
+;; opcode.  This eliminates:
+;;   - Map lookups on every goto
+;;   - Keyword->integer resolution on every branch
+;;   - Seq walking overhead inside EVAL! for simple IR nodes
+;;
+;; ## Bytecode format
+;;
+;; The bytecode is a Clojure vector of instruction records.  Each instruction
+;; is a map:
+;;
+;;   {:op   <opcode int>
+;;    :body <EVAL! argument, or nil>
+;;    :s    <success jump target int, or nil>
+;;    :f    <failure jump target int, or nil>}
+;;
+;; Opcodes (integer constants):
+;;   0  HALT    — program end (maps to END / fall-off)
+;;   1  EXEC    — eval body, always fall through to pc+1
+;;   2  EXEC-S  — eval body; success → :s, failure → pc+1
+;;   3  EXEC-F  — eval body; success → pc+1, failure → :f
+;;   4  EXEC-SF — eval body; success → :s, failure → :f
+;;   5  JUMP    — unconditional goto :s (body ignored)
+;;   6  SIGNAL  — throw snobol/signal stored in :body
+;;
+;; ## Compilation
+;;
+;;   (compile-ir ir)    → bytecode vector
+;;   (compile-src src)  → bytecode vector (uses CODE-memo cache)
+;;
+;; ## Execution
+;;
+;;   (run-vm! bc)       → nil (output via *out*)
+;;
+;; ## Public benchmark / validation API
+;;
+;;   (bench-compare-vm src n) → {:interpreter-ms :vm-ms :ratio :outputs-match}
+;;
+;; ## Design invariant
+;;
+;; The CSM must produce identical output to the interpreter (runtime.clj RUN)
+;; on every program.  The interpreter is the semantic oracle; the VM is a
+;; performance optimisation only.
+;;
+;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+;; ── Opcode constants ─────────────────────────────────────────────────────────
+
+(def ^:const OP-HALT    0)
+(def ^:const OP-EXEC    1)   ; eval body, fall through
+(def ^:const OP-EXEC-S  2)   ; eval; success->s, failure->pc+1
+(def ^:const OP-EXEC-F  3)   ; eval; success->pc+1, failure->f
+(def ^:const OP-EXEC-SF 4)   ; eval; success->s, failure->f
+(def ^:const OP-JUMP    5)   ; unconditional goto s
+(def ^:const OP-SIGNAL  6)   ; throw snobol/signal in body
+
+;; ── Special-target detection ──────────────────────────────────────────────────
+
+(def ^:private special-names
+  #{"RETURN" "FRETURN" "NRETURN" "END"})
+
+(defn- special? [tgt]
+  (and tgt (not (integer? tgt))
+       (contains? special-names (str/upper-case (name tgt)))))
+
+(defn- signal-for [tgt]
+  (case (str/upper-case (name tgt))
+    "END"     :end
+    "RETURN"  :return
+    "FRETURN" :freturn
+    "NRETURN" :nreturn))
+
+;; ── IR → bytecode compiler ────────────────────────────────────────────────────
+;;
+;; We make two passes:
+;;   Pass 1: assign a bytecode PC to every IR slot (integer or keyword)
+;;   Pass 2: emit instructions with resolved integer jump targets
+
+(defn- assign-pcs
+  "Pass 1: build a map from IR key (integer or keyword) to bytecode PC.
+   Integer slots that are label placeholders map to the same PC as the keyword."
+  [[codes nos labels]]
+  ;; All integer slots in order
+  (let [all-int   (sort (into (set (filter integer? (keys codes)))
+                              (vals nos)))
+        kw-slots  (filter keyword? (keys codes))]
+    ;; Assign each integer slot a unique PC, unless it's a label placeholder
+    ;; (in which case it will redirect to the kw's PC — handled in pass 2)
+    (loop [slots all-int
+           pc    0
+           m     {}]
+      (if (empty? slots)
+        ;; Assign keyword slots PCs equal to their integer slot PCs
+        ;; (because the integer slot will redirect there)
+        (reduce (fn [m kw]
+                  (let [int-no (get nos kw)
+                        kw-pc  (if int-no (get m int-no) pc)]
+                    (assoc m kw kw-pc)))
+                m kw-slots)
+        (recur (rest slots) (inc pc) (assoc m (first slots) pc))))))
+
+(defn compile-ir
+  "Compile a [codes nos labels] triple to a flat bytecode vector.
+   Returns a vector of instruction maps {:op :body :s :f}."
+  [[codes nos labels :as ir]]
+  (let [pc-map   (assign-pcs ir)
+        ;; Total number of integer slots = total instructions before HALT
+        all-int  (sort (into (set (filter integer? (keys codes)))
+                             (vals nos)))
+        halt-pc  (count all-int)
+
+        ;; Resolve a goto target (keyword, integer, special) to a bytecode PC
+        resolve-tgt (fn [tgt]
+                      (cond
+                        (nil? tgt)        nil
+                        (special? tgt)    :signal
+                        (integer? tgt)    (get pc-map tgt)
+                        (keyword? tgt)    (get pc-map tgt)
+                        :else             (get pc-map tgt)))
+
+        ;; Build instruction for one IR slot
+        make-instr (fn [key]
+                     (let [lbl   (get labels key)    ; is this int slot a label placeholder?
+                           code  (if lbl
+                                   (get codes lbl)   ; get body from keyword slot
+                                   (get codes key))  ; own body
+                           [raw-body raw-goto] (if code code [nil nil])
+                           body  raw-body
+                           goto  raw-goto
+                           g-tgt (:G goto)
+                           s-tgt (:S goto)
+                           f-tgt (:F goto)
+                           fall  (+ (get pc-map key) 1)
+
+                           ;; Check for END/RETURN signals
+                           s-sig (when (special? s-tgt) (signal-for s-tgt))
+                           f-sig (when (special? f-tgt) (signal-for f-tgt))
+                           g-sig (when (special? g-tgt) (signal-for g-tgt))]
+                       (cond
+                         ;; Empty label (END etc) — HALT
+                         (and (nil? body) (nil? g-tgt) (nil? s-tgt) (nil? f-tgt)
+                              (or lbl (nil? (get codes key))))
+                         {:op OP-HALT :body nil :s nil :f nil}
+
+                         ;; Unconditional goto with no body
+                         (and (nil? body) g-tgt)
+                         (if g-sig
+                           {:op OP-SIGNAL :body g-sig :s nil :f nil}
+                           {:op OP-JUMP :body nil :s (resolve-tgt g-tgt) :f nil})
+
+                         ;; Body with unconditional goto
+                         (and body g-tgt)
+                         (if g-sig
+                           {:op OP-EXEC :body body :s fall :f fall}  ; signal after?
+                           {:op OP-JUMP :body body :s (resolve-tgt g-tgt) :f nil})
+
+                         ;; Body with both S and F
+                         (and body s-tgt f-tgt)
+                         {:op OP-EXEC-SF
+                          :body body
+                          :s    (if s-sig :signal (resolve-tgt s-tgt))
+                          :f    (if f-sig :signal (resolve-tgt f-tgt))
+                          :s-sig s-sig
+                          :f-sig f-sig}
+
+                         ;; Body with S only
+                         (and body s-tgt)
+                         {:op OP-EXEC-S
+                          :body body
+                          :s    (if s-sig :signal (resolve-tgt s-tgt))
+                          :f    fall
+                          :s-sig s-sig}
+
+                         ;; Body with F only
+                         (and body f-tgt)
+                         {:op OP-EXEC-F
+                          :body body
+                          :s    fall
+                          :f    (if f-sig :signal (resolve-tgt f-tgt))
+                          :f-sig f-sig}
+
+                         ;; Body, no goto
+                         body
+                         {:op OP-EXEC :body body :s fall :f fall}
+
+                         ;; No body, no goto — skip
+                         :else
+                         {:op OP-EXEC :body nil :s fall :f fall})))]
+
+    ;; Emit bytecode vector
+    (let [instrs (mapv make-instr all-int)]
+      (conj instrs {:op OP-HALT :body nil :s nil :f nil}))))
+
+(defn compile-src
+  "Compile SNOBOL4 source to bytecode.  Uses CODE-memo for IR caching."
+  [src]
+  (compile-ir (comp/CODE! src)))
+
+;; ── VM executor ──────────────────────────────────────────────────────────────
+
+(defn run-vm!
+  "Execute a bytecode vector produced by compile-ir.
+   Side effects: writes to *out* (OUTPUT), mutates SNOBOL4 variables.
+   Returns nil.  Throws ExceptionInfo for :step-limit."
+  [^clojure.lang.PersistentVector bc]
+  (reset! &STCOUNT 0)
+  (let [bc-len (count bc)]
+    (loop [pc 0]
+      (when (< pc bc-len)
+        (let [{:keys [op body s f s-sig f-sig]} (bc pc)]
+          (let [n (swap! &STCOUNT inc)]
+            (when (> n @&STLIMIT)
+              (snobol-steplimit! n)))
+          (case (int op)
+            0 nil  ; HALT
+            1      ; EXEC — eval, always advance
+            (do (when body (EVAL! body))
+                (recur s))
+            2      ; EXEC-S — success->s, failure->f(=fall)
+            (let [r (when body (EVAL! body))]
+              (if r
+                (if s-sig (throw (ex-info (name s-sig) {:snobol/signal s-sig}))
+                    (recur s))
+                (recur f)))
+            3      ; EXEC-F — success->s(=fall), failure->f
+            (let [r (when body (EVAL! body))]
+              (if r
+                (recur s)
+                (if f-sig (throw (ex-info (name f-sig) {:snobol/signal f-sig}))
+                    (recur f))))
+            4      ; EXEC-SF — success->s, failure->f
+            (let [r (when body (EVAL! body))]
+              (if r
+                (if s-sig (throw (ex-info (name s-sig) {:snobol/signal s-sig}))
+                    (recur s))
+                (if f-sig (throw (ex-info (name f-sig) {:snobol/signal f-sig}))
+                    (recur f))))
+            5      ; JUMP — unconditional goto s (body may have been eval'd)
+            (do (when body (EVAL! body))
+                (recur (int s)))
+            6      ; SIGNAL — throw :snobol/signal
+            (throw (ex-info (name body) {:snobol/signal body}))
+            ;; default
+            nil))))))
+
+(defn run-program!
+  "Reset runtime state and run src through the VM.
+   Returns captured stdout string."
+  [src]
+  (env/GLOBALS (find-ns 'SNOBOL4clojure.runtime))
+  (reset! env/STNO 0)
+  (reset! env/<STNO> {})
+  (reset! env/<LABL> {})
+  (reset! env/<CODE> {})
+  (reset! env/<FUNS> {})
+  (reset! &STCOUNT 0)
+  (let [bc (compile-src src)]
+    (with-out-str
+      (try
+        (run-vm! bc)
+        (catch clojure.lang.ExceptionInfo e
+          (when-not (contains? #{:end :return :freturn :nreturn}
+                               (get (ex-data e) :snobol/signal))
+            (throw e)))))))
+
+;; ── Benchmark ────────────────────────────────────────────────────────────────
+
+(defn bench-compare-vm
+  "Compare interpreter (RUN+CODE-memo) vs VM (compile-ir+run-vm!) on src.
+   Returns {:interpreter-ms :vm-ms :ratio :outputs-match}."
+  [src n]
+  (let [bc (compile-src src)
+
+        interp-reset! (fn []
+                        (env/GLOBALS (find-ns 'SNOBOL4clojure.runtime))
+                        (reset! env/STNO 0) (reset! env/<STNO> {})
+                        (reset! env/<LABL> {}) (reset! env/<CODE> {})
+                        (reset! env/<FUNS> {}))
+
+        run-interp (fn []
+                     (interp-reset!)
+                     (with-out-str
+                       (try (RUN (comp/CODE-memo src))
+                            (catch clojure.lang.ExceptionInfo e
+                              (when-not (contains? #{:end :return :freturn :nreturn}
+                                                   (get (ex-data e) :snobol/signal))
+                                (throw e))))))
+        run-vm     (fn []
+                     (interp-reset!)
+                     (with-out-str
+                       (try (run-vm! bc)
+                            (catch clojure.lang.ExceptionInfo e
+                              (when-not (contains? #{:end :return :freturn :nreturn}
+                                                   (get (ex-data e) :snobol/signal))
+                                (throw e))))))]
+
+    ;; Warm up
+    (dotimes [_ 20] (run-interp))
+    (dotimes [_ 20] (run-vm))
+
+    (let [i-out (atom "") v-out (atom "")
+          t0 (System/nanoTime)
+          _  (dotimes [_ n] (reset! i-out (run-interp)))
+          i-ms (/ (/ (- (System/nanoTime) t0) n) 1e6)
+          t1 (System/nanoTime)
+          _  (dotimes [_ n] (reset! v-out (run-vm)))
+          v-ms (/ (/ (- (System/nanoTime) t1) n) 1e6)]
+      {:interpreter-ms (double i-ms)
+       :vm-ms          (double v-ms)
+       :ratio          (double (/ i-ms v-ms))
+       :outputs-match  (clojure.core/= @i-out @v-out)})))
+
+
+;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+;; Stage 4: JVM bytecode through clojure.asm
+;;
+;; Stage 23D — JVM Bytecode Generation
+;;
+;; Compiles SNOBOL4 IR all the way to JVM .class bytecode.
+;; Each SNOBOL4 program becomes one Java class with a static run() method.
+;; The JVM JIT compiles the resulting bytecode to native x64 machine code.
+;;
+;; ## Call convention
+;;
+;; Generated classes call EVAL! via INVOKEINTERFACE on clojure.lang.IFn,
+;; using a static IFn field pre-populated in jvm_codegen itself.  This avoids
+;; any reference to SNOBOL4clojure.operators in the generated class's constant
+;; pool (which would fail to resolve at class-load time before the Clojure
+;; DynamicClassLoader has loaded operators.clj).
+;;
+;; Generated class structure:
+;;   static Object EVAL_FN;   // = jvm_codegen.EVAL_FN (set before run! is called)
+;;   static Object body_N;    // one field per instruction that has a body
+;;   static { body_N = RT.readString(pr-str(body)); ... }
+;;   public static void run() { ... GETFIELD EVAL_FN, INVOKEINTERFACE IFn.invoke ... }
+;;
+;; The generated class only references:
+;;   - java/lang/Object         (always available)
+;;   - clojure/lang/IFn         (always available — part of Clojure runtime jar)
+;;   - clojure/lang/RT          (always available)
+;;   - clojure/lang/ExceptionInfo (always available)
+;;   - SNOBOL4clojure/jvm_codegen (the class that compiled it — always loaded)
+;;
+;; ## Public API
+;;
+;;   (compile-to-class src)       → byte[] (JVM .class bytecode)
+;;   (load-program src)           → zero-arg fn (wraps static run() via reflection)
+;;   (run-jvm! src)               → nil (output via *out*)
+;;   (run-jvm-captured! src)      → String (captured stdout)
+;;   (bench-compare-jvm src n)    → {:interpreter-ms :jvm-ms :ratio :outputs-match}
+;;   (clear-class-cache!)         → nil
+;;
+;; ## Design invariant
+;;
+;; Identical output to interpreter (runtime.clj RUN) on every program.
+;; Validated against 1000+ worm corpus programs.
+;;
+;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+;; ── ASM opcode integer constants ──────────────────────────────────────────────
+
+(def ^:private ^:const ACC-PUBLIC   (int Opcodes/ACC_PUBLIC))
+(def ^:private ^:const ACC-STATIC   (int Opcodes/ACC_STATIC))
+(def ^:private ^:const ACC-SUPER    (int Opcodes/ACC_SUPER))
+(def ^:private ^:const V1-8         (int 52))
+(def ^:private ^:const RETURN       (int Opcodes/RETURN))
+(def ^:private ^:const ARETURN      (int Opcodes/ARETURN))
+(def ^:private ^:const ALOAD-0      (int Opcodes/ALOAD))
+(def ^:private ^:const ALOAD        (int Opcodes/ALOAD))
+(def ^:private ^:const ASTORE       (int Opcodes/ASTORE))
+(def ^:private ^:const GETSTATIC    (int Opcodes/GETSTATIC))
+(def ^:private ^:const PUTSTATIC    (int Opcodes/PUTSTATIC))
+(def ^:private ^:const INVOKESTATIC (int Opcodes/INVOKESTATIC))
+(def ^:private ^:const INVOKEINTERFACE (int Opcodes/INVOKEINTERFACE))
+(def ^:private ^:const INVOKEVIRTUAL (int Opcodes/INVOKEVIRTUAL))
+(def ^:private ^:const INVOKESPECIAL (int Opcodes/INVOKESPECIAL))
+(def ^:private ^:const GOTO         (int Opcodes/GOTO))
+(def ^:private ^:const IFNULL       (int Opcodes/IFNULL))
+(def ^:private ^:const IFNONNULL    (int Opcodes/IFNONNULL))
+(def ^:private ^:const ATHROW       (int Opcodes/ATHROW))
+(def ^:private ^:const POP          (int Opcodes/POP))
+(def ^:private ^:const DUP          (int Opcodes/DUP))
+(def ^:private ^:const ACONST-NULL  (int Opcodes/ACONST_NULL))
+
+;; ── Descriptor constants ──────────────────────────────────────────────────────
+
+(def ^:private OBJ       "Ljava/lang/Object;")
+(def ^:private STR       "Ljava/lang/String;")
+(def ^:private IFN-DESC  "Lclojure/lang/IFn;")
+(def ^:private IFN-CLASS "clojure/lang/IFn")
+(def ^:private RT-CLASS  "clojure/lang/RT")
+(def ^:private JC-CLASS  "SNOBOL4clojure/jvm_codegen")  ; THIS class
+(def ^:private IFN-INVOKE-SIG   (str "(" OBJ ")" OBJ))           ; IFn.invoke(Object)->Object
+(def ^:private IFN-INVOKE-2-SIG (str "(" OBJ OBJ ")" OBJ))       ; IFn.invoke(Object,Object)->Object
+(def ^:private THROW-SIG  (str "(" STR ")Lclojure/lang/ExceptionInfo;"))
+
+;; ── Static EVAL! IFn reference (set once, used by all generated classes) ─────
+;;
+;; The generated bytecode does:
+;;   GETSTATIC SNOBOL4clojure/jvm_codegen EVAL_FN Lclojure/lang/IFn;
+;;   <push body>
+;;   INVOKEINTERFACE clojure/lang/IFn invoke (Ljava/lang/Object;)Ljava/lang/Object;
+;;
+;; This means jvm_codegen is always referenced — which is safe because it's the
+;; class that called compile-to-class and is guaranteed already loaded.
+
+(declare EVAL_FN)
+
+;; ── Stage 23E: Inline helper IFn references ───────────────────────────────────
+;; These are stored here and referenced by generated bytecode via GETSTATIC,
+;; eliminating EVAL! dispatch for the most common IR patterns:
+;;   (= VAR val), (= OUTPUT val), (= VAR (op A B)), (LT/GT/LE/GE/EQ A B)
+;; Each is a clojure.lang.IFn (or Fn2/Fn1 shape) set at load time.
+
+(declare $$_FN SET_FN PRINT_FN ADD_FN SUB_FN MUL_FN DIV_FN
+         LT_FN GT_FN LE_FN GE_FN EQ_FN NEQ_FN SIGNAL_FN
+         ;; 23E extension: string concat, SIZE, STR coerce
+         CONCAT_FN SIZE_FN STR_FN)
+
+(defn- init-inline-fns!
+  "Bind all inline IFn references. Called once when jvm_codegen loads."
+  []
+  (alter-var-root #'$$_FN   (constantly env/$$))
+  (alter-var-root #'SET_FN  (constantly env/protected-store!))
+  (alter-var-root #'PRINT_FN (constantly (fn [v] (println (if (nil? v) "" (str v))) v)))
+  (alter-var-root #'ADD_FN  (constantly env/Σ+))
+  (alter-var-root #'SUB_FN  (constantly env/subtract))
+  (alter-var-root #'MUL_FN  (constantly env/multiply))
+  (alter-var-root #'DIV_FN  (constantly env/divide))
+  ;; Comparison predicates: return v1 (truthy) on success, nil on failure.
+  ;; Mirrors CSNOBOL4/SPITBOL semantics: success = first arg returned, fail = nil.
+  (alter-var-root #'LT_FN  (constantly (fn [a b]
+    (let [na (env/num a) nb (env/num b)] (when (< na nb) a)))))
+  (alter-var-root #'GT_FN  (constantly (fn [a b]
+    (let [na (env/num a) nb (env/num b)] (when (> na nb) a)))))
+  (alter-var-root #'LE_FN  (constantly (fn [a b]
+    (let [na (env/num a) nb (env/num b)] (when (<= na nb) a)))))
+  (alter-var-root #'GE_FN  (constantly (fn [a b]
+    (let [na (env/num a) nb (env/num b)] (when (>= na nb) a)))))
+  (alter-var-root #'EQ_FN  (constantly (fn [a b]
+    (let [na (env/num a) nb (env/num b)] (when (clojure.core/= na nb) a)))))
+  (alter-var-root #'NEQ_FN (constantly (fn [a b]
+    (let [na (env/num a) nb (env/num b)] (when (not (clojure.core/= na nb)) a)))))
+  ;; SIGNAL_FN: creates and throws a SNOBOL4 ExceptionInfo signal.
+  ;; Stored here so generated classes can call it via IFn.invoke(sig-name)
+  ;; without needing to resolve SNOBOL4clojure.jvm_codegen by name in their
+  ;; constant pool (which would fail under DynamicClassLoader isolation).
+  (alter-var-root #'SIGNAL_FN (constantly
+    (fn [^String sig-name]
+      (throw (ex-info sig-name {:snobol/signal (keyword sig-name)})))))
+  ;; CONCAT_FN: variadic SNOBOL4 string concatenation.
+  ;; Mirrors SEQ semantics: if ANY element evaluates to nil, the whole concat
+  ;; fails (returns nil). Otherwise coerces all to string and joins.
+  ;; Called from generated bytecode as CONCAT_FN.invoke(v1, v2, ...) via IFn.
+  ;; For 2-arg concat (most common case), IFn.invoke(Object,Object) is used.
+  ;; For N-arg, we use IFn.applyTo via a varargs wrapper — but since most
+  ;; real programs do 2-arg (S 'x'), we expose both arities.
+  (alter-var-root #'CONCAT_FN (constantly
+    (fn
+      ;; 2-arg (most common: S = S 'x')
+      ([a b]
+       (when (and (some? a) (some? b))
+         (str (if (nil? a) "" (str a))
+              (if (nil? b) "" (str b)))))
+      ;; N-arg for longer concat chains
+      ([a b & more]
+       (let [all (list* a b more)]
+         (when (every? some? all)
+           (apply str (map str all))))))))
+  ;; SIZE_FN: SNOBOL4 SIZE — string length of coerced-to-string value.
+  (alter-var-root #'SIZE_FN (constantly
+    (fn [s] (count (str s)))))
+  ;; STR_FN: coerce to string (used in concat sub-expressions).
+  (alter-var-root #'STR_FN (constantly
+    (fn [v] (if (nil? v) nil (str v))))))
+
+;; ── 23E: Inline bytecode emitter ─────────────────────────────────────────────
+;; Returns true if the body was inlined, false if EVAL_FN fallback needed.
+;;
+;; Inlinable IR patterns:
+;;   (= SYM literal)          — assign integer/string literal to variable
+;;   (= SYM SYM2)             — copy variable
+;;   (= SYM (op A B))         — binary arithmetic (+,-,*,/) where A,B are sym/lit
+;;   (= OUTPUT SYM-or-lit)    — print to stdout
+;;   (LT|GT|LE|GE|EQ A B)    — numeric comparison, A/B sym or lit
+;;
+;; The inline path pushes IFn references stored in the jvm_codegen class as
+;; static fields, then calls INVOKEINTERFACE IFn.invoke(Object,Object).
+;; This is significantly faster than parsing the body EDN via RT.readString
+;; and tree-walking through EVAL!.
+
+(def ^:private JC-IFN-FIELD-SIGS
+  "Map from inline-fn var-name string → static field name on jvm_codegen."
+  {"$$_FN"    "$$_FN"
+   "SET_FN"   "SET_FN"
+   "PRINT_FN" "PRINT_FN"
+   "ADD_FN"   "ADD_FN"
+   "SUB_FN"   "SUB_FN"
+   "MUL_FN"   "MUL_FN"
+   "DIV_FN"   "DIV_FN"
+   "LT_FN"    "LT_FN"
+   "GT_FN"    "GT_FN"
+   "LE_FN"    "LE_FN"
+   "GE_FN"    "GE_FN"
+   "EQ_FN"    "EQ_FN"
+   "NEQ_FN"   "NEQ_FN"
+   "SIGNAL_FN" "SIGNAL_FN"
+   ;; 23E extensions
+   "CONCAT_FN" "CONCAT_FN"
+   "SIZE_FN"   "SIZE_FN"
+   "STR_FN"    "STR_FN"})
+
+(def ^:private ARITH-OP->FN
+  "Map from IR arithmetic operator symbol → inline field name."
+  {'+ "ADD_FN" '- "SUB_FN" '* "MUL_FN" '/ "DIV_FN"})
+
+(def ^:private CMP-OP->FN
+  "Map from IR comparison operator symbol → inline field name."
+  {'LT "LT_FN" 'GT "GT_FN" 'LE "LE_FN" 'GE "GE_FN"
+   'EQ "EQ_FN" 'NE "NEQ_FN"})
+
+(defn- sym-or-lit?
+  "True if x is a symbol (variable) or a number/string literal."
+  [x]
+  (or (symbol? x) (integer? x) (float? x) (string? x)))
+
+(defn- emit-val!
+  "Emit bytecode to push a SNOBOL4 value (sym or literal) onto the stack.
+   Symbols → call $$_FN.invoke(sym-string) to read from <VARS>.
+   Integer/real literals → LDC the boxed value.
+   Strings → LDC the string."
+  [^MethodVisitor mv cls-name x]
+  (cond
+    (symbol? x)
+    (do (.visitFieldInsn mv GETSTATIC cls-name "$$_FN" IFN-DESC)
+        (.visitLdcInsn mv (str x))
+        (.visitMethodInsn mv INVOKEINTERFACE IFN-CLASS "invoke"
+                          IFN-INVOKE-SIG true))
+    (integer? x)
+    (do (.visitLdcInsn mv (long x))
+        (.visitMethodInsn mv INVOKESTATIC "java/lang/Long" "valueOf"
+                          "(J)Ljava/lang/Long;" false))
+    (float? x)
+    (do (.visitLdcInsn mv (double x))
+        (.visitMethodInsn mv INVOKESTATIC "java/lang/Double" "valueOf"
+                          "(D)Ljava/lang/Double;" false))
+    (string? x)
+    (.visitLdcInsn mv ^String x)
+    :else
+    (throw (ex-info "emit-val!: not a sym-or-lit" {:x x}))))
+
+(defn- inline-emit!
+  "Try to emit optimised JVM bytecode for IR body.
+   Returns true on success (body inlined), false if EVAL_FN fallback needed.
+   Leaves exactly one value on the stack (the result, possibly null)."
+  [^MethodVisitor mv cls-name body]
+  (cond
+    ;; ── (= OUTPUT val) — print, return val ──────────────────────────────────
+    (and (list? body)
+         (clojure.core/= (first body) '=)
+         (clojure.core/= (second body) 'OUTPUT)
+         (sym-or-lit? (nth body 2)))
+    (let [val (nth body 2)]
+      ;; PRINT_FN.invoke(val) → prints and returns val
+      (.visitFieldInsn mv GETSTATIC cls-name "PRINT_FN" IFN-DESC)
+      (emit-val! mv cls-name val)
+      (.visitMethodInsn mv INVOKEINTERFACE IFN-CLASS "invoke"
+                        IFN-INVOKE-SIG true)
+      true)
+
+    ;; ── (= SYM val) — assign literal or variable ────────────────────────────
+    ;; Stack: compute val, store to local 0, call SET_FN(sym,val), push local 0 as result.
+    (and (list? body)
+         (clojure.core/= (first body) '=)
+         (symbol? (second body))
+         (not (clojure.core/= (second body) 'OUTPUT))
+         (sym-or-lit? (nth body 2)))
+    (let [sym (second body) val (nth body 2)]
+      ;; 1. compute val, store in local slot 0
+      (emit-val! mv cls-name val)
+      (.visitVarInsn mv ASTORE (int 0))
+      ;; 2. call SET_FN.invoke(sym, val)
+      (.visitFieldInsn mv GETSTATIC cls-name "SET_FN" IFN-DESC)
+      (.visitLdcInsn mv (str sym))
+      (.visitMethodInsn mv INVOKESTATIC "clojure/lang/Symbol" "intern"
+                        "(Ljava/lang/String;)Lclojure/lang/Symbol;" false)
+      (.visitVarInsn mv ALOAD (int 0))
+      (.visitMethodInsn mv INVOKEINTERFACE IFN-CLASS "invoke"
+                        IFN-INVOKE-2-SIG true)
+      true)
+
+    ;; ── (= SYM (op A B)) — binary arithmetic ────────────────────────────────
+    ;; Compute op(A,B), store to local 0, call SET_FN(sym, local0), return local0.
+    (and (list? body)
+         (clojure.core/= (first body) '=)
+         (symbol? (second body))
+         (list? (nth body 2))
+         (ARITH-OP->FN (first (nth body 2)))
+         (sym-or-lit? (second (nth body 2)))
+         (sym-or-lit? (nth (nth body 2) 2)))
+    (let [sym    (second body)
+          [op a b] (nth body 2)
+          fn-fld (ARITH-OP->FN op)]
+      ;; 1. compute op(a, b), store to local slot 0
+      (.visitFieldInsn mv GETSTATIC cls-name fn-fld IFN-DESC)
+      (emit-val! mv cls-name a)
+      (emit-val! mv cls-name b)
+      (.visitMethodInsn mv INVOKEINTERFACE IFN-CLASS "invoke"
+                        IFN-INVOKE-2-SIG true)
+      (.visitVarInsn mv ASTORE (int 0))
+      ;; 2. call SET_FN.invoke(sym, computed-val)
+      (.visitFieldInsn mv GETSTATIC cls-name "SET_FN" IFN-DESC)
+      (.visitLdcInsn mv (str sym))
+      (.visitMethodInsn mv INVOKESTATIC "clojure/lang/Symbol" "intern"
+                        "(Ljava/lang/String;)Lclojure/lang/Symbol;" false)
+      (.visitVarInsn mv ALOAD (int 0))
+      (.visitMethodInsn mv INVOKEINTERFACE IFN-CLASS "invoke"
+                        IFN-INVOKE-2-SIG true)
+      true)
+
+    ;; ── (LT|GT|LE|GE|EQ A B) — comparison predicate ─────────────────────────
+    (and (list? body)
+         (CMP-OP->FN (first body))
+         (sym-or-lit? (second body))
+         (sym-or-lit? (nth body 2)))
+    (let [[op a b] body
+          fn-fld   (CMP-OP->FN op)]
+      (.visitFieldInsn mv GETSTATIC cls-name fn-fld IFN-DESC)
+      (emit-val! mv cls-name a)
+      (emit-val! mv cls-name b)
+      (.visitMethodInsn mv INVOKEINTERFACE IFN-CLASS "invoke"
+                        IFN-INVOKE-2-SIG true)
+      true)
+
+    ;; ── (= SYM [e1 e2 ...]) — vector concat assign ─────────────────────────
+    ;; All elements must be sym-or-lit. Calls CONCAT_FN.invoke(e1,e2) for 2-arg,
+    ;; or falls back to EVAL_FN for 3+ args (uncommon).
+    ;; Result stored to variable. nil in any element → nil result → stmt fails.
+    (and (list? body)
+         (clojure.core/= (first body) '=)
+         (symbol? (second body))
+         (not (clojure.core/= (second body) 'OUTPUT))
+         (vector? (nth body 2))
+         (every? sym-or-lit? (nth body 2)))
+    (let [sym   (second body)
+          elems (nth body 2)
+          n     (count elems)]
+      (if (clojure.core/= n 2)
+        ;; Fast path: 2-element concat (most common: S = S 'x')
+        (let [[e1 e2] elems]
+          ;; 1. compute CONCAT_FN(e1, e2), store to local 0
+          (.visitFieldInsn mv GETSTATIC cls-name "CONCAT_FN" IFN-DESC)
+          (emit-val! mv cls-name e1)
+          (emit-val! mv cls-name e2)
+          (.visitMethodInsn mv INVOKEINTERFACE IFN-CLASS "invoke"
+                            IFN-INVOKE-2-SIG true)
+          (.visitVarInsn mv ASTORE (int 0))
+          ;; 2. call SET_FN(sym, result) — only if non-nil
+          (.visitFieldInsn mv GETSTATIC cls-name "SET_FN" IFN-DESC)
+          (.visitLdcInsn mv (str sym))
+          (.visitMethodInsn mv INVOKESTATIC "clojure/lang/Symbol" "intern"
+                            "(Ljava/lang/String;)Lclojure/lang/Symbol;" false)
+          (.visitVarInsn mv ALOAD (int 0))
+          (.visitMethodInsn mv INVOKEINTERFACE IFN-CLASS "invoke"
+                            IFN-INVOKE-2-SIG true)
+          true)
+        ;; 3+ element concat: fall through to EVAL_FN
+        false))
+
+    ;; ── (= OUTPUT [e1 e2 ...]) — vector concat to OUTPUT ────────────────────
+    ;; 2-arg fast path: concat then print.
+    (and (list? body)
+         (clojure.core/= (first body) '=)
+         (clojure.core/= (second body) 'OUTPUT)
+         (vector? (nth body 2))
+         (every? sym-or-lit? (nth body 2)))
+    (let [elems (nth body 2)
+          n     (count elems)]
+      (if (clojure.core/= n 2)
+        (let [[e1 e2] elems]
+          ;; 1. concat
+          (.visitFieldInsn mv GETSTATIC cls-name "CONCAT_FN" IFN-DESC)
+          (emit-val! mv cls-name e1)
+          (emit-val! mv cls-name e2)
+          (.visitMethodInsn mv INVOKEINTERFACE IFN-CLASS "invoke"
+                            IFN-INVOKE-2-SIG true)
+          (.visitVarInsn mv ASTORE (int 0))
+          ;; 2. print via PRINT_FN
+          (.visitFieldInsn mv GETSTATIC cls-name "PRINT_FN" IFN-DESC)
+          (.visitVarInsn mv ALOAD (int 0))
+          (.visitMethodInsn mv INVOKEINTERFACE IFN-CLASS "invoke"
+                            IFN-INVOKE-SIG true)
+          true)
+        false))
+
+    ;; ── (= SYM (SIZE arg)) — assign SIZE result ──────────────────────────────
+    (and (list? body)
+         (clojure.core/= (first body) '=)
+         (symbol? (second body))
+         (not (clojure.core/= (second body) 'OUTPUT))
+         (list? (nth body 2))
+         (clojure.core/= (first (nth body 2)) 'SIZE)
+         (sym-or-lit? (second (nth body 2))))
+    (let [sym (second body)
+          arg (second (nth body 2))]
+      ;; 1. SIZE_FN.invoke(arg), store to local 0
+      (.visitFieldInsn mv GETSTATIC cls-name "SIZE_FN" IFN-DESC)
+      (emit-val! mv cls-name arg)
+      (.visitMethodInsn mv INVOKEINTERFACE IFN-CLASS "invoke"
+                        IFN-INVOKE-SIG true)
+      (.visitVarInsn mv ASTORE (int 0))
+      ;; 2. SET_FN(sym, result)
+      (.visitFieldInsn mv GETSTATIC cls-name "SET_FN" IFN-DESC)
+      (.visitLdcInsn mv (str sym))
+      (.visitMethodInsn mv INVOKESTATIC "clojure/lang/Symbol" "intern"
+                        "(Ljava/lang/String;)Lclojure/lang/Symbol;" false)
+      (.visitVarInsn mv ALOAD (int 0))
+      (.visitMethodInsn mv INVOKEINTERFACE IFN-CLASS "invoke"
+                        IFN-INVOKE-2-SIG true)
+      true)
+
+    ;; ── (= OUTPUT (SIZE arg)) — print SIZE result ────────────────────────────
+    (and (list? body)
+         (clojure.core/= (first body) '=)
+         (clojure.core/= (second body) 'OUTPUT)
+         (list? (nth body 2))
+         (clojure.core/= (first (nth body 2)) 'SIZE)
+         (sym-or-lit? (second (nth body 2))))
+    (let [arg (second (nth body 2))]
+      (.visitFieldInsn mv GETSTATIC cls-name "PRINT_FN" IFN-DESC)
+      (.visitFieldInsn mv GETSTATIC cls-name "SIZE_FN" IFN-DESC)
+      (emit-val! mv cls-name arg)
+      (.visitMethodInsn mv INVOKEINTERFACE IFN-CLASS "invoke"
+                        IFN-INVOKE-SIG true)
+      (.visitMethodInsn mv INVOKEINTERFACE IFN-CLASS "invoke"
+                        IFN-INVOKE-SIG true)
+      true)
+
+    :else false))
+
+;; ── Signal helpers — called from generated bytecode via INVOKESTATIC ─────────
+
+(defn ^clojure.lang.ExceptionInfo make-signal
+  "Create a SNOBOL4 ExceptionInfo. Called from JVM-compiled programs."
+  [^String sig-name]
+  (ex-info sig-name {:snobol/signal (keyword sig-name)}))
+
+;; ── Class name generation ─────────────────────────────────────────────────────
+
+(defn gen-class-name
+  "Generate a stable JVM internal class name for a SNOBOL4 source string.
+   The class is in the SNOBOL4clojure package to match jvm_codegen's package."
+  [src]
+  (str "SNOBOL4clojure/SnobolProg" (format "%08x" (Math/abs (hash src)))))
+
+;; ── Bytecode emitter ─────────────────────────────────────────────────────────
+
+(defn compile-to-class
+  "Compile SNOBOL4 source to JVM bytecode.
+   Returns byte[] — a valid .class file.
+
+   Generated class layout:
+     public static IFn EVAL_FN;     // set externally before run() is called
+     public static Object body_N;   // one field per instruction body
+     static { body_N = RT.readString(...); ... }
+     public static void run() { ... }
+  "
+  [src]
+  (let [bc-vec    (compile-src src)
+        n-instrs  (count bc-vec)
+        cls-name  (gen-class-name src)
+        cw        (ClassWriter. (int ClassWriter/COMPUTE_FRAMES))
+
+        ;; Collect (index, body) pairs for instructions that have a body
+        bodies    (into [] (keep-indexed (fn [i {:keys [body]}]
+                                           (when body [i body]))
+                                         bc-vec))
+        body-field (fn [i] (str "body_" i))]
+
+    ;; ── Class header ──────────────────────────────────────────────────────────
+    (.visit cw V1-8 (int (+ ACC-PUBLIC ACC-SUPER))
+            cls-name nil "java/lang/Object" nil)
+
+    ;; ── Static field: EVAL_FN (IFn, set from Clojure before run() is called) ─
+    (.visitField cw (int (+ ACC-PUBLIC ACC-STATIC))
+                 "EVAL_FN" IFN-DESC nil nil)
+
+    ;; ── Static fields: 23E inline IFn helpers (set by load-program) ──────────
+    (doseq [fld-name (keys JC-IFN-FIELD-SIGS)]
+      (.visitField cw (int (+ ACC-PUBLIC ACC-STATIC))
+                   fld-name IFN-DESC nil nil))
+
+    ;; ── Static body fields (Object, one per instruction that has a body) ─────
+    (doseq [[i _] bodies]
+      (.visitField cw (int (+ ACC-PUBLIC ACC-STATIC))
+                   (body-field i) OBJ nil nil))
+
+    ;; ── <clinit>: initialise body fields via RT.readString ────────────────────
+    (let [ci (.visitMethod cw (int (+ ACC-PUBLIC ACC-STATIC))
+                           "<clinit>" "()V" nil nil)]
+      (.visitCode ci)
+      (doseq [[i body] bodies]
+        ;; RT.readString(pr-str(body)) → Object → PUTSTATIC body_N
+        (.visitLdcInsn ci (pr-str body))
+        (.visitMethodInsn ci INVOKESTATIC RT-CLASS "readString"
+                          (str "(" STR ")" OBJ) false)
+        (.visitFieldInsn ci PUTSTATIC cls-name (body-field i) OBJ))
+      (.visitInsn ci RETURN)
+      (.visitMaxs ci (int 2) (int 0))
+      (.visitEnd ci))
+
+    ;; ── run() method ──────────────────────────────────────────────────────────
+    (let [mv     (.visitMethod cw (int (+ ACC-PUBLIC ACC-STATIC))
+                               "run" "()V" nil nil)
+          lbls   (mapv (fn [_] (Label.)) bc-vec)
+          end-lbl (Label.)]
+
+      (.visitCode mv)
+
+      (doseq [i (range n-instrs)]
+        (.visitLabel mv (lbls i))
+        (let [{:keys [op body s f s-sig f-sig]} (bc-vec i)
+              op   (int op)
+
+              ;; Helper: emit body evaluation, leave result on stack.
+              ;; 23E: try inline-emit! first (no EVAL_FN call for common patterns).
+              ;; Falls back to EVAL_FN for complex bodies.
+              eval-body!
+              (fn []
+                (if body
+                  (or (inline-emit! mv cls-name body)
+                      ;; Fallback: call EVAL_FN.invoke(body-field)
+                      (do (.visitFieldInsn mv GETSTATIC cls-name "EVAL_FN" IFN-DESC)
+                          (.visitFieldInsn mv GETSTATIC cls-name (body-field i) OBJ)
+                          (.visitMethodInsn mv INVOKEINTERFACE IFN-CLASS "invoke"
+                                            IFN-INVOKE-SIG true)))
+                  (.visitInsn mv ACONST-NULL)))
+
+              ;; Helper: emit a signal throw via SIGNAL_FN IFn field.
+              ;; SIGNAL_FN.invoke(sig-name) always throws ExceptionInfo.
+              ;; Using INVOKEINTERFACE avoids INVOKESTATIC to jvm_codegen which
+              ;; fails under DynamicClassLoader class isolation.
+              emit-signal!
+              (fn [sig]
+                (.visitFieldInsn mv GETSTATIC cls-name "SIGNAL_FN" IFN-DESC)
+                (.visitLdcInsn mv (name sig))
+                (.visitMethodInsn mv INVOKEINTERFACE IFN-CLASS "invoke"
+                                  IFN-INVOKE-SIG true)
+                ;; SIGNAL_FN always throws. Pop the nominally-returned value
+                ;; (unreachable) so the JVM verifier sees an empty stack.
+                (.visitInsn mv POP)
+                (.visitInsn mv ACONST-NULL)
+                (.visitInsn mv ATHROW))]
+
+          (case op
+            ;; 0 HALT
+            0 (.visitInsn mv RETURN)
+
+            ;; 1 EXEC — eval body, POP, GOTO fall
+            1 (do (when body (eval-body!) (.visitInsn mv POP))
+                  (when s (.visitJumpInsn mv GOTO (lbls s))))
+
+            ;; 2 EXEC-S — eval; non-null → success, null → fall
+            2 (do (eval-body!)
+                  (let [fail-lbl (lbls f)]
+                    (.visitJumpInsn mv IFNULL fail-lbl)
+                    ;; success branch
+                    (if s-sig
+                      (emit-signal! s-sig)
+                      (.visitJumpInsn mv GOTO (lbls s)))
+                    ;; fall through to fail label (already placed)
+                    ))
+
+            ;; 3 EXEC-F — eval; null → failure, non-null → fall
+            3 (do (eval-body!)
+                  (let [ok-lbl (if s (lbls s) end-lbl)]
+                    (.visitJumpInsn mv IFNONNULL ok-lbl)
+                    ;; failure branch
+                    (if f-sig
+                      (emit-signal! f-sig)
+                      (.visitJumpInsn mv GOTO (lbls f)))
+                    (.visitLabel mv ok-lbl)))
+
+            ;; 4 EXEC-SF — eval; non-null → s, null → f
+            4 (do (eval-body!)
+                  (let [fail-lbl (Label.)]
+                    (.visitJumpInsn mv IFNULL fail-lbl)
+                    ;; success
+                    (if s-sig
+                      (emit-signal! s-sig)
+                      (.visitJumpInsn mv GOTO (lbls s)))
+                    ;; failure
+                    (.visitLabel mv fail-lbl)
+                    (if f-sig
+                      (emit-signal! f-sig)
+                      (.visitJumpInsn mv GOTO (lbls f)))))
+
+            ;; 5 JUMP — eval body (if any), GOTO s
+            5 (do (when body (eval-body!) (.visitInsn mv POP))
+                  (.visitJumpInsn mv GOTO (lbls (int s))))
+
+            ;; 6 SIGNAL
+            6 (emit-signal! body)
+
+            ;; default
+            (.visitInsn mv RETURN))))
+
+      (.visitLabel mv end-lbl)
+      (.visitInsn mv RETURN)
+      (.visitMaxs mv (int 4) (int 2))
+      (.visitEnd mv))
+
+    (.visitEnd cw)
+    (.toByteArray cw)))
+
+;; ── Class loader cache ────────────────────────────────────────────────────────
+
+(def ^:private class-cache (atom {}))
+
+(defn load-program
+  "Compile src to JVM bytecode and load the class.
+   Returns a zero-arg fn that calls the generated static run() method.
+   Results are cached by source string hash.
+
+   Before invoking run(), this function sets EVAL_FN and all 23E inline
+   IFn helper fields on the generated class."
+  [src]
+  (or (get @class-cache src)
+      (let [bc       (compile-to-class src)
+            cls-name (.replace (gen-class-name src) "/" ".")
+            dcl      (DynamicClassLoader.)
+            cls      (.defineClass dcl cls-name bc nil)
+            ;; Set EVAL_FN field
+            eval-field (.getField cls "EVAL_FN")
+            _          (.set eval-field nil SNOBOL4clojure.operators/EVAL!)
+            ;; Set all 23E inline IFn helper fields
+            inline-fn-vals {"$$_FN"    $$_FN
+                            "SET_FN"   SET_FN
+                            "PRINT_FN" PRINT_FN
+                            "ADD_FN"   ADD_FN
+                            "SUB_FN"   SUB_FN
+                            "MUL_FN"   MUL_FN
+                            "DIV_FN"   DIV_FN
+                            "LT_FN"    LT_FN
+                            "GT_FN"    GT_FN
+                            "LE_FN"    LE_FN
+                            "GE_FN"    GE_FN
+                            "EQ_FN"    EQ_FN
+                            "NEQ_FN"   NEQ_FN
+                            "SIGNAL_FN" SIGNAL_FN
+                            ;; 23E extensions
+                            "CONCAT_FN" CONCAT_FN
+                            "SIZE_FN"   SIZE_FN
+                            "STR_FN"    STR_FN}
+            _  (doseq [[fld-name fld-val] inline-fn-vals]
+                 (.set (.getField cls fld-name) nil fld-val))
+            method   (.getMethod cls "run" (into-array Class []))
+            run-fn   (fn []
+                       ;; Refresh EVAL_FN in case of namespace reload
+                       (.set eval-field nil SNOBOL4clojure.operators/EVAL!)
+                       (.invoke method nil (into-array Object [])))]
+        (swap! class-cache assoc src run-fn)
+        run-fn)))
+
+(defn clear-class-cache!
+  "Evict all entries from the JVM class cache."
+  []
+  (reset! class-cache {})
+  nil)
+
+;; ── Execute ───────────────────────────────────────────────────────────────────
+
+(defn run-jvm!
+  "Run src through the JVM-compiled path. Output goes to *out*."
+  [src]
+  (env/GLOBALS (find-ns 'SNOBOL4clojure.runtime))
+  (reset! env/STNO 0)
+  (reset! env/<STNO> {})
+  (reset! env/<LABL> {})
+  (reset! env/<CODE> {})
+  (reset! env/<FUNS> {})
+  (reset! &STCOUNT 0)
+  (let [run-fn (load-program src)]
+    (try
+      (run-fn)
+      (catch java.lang.reflect.InvocationTargetException e
+        (let [cause (.getCause e)]
+          (if (instance? clojure.lang.ExceptionInfo cause)
+            (when-not (contains? #{:end :return :freturn :nreturn}
+                                 (get (ex-data cause) :snobol/signal))
+              (throw cause))
+            (throw (or cause e))))))))
+
+(defn run-jvm-captured!
+  "Run src through JVM-compiled path and return captured stdout as string."
+  [src]
+  (with-out-str (run-jvm! src)))
+
+;; ── Benchmark ────────────────────────────────────────────────────────────────
+
+(defn bench-compare-jvm
+  "Compare interpreter (RUN+CODE-memo) vs JVM-compiled (run-jvm!) on src.
+   Warms both paths before timing.
+   Returns {:interpreter-ms :jvm-ms :ratio :outputs-match}."
+  [src n]
+  (let [reset-env! (fn []
+                     (env/GLOBALS (find-ns 'SNOBOL4clojure.runtime))
+                     (reset! env/STNO 0) (reset! env/<STNO> {})
+                     (reset! env/<LABL> {}) (reset! env/<CODE> {})
+                     (reset! env/<FUNS> {}))
+
+        run-interp (fn []
+                     (reset-env!)
+                     (with-out-str
+                       (try (RUN (comp/CODE-memo src))
+                            (catch clojure.lang.ExceptionInfo e
+                              (when-not (contains? #{:end :return :freturn :nreturn}
+                                                   (get (ex-data e) :snobol/signal))
+                                (throw e))))))
+
+        run-fn     (do (reset-env!) (load-program src))
+        run-jvm    (fn []
+                     (reset-env!)
+                     (with-out-str
+                       (try (run-fn)
+                            (catch java.lang.reflect.InvocationTargetException e
+                              (let [cause (.getCause e)]
+                                (when-not (and (instance? clojure.lang.ExceptionInfo cause)
+                                              (contains? #{:end :return :freturn :nreturn}
+                                                         (get (ex-data cause) :snobol/signal)))
+                                  (throw (or cause e))))))))]
+
+    (dotimes [_ 30] (run-interp))
+    (dotimes [_ 30] (run-jvm))
+
+    (let [i-out (atom "") j-out (atom "")
+          t0 (System/nanoTime)
+          _  (dotimes [_ n] (reset! i-out (run-interp)))
+          i-ms (/ (/ (- (System/nanoTime) t0) n) 1e6)
+          t1 (System/nanoTime)
+          _  (dotimes [_ n] (reset! j-out (run-jvm)))
+          j-ms (/ (/ (- (System/nanoTime) t1) n) 1e6)]
+      {:interpreter-ms  (double i-ms)
+       :jvm-ms          (double j-ms)
+       :ratio           (double (/ i-ms j-ms))
+       :outputs-match   (clojure.core/= @i-out @j-out)})))
+
+;; ── Initialize 23E inline IFn references at namespace load time ─────────────
+(init-inline-fns!)

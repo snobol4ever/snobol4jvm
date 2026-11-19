@@ -2,8 +2,8 @@
   ;; Tests for pattern constructors in patterns.clj.
   ;; Verifies the representation they produce AND that MATCH drives them correctly.
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.patterns :refer :all]
-            [SNOBOL4clojure.match    :refer [SEARCH MATCH FULLMATCH]]))
+            [SNOBOL4clojure.env :refer [ABORT ANY ARB ARBNO BAL BREAK FAIL FENCE LEN NOTANY POS REM RPOS RTAB SPAN SUCCEED TAB]]
+            [SNOBOL4clojure.operators    :refer [SEARCH MATCH FULLMATCH]]))
 
 ;; ── Constructor representation ────────────────────────────────────────────────
 (deftest test-constructors-produce-lists

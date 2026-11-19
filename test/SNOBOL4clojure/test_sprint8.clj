@@ -2,10 +2,10 @@
   "Sprint 8 — ABORT, bare FENCE(), REM, ORD, CHAR, REMDR, INTEGER, REAL, CONVERT to STRING (ASCII and STRING, from no SNOBOL4, are gone: CEO-2028).
    Test cases derived from Snobol4.Net reference suite (jcooper0/Snobol4.Net)."
   (:require [clojure.test             :refer :all]
-            [SNOBOL4clojure.match     :refer [SEARCH FULLMATCH MATCH]]
-            [SNOBOL4clojure.patterns  :refer [SPAN BREAK FENCE LEN ARB ARBNO
+            [SNOBOL4clojure.operators     :refer [SEARCH FULLMATCH MATCH]]
+            [SNOBOL4clojure.env  :refer [SPAN BREAK FENCE LEN ARB ARBNO
                                               ABORT FAIL REM POS RPOS]]
-            [SNOBOL4clojure.functions :refer [ORD CHAR REMDR INTEGER REAL CONVERT]]
+            [SNOBOL4clojure.env :refer [ORD CHAR REMDR INTEGER REAL CONVERT]]
             [SNOBOL4clojure.operators :refer [INVOKE |]]
             [SNOBOL4clojure.env       :refer [GLOBALS ε]]))
 

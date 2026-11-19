@@ -67,7 +67,7 @@ SNOBOL4 source
                                │  EDN cache (22× cold-start speedup)
                                ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  Stage 2: Transpiler  (transpiler.clj)                              │
+│  Stage 2: Transpiler  (runtime.clj)                                 │
 │  SNOBOL4 IR → Clojure loop/case. The JVM JIT compiles it to        │
 │  native code on first call. Hot loops benefit immediately.          │
 │  Speedup: 3.5–6× vs interpreter.                                   │
@@ -75,7 +75,7 @@ SNOBOL4 source
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  Stage 3: Stack VM  (vm.clj)                                        │
+│  Stage 3: Stack VM  (runtime.clj)                                   │
 │  Flat integer-indexed bytecode vector. Single integer dispatch.     │
 │  Eliminates map lookups, keyword resolution, seq walking.           │
 │  Speedup: 2–6× vs interpreter.                                      │
@@ -83,14 +83,14 @@ SNOBOL4 source
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  Stage 4: JVM Bytecode  (jvm_codegen.clj)                           │
+│  Stage 4: JVM Bytecode  (runtime.clj)                               │
 │  SNOBOL4 → .class bytecode via ASM. DynamicClassLoader at runtime. │
 │  The JVM JIT sees real bytecode and applies full optimization.      │
 │  Speedup: 7.6× vs interpreter. Cold-start cumulative: ~190×.       │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### The Pattern Engine: match.clj
+### The Pattern Engine: operators.clj
 
 The pattern match engine is the core of the system. It is a single file and a single
 `loop/case` — a design law that has never been violated. The state is a 7-element frame
@@ -153,7 +153,7 @@ resolution, and seq-walking overhead that the interpreter pays on every statemen
 
 ### Stage 4: JVM Bytecode
 
-`jvm_codegen.clj` compiles SNOBOL4 IR to `.class` bytecode using the ASM library directly.
+`runtime.clj`'s jvm_codegen section compiles SNOBOL4 IR to `.class` bytecode using the ASM library directly.
 Each program becomes one Java class with a static `run()` method. `DynamicClassLoader`
 loads it at runtime — the JVM JIT then applies full native compilation including inlining,
 loop unrolling, and register allocation.
@@ -463,23 +463,16 @@ lein test
 ### Project Structure
 
 ```
-src/SNOBOL4clojure/
-  match.clj           Pattern engine — one file, one loop/case. The core.
-  runtime.clj         GOTO-driven statement interpreter (Stage 1)
-  transpiler.clj      SNOBOL4 IR → Clojure loop/case (Stage 2)
-  vm.clj              Flat bytecode stack machine (Stage 3)
-  jvm_codegen.clj     ASM .class bytecode generation (Stage 4)
-  grammar.clj         instaparse PEG grammar for SNOBOL4 source
-  emitter.clj         Parse tree → Clojure IR
-  operators.clj       EVAL / EVAL! / INVOKE — the central dispatch
-  primitives.clj      Low-level pattern scanners (LIT$, ANY$, SPAN$, ...)
-  patterns.clj        High-level pattern combinators (ARB, ARBNO, FENCE, BAL, ...)
-  functions.clj       Built-in functions (SIZE, DUPL, REPLACE, SUBSTR, ...)
-  env.clj             Variable tables, keywords, signal protocol
-  trace.clj           TRACE / STOPTR execution hooks
-  generator.clj       Test program generator (rand-* probabilistic, gen-* exhaustive)
-  snocone.clj         Snocone frontend lexer and parser
-  snocone_emitter.clj Snocone → SNOBOL4 IR
+src/SNOBOL4clojure/        one namespace a file, in load order
+  env.clj        Runtime state, error texts, built-in functions, pattern constructors and scanners,
+                 TRACE, and the listing, error report and &DUMP sbl -bf writes
+  compiler.clj   Grammar (instaparse), compile error numbers, emitter (parse tree → IR), compiler
+  operators.clj  The pattern engine (one loop/case) and EVAL / EVAL! / INVOKE, the central dispatch
+  runtime.clj    The four engines: interpreter, transpiler, stack VM, ASM .class bytecode
+  core.clj       Public facade and -main
+  main.clj       Uberjar entry point
+  snocone.clj    Snocone front end: lexer, expression grammar, emitter of SNOBOL4 source
+  harness.clj    Differential harness, worm generator (rand-* probabilistic, gen-* exhaustive), benchmarks
 ```
 
 ---
@@ -489,7 +482,7 @@ src/SNOBOL4clojure/
 Ten invariants that have governed the implementation from the first commit:
 
 1. **ALL UPPERCASE keywords.** `ANY`, `SPAN`, `ARBNO` — not `any`, `span`, `arbno`.
-2. **Single-file engine.** `match.clj` is one `loop/case`. It cannot be split.
+2. **Single-form engine.** The matcher (`engine` in `operators.clj`) is one `loop/case`. It cannot be split.
 3. **Immutable-by-default, mutable-by-atom.** `TABLE` and `ARRAY` use `atom`.
 4. **Label/body whitespace contract.** Labels flush-left, bodies indented.
 5. **INVOKE is the single dispatch point.** Both lowercase and uppercase entries.

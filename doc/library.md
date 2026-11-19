@@ -138,10 +138,10 @@ These are pre-defined strings/atoms:
 
 ## Tracing
 
-Bind `SNOBOL4clojure.match/*trace*` to `true` to enable per-step animation:
+Bind `SNOBOL4clojure.operators/*trace*` to `true` to enable per-step animation:
 
 ```clojure
-(binding [SNOBOL4clojure.match/*trace* true]
+(binding [SNOBOL4clojure.operators/*trace* true]
   (FULLMATCH "BED" (list 'SEQ (POS 0) (ANY "BFR") (SPAN "EA") "D" (RPOS 0))))
 ```
 

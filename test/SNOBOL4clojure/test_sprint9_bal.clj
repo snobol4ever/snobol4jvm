@@ -1,8 +1,8 @@
 (ns SNOBOL4clojure.test-sprint9-bal
   "BAL tests derived from Snobol4.Net TestSnobol4/Function/Pattern/Bal.cs"
   (:require [clojure.test         :refer :all]
-            [SNOBOL4clojure.match :refer [SEARCH COLLECT!]]
-            [SNOBOL4clojure.patterns :refer [BAL POS]]
+            [SNOBOL4clojure.operators :refer [SEARCH COLLECT!]]
+            [SNOBOL4clojure.env :refer [BAL POS]]
             [SNOBOL4clojure.env   :refer [GLOBALS]]))
 
 (use-fixtures :each (fn [f] (GLOBALS (find-ns 'SNOBOL4clojure.test-sprint9-bal)) (f)))

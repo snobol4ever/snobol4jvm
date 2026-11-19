@@ -4,7 +4,7 @@
 ;; so no row holds the semicolon that separates two.
 (ns SNOBOL4clojure.test-syntax
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.syntax :refer [syntax-error]]
+            [SNOBOL4clojure.compiler :refer [syntax-error]]
             [SNOBOL4clojure.env]
             [SNOBOL4clojure.compiler]))
 

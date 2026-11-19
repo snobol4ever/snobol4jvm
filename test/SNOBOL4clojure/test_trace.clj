@@ -60,7 +60,7 @@
 (deftest trace-value-fires-on-assignment
   "TRACE VALUE fires when the named variable is assigned."
   (let [log (atom [])]
-    (binding [SNOBOL4clojure.trace/*trace-output*
+    (binding [SNOBOL4clojure.env/*trace-output*
               (java.io.PrintWriter. (proxy [java.io.Writer] []
                 (write [x & _] (swap! log conj (str x)))
                 (flush [])))]
@@ -75,7 +75,7 @@
 (deftest trace-value-not-fired-after-stoptr
   "STOPTR removes a VALUE trace — no output after removal."
   (let [log (atom [])]
-    (binding [SNOBOL4clojure.trace/*trace-output*
+    (binding [SNOBOL4clojure.env/*trace-output*
               (java.io.PrintWriter. (proxy [java.io.Writer] []
                 (write [x & _] (swap! log conj (str x)))
                 (flush [])))]
@@ -92,7 +92,7 @@
 (deftest trace-label-fires-on-reach
   "TRACE LABEL fires when execution reaches the named label."
   (let [log (atom [])]
-    (binding [SNOBOL4clojure.trace/*trace-output*
+    (binding [SNOBOL4clojure.env/*trace-output*
               (java.io.PrintWriter. (proxy [java.io.Writer] []
                 (write [x & _] (swap! log conj (str x)))
                 (flush [])))]
@@ -112,7 +112,7 @@
 (deftest trace-call-fires-on-function-call
   "TRACE CALL fires when a user-defined function is called."
   (let [log (atom [])]
-    (binding [SNOBOL4clojure.trace/*trace-output*
+    (binding [SNOBOL4clojure.env/*trace-output*
               (java.io.PrintWriter. (proxy [java.io.Writer] []
                 (write [x & _] (swap! log conj (str x)))
                 (flush [])))]
@@ -131,7 +131,7 @@
 (deftest trace-return-fires-on-function-return
   "TRACE RETURN fires when a user-defined function returns."
   (let [log (atom [])]
-    (binding [SNOBOL4clojure.trace/*trace-output*
+    (binding [SNOBOL4clojure.env/*trace-output*
               (java.io.PrintWriter. (proxy [java.io.Writer] []
                 (write [x & _] (swap! log conj (str x)))
                 (flush [])))]
@@ -168,9 +168,9 @@
   "enable-full-trace! registers the wildcard label, value, call and return traces; &TRACE, the count the program sets, is not touched."
   (trace-enable-full!)
   (is (= 0 @SNOBOL4clojure.env/&TRACE))
-  (is (every? #(SNOBOL4clojure.trace/active? "*" %) ["LABEL" "VALUE" "CALL" "RETURN"]))
+  (is (every? #(SNOBOL4clojure.env/active? "*" %) ["LABEL" "VALUE" "CALL" "RETURN"]))
   (trace-disable-full!)
-  (is (not-any? #(SNOBOL4clojure.trace/active? "*" %) ["LABEL" "VALUE" "CALL" "RETURN"])))
+  (is (not-any? #(SNOBOL4clojure.env/active? "*" %) ["LABEL" "VALUE" "CALL" "RETURN"])))
 
 ;; ── Sprint 18C: snapshot! / run-to-step / probe-test ────────────────────────
 

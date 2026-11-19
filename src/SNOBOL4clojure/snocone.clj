@@ -1,27 +1,35 @@
 (ns SNOBOL4clojure.snocone
-  "Snocone front-end — Step 1: Lexer.
+  "The Snocone front end: lexer, expression grammar, and an emitter of SNOBOL4 source text."
+  (:require [instaparse.core :as insta :refer [defparser]]))
 
-  Snocone (a community implementation) is a syntactic sugar layer
-  for SNOBOL4 that adds C-like control flow while preserving full SNOBOL4
-  semantics.  This namespace implements the lexer (tokeniser) for .sc source
-  files.  The parser (Step 2) will consume the token stream produced here.
 
-  ## Token map keys
-    :kind   — keyword, one of the ::kind-* values below
-    :text   — verbatim source text of the token
-    :line   — 1-based physical line number where the token began
-
-  ## Source model (from the language specification)
-  - Comments: # to end of line (stripped; not in token stream).
-  - Statement termination: newline ends a statement UNLESS the last
-    non-whitespace character before the newline is a continuation character
-    (any of @ $ % ^ & * ( - + = [ < > | ~ , ? :).
-    A semicolon also terminates a statement within a line.
-  - Strings: delimited by matching ' or \".
-  - Numbers: integer or real (with optional exponent eEdD±).
-    Leading-dot floats (.5) are legal; parser rewrites to 0.5.
-  - Identifiers: [A-Za-z_][A-Za-z0-9_]*.
-  - Multi-character operators matched longest-first.")
+;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+;; The Snocone lexer
+;;
+;; Snocone front-end — Step 1: Lexer.
+;;
+;; Snocone (a community implementation) is a syntactic sugar layer
+;; for SNOBOL4 that adds C-like control flow while preserving full SNOBOL4
+;; semantics.  This namespace implements the lexer (tokeniser) for .sc source
+;; files.  The parser (Step 2) will consume the token stream produced here.
+;;
+;; ## Token map keys
+;;   :kind   — keyword, one of the ::kind-* values below
+;;   :text   — verbatim source text of the token
+;;   :line   — 1-based physical line number where the token began
+;;
+;; ## Source model (from the language specification)
+;; - Comments: # to end of line (stripped; not in token stream).
+;; - Statement termination: newline ends a statement UNLESS the last
+;;   non-whitespace character before the newline is a continuation character
+;;   (any of @ $ % ^ & * ( - + = [ < > | ~ , ? :).
+;;   A semicolon also terminates a statement within a line.
+;; - Strings: delimited by matching ' or ".
+;; - Numbers: integer or real (with optional exponent eEdD±).
+;;   Leading-dot floats (.5) are legal; parser rewrites to 0.5.
+;; - Identifiers: [A-Za-z_][A-Za-z0-9_]*.
+;; - Multi-character operators matched longest-first.
+;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 ;; ---------------------------------------------------------------------------
 ;; Token kind constants  (keywords used as enum-like values)
@@ -581,3 +589,190 @@
 
             :else
             (recur (inc i) output op-stack call-stack)))))))
+
+
+;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+;; The Snocone expression grammar
+;;
+;; Snocone expression grammar (instaparse PEG).
+;;
+;; Precedence levels from the operator table (low → high):
+;;   asn  prec 1/2  =          right-assoc
+;;   qst  prec 2    ?
+;;   pip  prec 3    |
+;;   or   prec 4    ||
+;;   cat  prec 5    &&
+;;   cmp  prec 6    == != < > <= >= :: :!: :>: :<: :>=: :<=: :==: :!=:
+;;   sum  prec 7    + -
+;;   mul  prec 8    * / %
+;;   xp   prec 9/10 ^          right-assoc
+;;   cap  prec 10   . $
+;;   uop  unary     + - * & @ ~ ? . $
+;;   ndx           f(...) f[...]
+;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+(def sc-grammar
+  " expr    ::= <ws*> asn <ws*>
+    asn     ::= qst | qst  <ws* '='  ws*>  asn
+    qst     ::= pip | pip  <ws* '?'  ws*>  pip
+    pip     ::= or  | or   <ws* '|'  ws*>  or  (<ws* '|' ws*> or)*
+    or      ::= cat | cat  <ws* '||' ws*>  cat (<ws* '||' ws*> cat)*
+    cat     ::= cmp | cmp  <ws* '&&' ws*>  cmp (<ws* '&&' ws*> cmp)*
+              | cmp  <ws+>  cmp  (<ws+>  cmp)*
+    cmp     ::= sum | sum  <ws*> cmpop <ws*>   sum
+   <cmpop>  ::= ':!=:' | ':>=:' | ':<=:' | ':==:' | ':>:' | ':<:' | '::' | ':!:'
+              | '>=' | '<=' | '==' | '!=' | '<' | '>'
+    sum     ::= mul | sum  <ws*> sumop <ws*>   mul
+   <sumop>  ::= '+' | '-'
+    mul     ::= xp  | mul  <ws*> mulop <ws*>   xp
+   <mulop>  ::= '*' | '/' | '%'
+    xp      ::= cap | cap  <ws*> '^'  <ws*>  xp
+    cap     ::= uop | uop  <ws*> capop <ws*>  cap
+   <capop>  ::= #'[.](?![0-9])' | '$'
+    uop     ::= ndx | unaryop <ws*> uop
+   <unaryop> ::= '+' | '-' | '*' | '&' | '@' | '~' | '$'
+              | #'[.](?![0-9])'
+    ndx     ::= atom | ndx <'('> arglist <')'> | ndx <'['> aref <']'>
+    aref     ::= expr? | expr (<ws* ',' ws*> expr)*
+    arglist  ::= expr? | expr (<ws* ',' ws*> expr)*
+   <atom>   ::= real | integer | string | ident | <'('> expr <')'>
+    ident   ::= #'[A-Za-z_][A-Za-z0-9_]*'
+    integer ::= #'[0-9]+'
+    real    ::= #'[0-9]+\\.[0-9]*([eEdD][+-]?[0-9]+)?'
+              | #'[0-9]+[eEdD][+-]?[0-9]+'
+              | #'\\.[0-9]+([eEdD][+-]?[0-9]+)?'
+    string  ::= #'\"[^\"]*\"' | #'\\'[^\\']*\\''
+   <ws>     ::= #'[ \\t]+'
+  ")
+
+(defparser parse-sc-expr sc-grammar :start :expr)
+
+
+;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+;; The Snocone emitter: SNOBOL4 source text
+;;
+;; Snocone expression emitter — Step 2.
+;;
+;; Transforms an instaparse AST from snocone-grammar into a SNOBOL4
+;; source string, mirroring dprint/sprint in the reference snocone.snobol4.
+;;
+;; Operator mapping (from the operator table):
+;;   infix ops:  = ? | + - / * ^ . $   → same in SNOBOL4
+;;   fn ops:     == != < > <= >= :: :!: :>: :<: :>=: :<=: :==: :!=:
+;;               → EQ NE LT GT LE GE IDENT DIFFER LGT LLT LGE LLE LEQ LNE
+;;   special:    ||  → (a,b)  pattern alternation
+;;               &&  → blank concat (space between operands)
+;;               ^   → **
+;;               %   → REMDR(a,b)
+;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+;; ---------------------------------------------------------------------------
+;; Operator tables (from the operator table)
+;; ---------------------------------------------------------------------------
+
+;; fn=1 ops → emit as FN(l,r)
+(def ^:private fn-ops
+  {">"   "GT"  "<"   "LT"  ">="  "GE"  "<="  "LE"
+   "=="  "EQ"  "!="  "NE"
+   "::"  "IDENT"  ":!:"  "DIFFER"
+   ":>:" "LGT" ":<:" "LLT" ":>=:" "LGE" ":<=:" "LLE"
+   ":==:" "LEQ" ":!=:" "LNE"
+   "%"   "REMDR"})
+
+;; infix ops → emit as  l OP r
+(def ^:private infix-ops
+  #{"=" "?" "|" "+" "-" "/" "*" "." "$"})
+
+;; ---------------------------------------------------------------------------
+;; Emitter — insta/transform over the AST
+;; ---------------------------------------------------------------------------
+
+(defn- emit-binary [op l r]
+  (cond
+    (= op "||") (str "(" l "," r ")")          ; pattern alternation
+    (= op "&&") (str l " " r)                   ; blank concat
+    (= op "^")  (str l " ** " r)               ; exponentiation
+    (fn-ops op) (str (fn-ops op) "(" l "," r ")")
+    (infix-ops op) (str l " " op " " r)
+    :else (str l " " op " " r)))
+
+(defn emit-expr
+  "Transform a snocone-grammar AST node into a SNOBOL4 source string."
+  [ast]
+  (insta/transform
+    {:expr    (fn [x] x)
+     ;; Terminals
+     :ident   str
+     :integer str
+     :real    (fn [s] (if (clojure.string/starts-with? s ".")
+                        (str "0" s)   ; dotck: .5 → 0.5
+                        s))
+     :string  str
+
+     ;; Binary operators — each rule has shape (rule op? l r)
+     ;; instaparse gives us the children after angle-bracket suppression
+     :asn  (fn
+             ([x] x)
+             ([l r] (emit-binary "=" l r)))
+     :qst  (fn
+             ([x] x)
+             ([l r] (emit-binary "?" l r)))
+     :pip  (fn
+             ([x] x)
+             ([l & rest] (reduce #(emit-binary "|" %1 %2) l rest)))
+     :or   (fn
+             ([x] x)
+             ([l & rest] (reduce #(emit-binary "||" %1 %2) l rest)))
+     :cat  (fn
+             ([x] x)
+             ([l & rest] (reduce #(emit-binary "&&" %1 %2) l rest)))
+     :cmp  (fn [& args]
+             (if (= 1 (count args))
+               (first args)
+               (let [[l op r] args] (emit-binary op l r))))
+     :sum  (fn [& args]
+             (if (= 1 (count args))
+               (first args)
+               (let [[l op r] args] (emit-binary op l r))))
+     :mul  (fn [& args]
+             (if (= 1 (count args))
+               (first args)
+               (let [[l op r] args] (emit-binary op l r))))
+     :xp   (fn [& args]
+             (if (= 1 (count args))
+               (first args)
+               (let [[l _ r] args] (emit-binary "^" l r))))
+     :cap  (fn [& args]
+             (if (= 1 (count args))
+               (first args)
+               (let [[l op r] args] (emit-binary op l r))))
+
+     ;; Unary operators
+     :uop  (fn
+             ([x] x)
+             ([op x] (str op x)))
+
+     ;; Indexing — f(args) or f[args]
+     ;; arglist → joined string; aref → bracket-wrapped string (marker)
+     :ndx  (fn
+             ([x] x)
+             ([f arg]
+              (if (and (string? arg) (clojure.string/starts-with? arg "["))
+                (str f arg)                                     ; array ref: f[i]
+                (str f "(" arg ")"))))                          ; call: f(x)
+
+     :arglist (fn [& args] (clojure.string/join "," (remove nil? args)))
+     :aref    (fn [& args] (str "[" (clojure.string/join "," (remove nil? args)) "]"))}
+    ast))
+
+;; ---------------------------------------------------------------------------
+;; Public API
+;; ---------------------------------------------------------------------------
+
+(defn sc->snobol4
+  "Parse a Snocone expression string and return the SNOBOL4 source string."
+  [sc-src]
+  (let [ast (parse-sc-expr sc-src)]
+    (if (insta/failure? ast)
+      (throw (ex-info "Snocone parse error" {:failure ast :src sc-src}))
+      (emit-expr ast))))

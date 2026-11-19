@@ -149,7 +149,7 @@
   (is (= (DATATYPE '(+ 1 2))                              "EXPRESSION"))
   (is (= (DATATYPE (CODE "what year = 2021"))             "CODE"))
   (is (= (DATATYPE #{})                                   "SET"))
-  (is (= (DATATYPE (SNOBOL4clojure.env/SET))              "SET"))
+  (is (= (DATATYPE (SNOBOL4clojure.env/empty-set))              "SET"))
   (is (= (DATATYPE #"^[A-Z]+$")                           "REGEX"))
   (is (= (DATA "tree(t,v,n,c)")                           ""))
   ;; TODO: custom DATA datatype dispatch once DATA is fully wired:
@@ -2700,7 +2700,7 @@
 
 ;; HOST() is "a 'host-information' string describing the system on which SPITBOL is executing", computer type:operating system:version (SPITBOL manual ch. 19, HOST).
 (deftest host-describes-the-system
-  (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.functions/HOST)))))
+  (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.env/HOST)))))
 
 ;; A VALUE trace of an element, TRACE(.A[2], 'VALUE'), fires when that element of that array or table is assigned, through any variable, and the line names
 ;; it by the variable SPITBOL finds holding the container, the first in its variable hash table (manual ch. 19, TRACE; sbl.min prtnm). MEASURED on sbl -bf: this
@@ -2887,7 +2887,7 @@
 (deftest a-call-builds-no-trace-line-when-no-trace-is-armed
   (GLOBALS)
   (let [n (atom 0)
-        r (with-redefs [SNOBOL4clojure.trace/trace-val (fn [_] (swap! n inc) "")]
+        r (with-redefs [SNOBOL4clojure.env/trace-val (fn [_] (swap! n inc) "")]
             (run-with-timeout (str "        DEFINE('F(S)')  :(FE)\nF       F = SIZE(S)  :(RETURN)\nFE      X = DUPL('a', 4000)\n"
                                    "L       N = LT(N, 300) N + 1  :F(D)\n        T = T + F(X)  :(L)\nD       OUTPUT = T\nEND\n") 8000))]
     (is (clojure.core/= "1200000\n" (:stdout r)))
@@ -3173,9 +3173,9 @@
 ;; A null first argument is HOST(), whatever follows it, and never HOST(0). MEASURED on sbl -bf: HOST(''), HOST('',), HOST('','') and HOST('','x') each answer
 ;; the identity; with Y unset, BITS = HOST(Y) is that string and EQ(BITS,64) ends ERROR 101 (corpus csnobol4_suite float2, its BITS = HOST(HOST_REAL_BITS)).
 (deftest a-null-first-argument-of-host-is-host-of-no-argument
-  (let [id (str (SNOBOL4clojure.functions/HOST))]
+  (let [id (str (SNOBOL4clojure.env/HOST))]
     (doseq [args [[""] ["" ""] ["" "x"]]]
-      (is (= id (str (apply SNOBOL4clojure.functions/HOST args))) (pr-str args))))
+      (is (= id (str (apply SNOBOL4clojure.env/HOST args))) (pr-str args))))
   (let [r (run-with-timeout "	BITS = HOST(Y)\n	EQ(BITS,64)\n	OUTPUT = 'ran on'\nEND\n" 2000)]
     (is (= :error (:exit r)))
     (is (= "eq first argument is not numeric" (:thrown r)))))
@@ -7855,16 +7855,16 @@
       (is (= "ERROR 235\nfailed\n" (run "$" "u[1]")))
       (finally (.delete f)))))
 
-;; The grammar's EBNF text is parsed when SNOBOL4clojure.grammar is compiled, and the combinator map it gives is a constant of the namespace (grammar/rules) from which both
+;; The grammar's EBNF text is parsed when SNOBOL4clojure.compiler is compiled, and the combinator map it gives is a constant of the namespace (grammar/rules) from which both
 ;; parsers start, so a run no longer parses the text: building the two parsers from the text cost 380 ms and about 7 G user instructions of every start (perf stat -e
 ;; instructions:u, an empty program 16.6 G before and 10.9 G after). The parsers must answer as the text-built ones do: the same tree, or the same failure, for each line.
 (deftest the-grammar-is-compiled-into-the-namespace-and-parses-as-its-text-does
-  (require 'instaparse.core 'SNOBOL4clojure.grammar)
+  (require 'instaparse.core 'SNOBOL4clojure.compiler)
   (let [parser (resolve 'instaparse.core/parser) parse (resolve 'instaparse.core/parse)
-        text (var-get (resolve 'SNOBOL4clojure.grammar/grammar))
+        text (var-get (resolve 'SNOBOL4clojure.compiler/grammar))
         from-text-stmt (parser text :start :stmt :total true)
         from-text-expr (parser text :start :expr)
-        rules (resolve 'SNOBOL4clojure.grammar/rules)
+        rules (resolve 'SNOBOL4clojure.compiler/rules)
         lines ["L       X = Y + 1                :(END)" "        OUTPUT = 'hello'" "* a comment" "-INCLUDE 'x.inc'" "END" "        :(L)"
                "        X<I> = Y[J]" "        P = LEN(3) $ X . Y | 'z' @C" "A       B ? C . D = E            :S(X)F(Y)" "        DEFINE('F(X,Y)Z')  :(FEND)"
                "        X = 1.5E3 + .5 * (2 ** 3)" "        &STLIMIT = 100" "L2      Z = F(A, , B)            :F<$S>" "        S ? ARBNO(BREAK(' ') . W SPAN(' ')) :F(D)"
@@ -7873,8 +7873,8 @@
     (when rules
       (is (= (set (keys @rules)) (set (keys (:grammar (parser text)))))))
     (doseq [l lines]
-      (is (= (pr-str (parse from-text-stmt l)) (pr-str (SNOBOL4clojure.grammar/parse-statement l))) l)
-      (is (= (pr-str (parse from-text-expr l)) (pr-str (SNOBOL4clojure.grammar/parse-expression l))) l))))
+      (is (= (pr-str (parse from-text-stmt l)) (pr-str (SNOBOL4clojure.compiler/parse-statement l))) l)
+      (is (= (pr-str (parse from-text-expr l)) (pr-str (SNOBOL4clojure.compiler/parse-expression l))) l))))
 
 ;; A SNOBOL4 call is several nested evaluator calls, so a function that called itself died at depth 90 on the JVM's default thread stack with an uncaught
 ;; StackOverflowError, where sbl -bf runs 57,000 deep at its default -s4m and ends a runaway recursion with "ERROR 246 -- stack overflow", the report every execution

@@ -1,7 +1,7 @@
 (ns SNOBOL4clojure.test-env
   ;; Tests for env.clj: globals, DATATYPE dispatch, NAME, $$, arithmetic aliases.
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.env :refer :all])
+            [SNOBOL4clojure.env :refer [$$ &DIGITS &LCASE &UCASE ARRAY DATATYPE GLOBALS TABLE empty-set divide equal multiply not-equal num snobol-set! subtract Σ+ ε η]])
   (:refer-clojure :exclude [num])
   (:import  [SNOBOL4clojure.env NAME]))
 
@@ -25,7 +25,7 @@
   (is (= "PATTERN"    (DATATYPE ["hello"])))
   (is (= "NAME"       (DATATYPE 'x)))
   (is (= "EXPRESSION" (DATATYPE '(+ 1 2))))
-  (is (= "SET"        (DATATYPE (SET))))
+  (is (= "SET"        (DATATYPE (empty-set))))
   (is (= "SET"        (DATATYPE #{})))
   (is (= "REGEX"      (DATATYPE #"abc"))))
 

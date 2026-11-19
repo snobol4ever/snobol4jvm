@@ -3,8 +3,8 @@
   ;; These are the three entry points matching the Python/C# siblings.
   ;; Tests also exercise the engine internals via structural patterns.
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.match    :refer [SEARCH MATCH FULLMATCH REPLACE]]
-            [SNOBOL4clojure.patterns :refer [ANY SPAN POS RPOS LEN]]))
+            [SNOBOL4clojure.operators    :refer [SEARCH MATCH FULLMATCH MATCH-REPLACE]]
+            [SNOBOL4clojure.env :refer [ANY SPAN POS RPOS LEN]]))
 
 ;; ── SEARCH — slides pattern across subject ────────────────────────────────────
 (deftest test-search-basic
@@ -51,16 +51,16 @@
 
 ;; ── REPLACE — match and substitute ───────────────────────────────────────────
 (deftest test-replace-basic
-  (is (= "hello Clojure" (REPLACE "hello world"  "world"   "Clojure")))
-  (is (= "Xello"         (REPLACE "hello"        "h"       "X")))
-  (is (= "hello world"   (REPLACE "hello world"  "hello"   "hello"))))
+  (is (= "hello Clojure" (MATCH-REPLACE "hello world"  "world"   "Clojure")))
+  (is (= "Xello"         (MATCH-REPLACE "hello"        "h"       "X")))
+  (is (= "hello world"   (MATCH-REPLACE "hello world"  "hello"   "hello"))))
 
 (deftest test-replace-no-match
-  (is (nil? (REPLACE "hello" "xyz" "!"))))
+  (is (nil? (MATCH-REPLACE "hello" "xyz" "!"))))
 
 (deftest test-replace-empty
   ;; Replacing first empty match inserts at position 0
-  (is (= "Xhello" (REPLACE "hello" "" "X"))))
+  (is (= "Xhello" (MATCH-REPLACE "hello" "" "X"))))
 
 ;; ── Literal patterns (LIT$ dispatch) ─────────────────────────────────────────
 (deftest test-literal
