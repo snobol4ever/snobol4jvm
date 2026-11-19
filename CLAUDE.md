@@ -88,7 +88,7 @@ This seat runs its own boards (CEO-1912). The engine arm is `../harness/scripts/
 | `snocone.clj` | The Snocone front end. |
 | `harness.clj` | Development tools: the differential harness, the worm generator and the benchmark grid. |
 
-Each file is divided into sections, and each section opens with a `;; ═══` banner that names it. The section names below (`grammar`, `trace`, `match` and so on) are the files these sections were before 2026-11-19.
+**The source holds no comments and no blank lines** (Lon 2026-11-19: "Remove every single comment and every single blank line."); docstrings stay. Within each file the code stands in the order of the files it was merged from, and the section names below (`grammar`, `trace`, `match` and so on) are those files. `git show 4205ae2:src/SNOBOL4clojure/<file>` has the section banners and every comment, with the manual quotes and `sbl -bf` measurements they carried.
 
 ### Front end (source to IR)
 
@@ -220,8 +220,8 @@ Each commit cures one defect and names the witness that proves it: the corpus en
   - quotes the manual's rule and the `sbl -bf` probe that measured it;
   - names the board entry it cures;
   - ends with `Witness: <suite> <entry>` and the `lein test` count (tests and failures).
-- **Comments in the code** cite the same manual chapter and `sbl -bf` measurement.
-- **Line width:** source lines run up to 200 characters, and a longer comment is broken onto further comment lines. Do not reflow lines that already fit.
+- **No comments in the source:** the manual's rule and the `sbl -bf` measurement are the commit message's, which `git log` and `git blame` lead to. A docstring says what a function does, never why.
+- **Line width:** source lines run up to 200 characters. Do not reflow lines that already fit. No blank line separates forms.
 
 ## Repo notes
 

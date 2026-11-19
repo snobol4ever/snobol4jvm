@@ -9,8 +9,6 @@
             [SNOBOL4clojure.operators :as ops]
             [SNOBOL4clojure.compiler :as comp]
             [SNOBOL4clojure.runtime :as rt]))
-
-;; ── Re-export env ─────────────────────────────────────────────────────────────
 (def  ε          env/ε)
 (def  η          env/η)
 (def  GLOBALS    env/GLOBALS)
@@ -39,12 +37,11 @@
 (def  INPUT$     env/INPUT$)
 (def  OUTPUT$    env/OUTPUT$)
 (def  TERMINAL$  env/TERMINAL$)
-;; deftype — import directly
 (import SNOBOL4clojure.env.NAME)
 (def DATATYPE    env/DATATYPE)
 (def ARRAY       env/ARRAY)
 (def TABLE       env/TABLE)
-(def SET         env/SET)   ; SPITBOL's SET(channel, offset, whence); env/empty-set is the engine's own set constructor
+(def SET         env/SET)
 (def $$          env/$$)
 (def equal       env/equal)
 (def not-equal   env/not-equal)
@@ -52,8 +49,6 @@
 (def num         env/num)
 (def out         env/out)
 (def reference   env/reference)
-
-;; ── Re-export patterns ────────────────────────────────────────────────────────
 (def ANY     env/ANY)
 (def BREAK   env/BREAK)
 (def BREAKX  env/BREAKX)
@@ -75,14 +70,10 @@
 (def ABORT   env/ABORT)
 (def FAIL    env/FAIL)
 (def SUCCEED env/SUCCEED)
-
-;; ── Re-export match engine ────────────────────────────────────────────────────
 (def MATCH      ops/MATCH)
 (def SEARCH     ops/SEARCH)
 (def FULLMATCH  ops/FULLMATCH)
 (def COLLECT!  ops/COLLECT!)
-
-;; ── Re-export operators / EVAL ────────────────────────────────────────────────
 (def =     ops/=)
 (def ?     ops/?)
 (def ?=    ops/?=)
@@ -118,8 +109,6 @@
 (def EVAL! ops/EVAL!)
 (def INVOKE ops/INVOKE)
 (def APPLY  ops/APPLY)
-
-;; ── Re-export functions ───────────────────────────────────────────────────────
 (def SIZE    env/SIZE)
 (def REPLACE env/REPLACE)
 (def DUPL    env/DUPL)
@@ -148,16 +137,11 @@
 (def ITEM    env/ITEM)
 (def PROTOTYPE env/PROTOTYPE)
 (def data-type-registry env/data-type-registry)
-
-;; ── Re-export compiler / runtime ─────────────────────────────────────────────
 (def CODE!             comp/CODE!)
 (def CODE              comp/CODE)
 (def RUN               rt/RUN)
-(def CODE-ir           comp/CODE-ir)   ; IR built as Clojure data, loaded without parsing
-;; Sprint 25A — -INCLUDE preprocessor
+(def CODE-ir           comp/CODE-ir)
 (def preprocess-includes comp/preprocess-includes)
-
-;; ── -INCLUDE search path ─────────────────────────────────────────────────────
 (defn include-dirs
   "Where -INCLUDE looks, in order: the program's own directory, then each
    directory of SNO_LIB (colon-separated, the fleet's include variable), then
@@ -166,20 +150,14 @@
   (vec (distinct (concat [program-dir]
                          (remove clojure.string/blank? (clojure.string/split (or sno-lib "") #":"))
                          ["."]))))
-
-;; ── -main ─────────────────────────────────────────────────────────────────────
-;; The listing file, sbl's -o=file: SCRIP_SNO_LIST_SINK, the name the harness gives a port for it, unless this is bound
 (def ^:dynamic *list-sink* nil)
-
-(def ^:private dump-switch (atom nil))   ; the -D# of the command line, set as &DUMP after the run's GLOBALS
-(def ^:private exit-code (atom nil))     ; the status EXIT ended the run with, which no dump and no &CODE follow
-
+(def ^:private dump-switch (atom nil))
+(def ^:private exit-code (atom nil))
 (defn- noexecute? [^String src]
   (reduce (fn [no line]
             (reduce (fn [no c] (cond (re-find #"^-NOEXECUTE(?:\s|$)" c) true (re-find #"^-EXECUTE(?:\s|$)" c) false :else no))
                     no (when (clojure.string/starts-with? line "-") (map #(if (clojure.string/starts-with? % "-") % (str "-" %)) (clojure.string/split line #",-")))))
           false (clojure.string/split-lines src)))
-
 (defn -main
   "SNOBOL4/Clojure — run a .sno file: [--engine interp] <file.sno>.
    The engine is the interpreter, the one every board grades (the vm engine was deleted 2026-11-19; JVM bytecode is reached through run-jvm!).
@@ -190,18 +168,11 @@
   (reset! dump-switch nil)
   (reset! exit-code nil)
   (let [argv          (into [(System/getProperty "java.class.path")] args)
-        ;; before the file: --engine X, -u STR (HOST(0)'s text) and sbl's own switches (-b, -f, -bf, -dNk, -sNk and their kin), which stand in the command line
-        ;; HOST(2, n) reads, as they stand in sbl's, so HOST(2, n) and HOST(3) answer as sbl -bf answers for one command line (MEASURED: sbl -bf -d131072k
-        ;; -s4096k ha.sno x y answers HOST(2,1) -bf ... HOST(2,4) ha.sno and HOST(3) 5; corpus strange_code_book classify reads HOST(2,2) to HOST(2,5), where
-        ;; this engine's command line held the file at 1); the arguments after the file are the program's own, which HOST(0) joins when there is no -u
         [engine u args] (loop [engine "interp" u nil as args]
                           (cond (clojure.core/= "--engine" (first as))                               (recur (second as) u (nnext as))
                                 (clojure.core/= "-u" (first as))                                     (recur engine (second as) (nnext as))
                                 (and (first as) (re-matches #"-t\d+" (first as)))                    (do (reset! env/<WIDTH> (Long/parseLong (subs (first as) 2)))
                                                                                                          (recur engine u (next as)))
-                                ;; sbl's -D# sets &DUMP to # before the first statement, and a program that sets &DUMP itself wins (MEASURED on sbl -bf: -D1 dumps
-                                ;; a program of X = 1, -D2 dumps &DUMP = 2, -D1 of a program whose first statement is &DUMP = 0 dumps nothing; the harness grades a
-                                ;; silent entry so, its ref cut with sbl -bf -D1: csnobol4_suite collect and loop, which this engine read as a file name)
                                 (and (first as) (re-matches #"-D\d+" (first as)))                    (do (reset! dump-switch (Long/parseLong (subs (first as) 2)))
                                                                                                          (recur engine u (next as)))
                                 (and (first as) (re-matches #"-(?:[bfnelsx]+|[dsimt]\d+[kmgKMG]?)" (first as))) (recur engine u (next as))
@@ -211,11 +182,8 @@
       (binding [*out* *err*]
         (println "Usage: lein run [--engine interp] <file.sno>"))
       (System/exit 1))
-    (let [src (slurp file :encoding "ISO-8859-1")   ; a program is bytes
+    (let [src (slurp file :encoding "ISO-8859-1")
           dir (or (.getParent (java.io.File. ^String file)) ".")]
-      ;; -main answers the exit code the program answers: 231 for a refused compile, nil for a run. What sbl -bf writes on standard output that is not the program's
-      ;; own -- the listing, a compile error's page, an execution error's report, the termination dump -- goes to the listing file "-o=file" names (manual ch. 13),
-      ;; which the harness names to a port as SCRIP_SNO_LIST_SINK; standard error gets its share either way
       (let [sink (some-> (or *list-sink* (System/getenv "SCRIP_SNO_LIST_SINK")) not-empty (java.io.FileWriter. java.nio.charset.StandardCharsets/ISO_8859_1))
             listed (fn [f] (if sink (binding [*out* sink] (f) (flush)) (f)))
             rc (case engine
@@ -224,67 +192,40 @@
                      (reset! env/<HOST0> (or u (clojure.string/join " " (remove #{"--"} prog-args))))
                      (reset! env/<ARGV> argv)
                      (reset! env/<ARGI> (clojure.core/- (count argv) (count prog-args)))
-                     ;; "-NOERRORS is the default, and suppresses execution if there is a compilation error" (manual ch. 14): the listing -LIST asks for is
-                     ;; written as the program is compiled, a compile error on its page in sbl -bf's shape, and a program with one is not run; -main answers 231,
-                     ;; sbl's exit code for it
                      (let [entry (comp/CODE src (include-dirs dir (System/getenv "SNO_LIB")) file)]
                        (listed #(env/write-listing! file))
                        (cond
-                         ;; a source with no END statement is not run: sbl -bf writes its one line on standard error, nothing on standard output, and exits 1
-                         ;; (MEASURED: "        X = 1" / "        OUTPUT = X" with no END prints "No END statement found in source file(s)." on stderr, rc 1;
-                         ;; corpus tests/snobol4 compile_diag__p10 and probe_errpath__probe_loose_errpath_missing_end, which this engine ran)
-                         ;; END is END or end (sbl -bf: a program ending "end" runs; corpus mikebeer_snobol tests/fold, which 319ca30 refused here by reading :END alone)
                          (and (nil? (@env/<STNO> :END)) (nil? (@env/<STNO> :end)))
-                         ;; and so it does after a compile error's page, the no-END line coming last and 1 its exit code, not 231 (MEASURED on sbl -bf: corpus
-                         ;; setl4_spitbol examples/roman, with three syntax errors and no END, exits 1)
                          (do (binding [*out* *err*] (println "No END statement found in source file(s).") (flush)) 1)
                          (seq @env/<DIAGNOSTICS>)
                          231
-                         ;; "-NOEXECUTE ... the program is compiled but not executed" (manual ch. 14), and a later -EXECUTE runs it again: the listing is written and
-                         ;; the exit code is 231, as for a compile error (MEASURED on sbl -bf: "-NOEXECUTE" then OUTPUT = 'x' writes nothing and exits 231, with
-                         ;; -EXECUTE after it prints x and exits 0; corpus gate_cases_snobol4 test_gate_snobol4_noexecute_matches_sbl__noex_list)
                          (noexecute? src)
                          231
                          :else
-                         ;; an execution error that ends the program (and the statement limit, "244 Statement count exceeds value of STLIMIT keyword") is
-                         ;; reported as sbl -bf reports it, with &ERRTYPE and &ERRTEXT set, and the run ends there, exit code 0 as sbl's; the termination
-                         ;; dump &DUMP asks for is written after it, however the program ends
                          (do
                          (let [t0 (System/nanoTime)]
                            (try (rt/RUN entry)
                                 (catch clojure.lang.ExceptionInfo e
                                   (let [{n :snobol/error sig :snobol/signal steps :steps lvl :fnclevel} (ex-data e)
-                                        ;; the program ends at the function level the error or the limit left (operators, the DEFINE wrapper)
                                         _    (when lvl (reset! env/&FNCLEVEL lvl))
-                                        ;; error 0, which &ERRTYPE = 0 signals, ends the program as "036 goto abort with no preceding error" (sbl -bf)
                                         n    (if (and n (zero? (long n))) 36 n)
                                         code (or n (when (clojure.core/= :step-limit sig) 244))]
-                                    ;; EXIT ends the run with its command's status, writing no report and no dump (functions.clj EXIT)
                                     (when-not (or code (clojure.core/= :exit sig)) (throw e))
                                     (if (clojure.core/= :exit sig) (reset! exit-code (long (:snobol/rc (ex-data e) 0)))
                                     (let [text (or (env/error-message code) (ex-message e))]
                                       (reset! env/&ERRTYPE code)
                                       (reset! env/&ERRTEXT text)
-                                      ;; the statement the limit stops is not executed
-                                      ;; the limit's overrun leaves &STCOUNT at the limit, as sbl's stcov does
                                       (listed #(env/report! code text @env/&STCOUNT t0))))))
-                                ;; "246 stack overflow" (sbl -bf, a function that calls itself with no end): the run is over, a SETEXIT handler is not entered,
-                                ;; and the report is the one every execution error ends with
                                 (catch StackOverflowError _
                                   (let [text (env/error-message 246)]
                                     (reset! env/&ERRTYPE 246)
                                     (reset! env/&ERRTEXT text)
                                     (listed #(env/report! 246 text @env/&STCOUNT t0))))
                                 (finally (when (and (nil? @exit-code) (pos? (long @env/&DUMP))) (listed #(print (env/dump-text @env/&DUMP)))))))
-                         ;; the run ends with the exit code &CODE holds, however it ends, modulo 256 and 0 when negative (manual ch. 7, &CODE: "the end-of-job code";
-                         ;; MEASURED on sbl -bf: &CODE = 3 exits 3, after an execution error or the statement limit too; 300 exits 44, 256 and -5 exit 0; corpus
-                         ;; gate_cases_snobol4 test_gate_harness_road_lib_reads_the_per_process_verdict__code)
                          (let [c (long (or @exit-code @env/&CODE)) c (if (neg? c) 0 (mod c 256))] (when (pos? c) c)))))))]
         (flush)
         (when sink (.close ^java.io.Writer sink))
         (when (integer? rc) rc)))))
-
-;; ── Re-export JVM codegen (Stage 23D) ───────────────────────────────────────
 (def compile-to-class    rt/compile-to-class)
 (def load-program        rt/load-program)
 (def run-jvm!            rt/run-jvm!)
@@ -292,17 +233,12 @@
 (def bench-compare-jvm   rt/bench-compare-jvm)
 (def clear-class-cache!  rt/clear-class-cache!)
 (def jvm-gen-class-name  rt/gen-class-name)
-
-;; ── Re-export trace API ───────────────────────────────────────────────────────
-;; These are available to SNOBOL4 programs via INVOKE and to Clojure tests.
 (def trace-register!     env/trace!)
 (def trace-stop!         env/stoptr!)
 (def trace-clear!        env/clear-all-traces!)
 (def trace-enable-full!  env/enable-full-trace!)
 (def trace-disable-full! env/disable-full-trace!)
 (def trace-output        env/*trace-output*)
-
-;; ── Re-export debug/probe API ─────────────────────────────────────────────────
 (def snapshot!  env/snapshot!)
 (def <CHANNELS> env/<CHANNELS>)
 (def <OPSYN>    env/<OPSYN>)

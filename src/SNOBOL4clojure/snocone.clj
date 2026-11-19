@@ -1,47 +1,10 @@
 (ns SNOBOL4clojure.snocone
   "The Snocone front end: lexer, expression grammar, and an emitter of SNOBOL4 source text."
   (:require [instaparse.core :as insta :refer [defparser]]))
-
-
-;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-;; The Snocone lexer
-;;
-;; Snocone front-end — Step 1: Lexer.
-;;
-;; Snocone (a community implementation) is a syntactic sugar layer
-;; for SNOBOL4 that adds C-like control flow while preserving full SNOBOL4
-;; semantics.  This namespace implements the lexer (tokeniser) for .sc source
-;; files.  The parser (Step 2) will consume the token stream produced here.
-;;
-;; ## Token map keys
-;;   :kind   — keyword, one of the ::kind-* values below
-;;   :text   — verbatim source text of the token
-;;   :line   — 1-based physical line number where the token began
-;;
-;; ## Source model (from the language specification)
-;; - Comments: # to end of line (stripped; not in token stream).
-;; - Statement termination: newline ends a statement UNLESS the last
-;;   non-whitespace character before the newline is a continuation character
-;;   (any of @ $ % ^ & * ( - + = [ < > | ~ , ? :).
-;;   A semicolon also terminates a statement within a line.
-;; - Strings: delimited by matching ' or ".
-;; - Numbers: integer or real (with optional exponent eEdD±).
-;;   Leading-dot floats (.5) are legal; parser rewrites to 0.5.
-;; - Identifiers: [A-Za-z_][A-Za-z0-9_]*.
-;; - Multi-character operators matched longest-first.
-;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-;; ---------------------------------------------------------------------------
-;; Token kind constants  (keywords used as enum-like values)
-;; ---------------------------------------------------------------------------
-
-;; Literals
 (def ^:const KIND-INTEGER   :sc/integer)
 (def ^:const KIND-REAL      :sc/real)
 (def ^:const KIND-STRING    :sc/string)
 (def ^:const KIND-IDENT     :sc/identifier)
-
-;; Keywords — matched as identifiers, then reclassified
 (def ^:const KIND-IF        :sc/kw-if)
 (def ^:const KIND-ELSE      :sc/kw-else)
 (def ^:const KIND-WHILE     :sc/kw-while)
@@ -54,8 +17,6 @@
 (def ^:const KIND-TO        :sc/kw-to)
 (def ^:const KIND-PROCEDURE :sc/kw-procedure)
 (def ^:const KIND-STRUCT    :sc/kw-struct)
-
-;; Punctuation
 (def ^:const KIND-LPAREN    :sc/lparen)
 (def ^:const KIND-RPAREN    :sc/rparen)
 (def ^:const KIND-LBRACE    :sc/lbrace)
@@ -65,50 +26,39 @@
 (def ^:const KIND-COMMA     :sc/comma)
 (def ^:const KIND-SEMICOLON :sc/semicolon)
 (def ^:const KIND-COLON     :sc/colon)
-
-;; Snocone binary operators (precedence low→high, from the operator table)
-(def ^:const KIND-ASSIGN    :sc/op-assign)     ; =   prec 1  → SNOBOL4 =
-(def ^:const KIND-QUESTION  :sc/op-question)   ; ?   prec 2  → SNOBOL4 ?
-(def ^:const KIND-PIPE      :sc/op-pipe)       ; |   prec 3  → SNOBOL4 |
-(def ^:const KIND-OR        :sc/op-or)         ; ||  prec 4  → SNOBOL4 (a,b)
-(def ^:const KIND-CONCAT    :sc/op-concat)     ; &&  prec 5  → SNOBOL4 blank
-(def ^:const KIND-EQ        :sc/op-eq)         ; ==  prec 6  → EQ(a,b)
-(def ^:const KIND-NE        :sc/op-ne)         ; !=  prec 6  → NE(a,b)
-(def ^:const KIND-LT        :sc/op-lt)         ; <   prec 6  → LT(a,b)
-(def ^:const KIND-GT        :sc/op-gt)         ; >   prec 6  → GT(a,b)
-(def ^:const KIND-LE        :sc/op-le)         ; <=  prec 6  → LE(a,b)
-(def ^:const KIND-GE        :sc/op-ge)         ; >=  prec 6  → GE(a,b)
-(def ^:const KIND-STR-IDENT :sc/op-str-ident)  ; ::  prec 6  → IDENT(a,b)
-(def ^:const KIND-STR-DIFF  :sc/op-str-differ) ; :!: prec 6  → DIFFER(a,b)
-(def ^:const KIND-STR-LT    :sc/op-str-lt)     ; :<: prec 6  → LLT(a,b)
-(def ^:const KIND-STR-GT    :sc/op-str-gt)     ; :>: prec 6  → LGT(a,b)
-(def ^:const KIND-STR-LE    :sc/op-str-le)     ; :<=: prec 6 → LLE(a,b)
-(def ^:const KIND-STR-GE    :sc/op-str-ge)     ; :>=: prec 6 → LGE(a,b)
-(def ^:const KIND-STR-EQ    :sc/op-str-eq)     ; :==: prec 6 → LEQ(a,b)
-(def ^:const KIND-STR-NE    :sc/op-str-ne)     ; :!=: prec 6 → LNE(a,b)
-(def ^:const KIND-PLUS      :sc/op-plus)       ; +   prec 7
-(def ^:const KIND-MINUS     :sc/op-minus)      ; -   prec 7
-(def ^:const KIND-SLASH     :sc/op-slash)      ; /   prec 8
-(def ^:const KIND-STAR      :sc/op-star)       ; *   prec 8
-(def ^:const KIND-PERCENT   :sc/op-percent)    ; %   prec 8  → REMDR(a,b)
-(def ^:const KIND-CARET     :sc/op-caret)      ; ^   prec 9/10 right-assoc → **
-(def ^:const KIND-PERIOD    :sc/op-period)     ; .   prec 10 → SNOBOL4 .
-(def ^:const KIND-DOLLAR    :sc/op-dollar)     ; $   prec 10 → SNOBOL4 $
-
-;; Unary-only operators
-(def ^:const KIND-AT        :sc/op-at)         ; @
-(def ^:const KIND-AMPERSAND :sc/op-ampersand)  ; &
-(def ^:const KIND-TILDE     :sc/op-tilde)      ; ~ (logical negation)
-
-;; Synthetic
-(def ^:const KIND-NEWLINE   :sc/newline)        ; logical end-of-statement
+(def ^:const KIND-ASSIGN    :sc/op-assign)
+(def ^:const KIND-QUESTION  :sc/op-question)
+(def ^:const KIND-PIPE      :sc/op-pipe)
+(def ^:const KIND-OR        :sc/op-or)
+(def ^:const KIND-CONCAT    :sc/op-concat)
+(def ^:const KIND-EQ        :sc/op-eq)
+(def ^:const KIND-NE        :sc/op-ne)
+(def ^:const KIND-LT        :sc/op-lt)
+(def ^:const KIND-GT        :sc/op-gt)
+(def ^:const KIND-LE        :sc/op-le)
+(def ^:const KIND-GE        :sc/op-ge)
+(def ^:const KIND-STR-IDENT :sc/op-str-ident)
+(def ^:const KIND-STR-DIFF  :sc/op-str-differ)
+(def ^:const KIND-STR-LT    :sc/op-str-lt)
+(def ^:const KIND-STR-GT    :sc/op-str-gt)
+(def ^:const KIND-STR-LE    :sc/op-str-le)
+(def ^:const KIND-STR-GE    :sc/op-str-ge)
+(def ^:const KIND-STR-EQ    :sc/op-str-eq)
+(def ^:const KIND-STR-NE    :sc/op-str-ne)
+(def ^:const KIND-PLUS      :sc/op-plus)
+(def ^:const KIND-MINUS     :sc/op-minus)
+(def ^:const KIND-SLASH     :sc/op-slash)
+(def ^:const KIND-STAR      :sc/op-star)
+(def ^:const KIND-PERCENT   :sc/op-percent)
+(def ^:const KIND-CARET     :sc/op-caret)
+(def ^:const KIND-PERIOD    :sc/op-period)
+(def ^:const KIND-DOLLAR    :sc/op-dollar)
+(def ^:const KIND-AT        :sc/op-at)
+(def ^:const KIND-AMPERSAND :sc/op-ampersand)
+(def ^:const KIND-TILDE     :sc/op-tilde)
+(def ^:const KIND-NEWLINE   :sc/newline)
 (def ^:const KIND-EOF       :sc/eof)
 (def ^:const KIND-UNKNOWN   :sc/unknown)
-
-;; ---------------------------------------------------------------------------
-;; Keyword table
-;; ---------------------------------------------------------------------------
-
 (def ^:private keywords
   {"if"        KIND-IF
    "else"      KIND-ELSE
@@ -122,30 +72,17 @@
    "to"        KIND-TO
    "procedure" KIND-PROCEDURE
    "struct"    KIND-STRUCT})
-
-;; ---------------------------------------------------------------------------
-;; Continuation characters (from the language specification)
-;;   ANY("@$%^&*(-+=[<>|~,?:")
-;; ---------------------------------------------------------------------------
-
 (def ^:private continuation-chars
   #{\@ \$ \% \^ \& \* \( \- \+ \= \[ \< \> \| \~ \, \? \:})
-
-;; ---------------------------------------------------------------------------
-;; Operator table — longest-match (sorted by descending length at build time)
-;; ---------------------------------------------------------------------------
-
 (def ^:private op-entries
-  [;; 4-char
+  [
    [":!=:" KIND-STR-NE]
    [":<=:" KIND-STR-LE]
    [":>=:" KIND-STR-GE]
    [":==:" KIND-STR-EQ]
-   ;; 3-char
    [":!:"  KIND-STR-DIFF]
    [":<:"  KIND-STR-LT]
    [":>:"  KIND-STR-GT]
-   ;; 2-char
    ["::"   KIND-STR-IDENT]
    ["||"   KIND-OR]
    ["&&"   KIND-CONCAT]
@@ -153,8 +90,7 @@
    ["!="   KIND-NE]
    ["<="   KIND-LE]
    [">="   KIND-GE]
-   ["**"   KIND-CARET]   ; SNOBOL4 ** same as ^
-   ;; 1-char
+   ["**"   KIND-CARET]
    ["="    KIND-ASSIGN]
    ["?"    KIND-QUESTION]
    ["|"    KIND-PIPE]
@@ -180,15 +116,8 @@
    [","    KIND-COMMA]
    [";"    KIND-SEMICOLON]
    [":"    KIND-COLON]])
-
-;; Pre-sort by descending length for longest-match
 (def ^:private ops-by-length
   (sort-by (comp - count first) op-entries))
-
-;; ---------------------------------------------------------------------------
-;; Helper: strip # comment respecting string literals
-;; ---------------------------------------------------------------------------
-
 (defn- strip-comment
   "Return the portion of `line` before any unquoted # character."
   [^String line]
@@ -201,22 +130,12 @@
           (and (= c \") (not in-single)) (recur (inc i) in-single (not in-double))
           (and (= c \#) (not in-single) (not in-double)) (subs line 0 i)
           :else (recur (inc i) in-single in-double))))))
-
-;; ---------------------------------------------------------------------------
-;; Helper: is this stripped line a continuation?
-;; ---------------------------------------------------------------------------
-
 (defn- continuation?
   "True when the last non-whitespace char of stripped line is a continuation char."
   [^String stripped]
   (let [trimmed (clojure.string/trimr stripped)]
     (and (pos? (count trimmed))
          (continuation-chars (.charAt trimmed (dec (count trimmed)))))))
-
-;; ---------------------------------------------------------------------------
-;; Helper: split on unquoted semicolons
-;; ---------------------------------------------------------------------------
-
 (defn- split-semicolon
   "Split `line` on semicolons that are not inside string literals."
   [^String line]
@@ -233,11 +152,6 @@
           (recur (inc i) false false (StringBuilder.) (conj result (str buf)))
           :else
           (recur (inc i) in-single in-double (.append buf c) result))))))
-
-;; ---------------------------------------------------------------------------
-;; Number scanner
-;; ---------------------------------------------------------------------------
-
 (defn- scan-number
   "Scan a number token starting at position `start` in `seg`.
   Returns [kind text end-pos]."
@@ -245,12 +159,10 @@
   (let [len (count seg)]
     (let [leading-dot? (= \. (.charAt seg start))]
     (loop [pos (if leading-dot? (inc start) start) real? leading-dot?]
-      ;; Consume integer digits
       (let [pos (loop [p pos]
                   (if (and (< p len) (Character/isDigit (.charAt seg p)))
                     (recur (inc p))
                     p))
-            ;; Check for decimal part
             [pos real?]
             (if (and (not real?)
                      (< pos len)
@@ -263,7 +175,6 @@
                    p))
                true]
               [pos real?])
-            ;; Check for exponent eEdD [+-] digits
             [pos real?]
             (if (and (< pos len) (#{\e \E \d \D} (.charAt seg pos)))
               (let [p (inc pos)
@@ -277,11 +188,6 @@
         [(if real? KIND-REAL KIND-INTEGER)
          (subs seg start pos)
          pos])))))
-
-;; ---------------------------------------------------------------------------
-;; Segment tokenizer
-;; ---------------------------------------------------------------------------
-
 (defn- tokenize-segment
   "Tokenize one logical statement segment; append tokens to `acc` (transient vector)."
   [^String seg line-no acc]
@@ -291,11 +197,8 @@
         acc
         (let [c (.charAt seg pos)]
           (cond
-            ;; Whitespace
             (Character/isWhitespace c)
             (recur (inc pos) acc)
-
-            ;; String literal
             (or (= c \') (= c \"))
             (let [quote c
                   start pos
@@ -306,16 +209,12 @@
                             :else               (recur (inc p))))]
               (recur end
                      (conj! acc {:kind KIND-STRING :text (subs seg start end) :line line-no})))
-
-            ;; Number: digit or leading-dot float
             (or (Character/isDigit c)
                 (and (= c \.)
                      (< (inc pos) len)
                      (Character/isDigit (.charAt seg (inc pos)))))
             (let [[kind text end] (scan-number seg pos)]
               (recur end (conj! acc {:kind kind :text text :line line-no})))
-
-            ;; Identifier / keyword
             (or (Character/isLetter c) (= c \_))
             (let [end (loop [p (inc pos)]
                         (let [ch (when (< p len) (.charAt seg p))]
@@ -325,8 +224,6 @@
                   word (subs seg pos end)
                   kind (get keywords word KIND-IDENT)]
               (recur end (conj! acc {:kind kind :text word :line line-no})))
-
-            ;; Operators — longest match
             :else
             (let [[matched-text matched-kind]
                   (first (for [[text kind] ops-by-length
@@ -339,17 +236,10 @@
                        (conj! acc {:kind matched-kind :text matched-text :line line-no}))
                 (recur (inc pos)
                        (conj! acc {:kind KIND-UNKNOWN :text (subs seg pos (inc pos)) :line line-no}))))))))))
-
-;; ---------------------------------------------------------------------------
-;; Public entry point
-;; ---------------------------------------------------------------------------
-
 (defn tokenize
   "Tokenize a complete Snocone source string.
-
   Returns a vector of token maps, each {:kind kw :text str :line int},
   terminated by a single {:kind :sc/eof :text \"\" :line N}.
-
   Handles:
   - # comment stripping
   - Continuation lines (last non-ws char is a continuation char)
@@ -359,10 +249,9 @@
   (let [raw-lines (clojure.string/split (clojure.string/replace source #"\r\n|\r" "\n") #"\n" -1)
         n         (count raw-lines)]
     (loop [i       0
-           logical []          ; accumulated physical lines for current statement
+           logical []
            acc     (transient [])]
       (if (>= i n)
-        ;; Flush any remaining logical line
         (let [acc (if (seq logical)
                     (let [joined    (apply str (map :text logical))
                           stmt-line (:line (first logical))]
@@ -376,15 +265,12 @@
                               (split-semicolon joined)))
                     acc)]
           (persistent! (conj! acc {:kind KIND-EOF :text "" :line n})))
-
         (let [raw      (nth raw-lines i)
               line-no  (inc i)
               stripped (strip-comment raw)
               logical  (conj logical {:text stripped :line line-no})]
           (if (and (continuation? stripped) (< (inc i) n))
-            ;; This line continues — accumulate
             (recur (inc i) logical acc)
-            ;; End of logical statement — tokenize all accumulated lines
             (let [joined    (apply str (map :text logical))
                   stmt-line (:line (first logical))
                   acc       (reduce (fn [a seg]
@@ -396,16 +282,6 @@
                                     acc
                                     (split-semicolon joined))]
               (recur (inc i) [] acc))))))))
-
-
-;; ---------------------------------------------------------------------------
-;; Step 2: Expression parser — shunting-yard
-;;
-;; Implements the expression grammar.
-;; op-stack is a vector used as a stack (peek = last, pop = butlast).
-;; Reduce condition: existing-op.lp >= incoming-op.rp  → reduce
-;; ---------------------------------------------------------------------------
-
 (def ^:private prec-table
   {:sc/op-assign    [1  2]
    :sc/op-question  [2  2]
@@ -423,18 +299,14 @@
    :sc/op-slash     [8  8]  :sc/op-star      [8  8]  :sc/op-percent   [8  8]
    :sc/op-caret     [9  10]
    :sc/op-period    [10 10] :sc/op-dollar    [10 10]})
-
 (def ^:private unary-ops
   #{:sc/op-plus :sc/op-minus :sc/op-star :sc/op-ampersand
     :sc/op-at   :sc/op-tilde :sc/op-question :sc/op-period :sc/op-dollar})
-
 (def ^:private operand-kinds
   #{:sc/identifier :sc/integer :sc/real :sc/string})
-
 (defn- sc-operand? [tok] (contains? operand-kinds (:kind tok)))
 (defn- sc-binary?  [tok] (contains? prec-table    (:kind tok)))
 (defn- sc-unary?   [tok] (contains? unary-ops     (:kind tok)))
-
 (defn- sc-unary-pos?
   "True if position i is a unary position."
   [tokens i]
@@ -443,19 +315,15 @@
     (let [prev (:kind (nth tokens (dec i)))]
       (or (= prev :sc/lparen)  (= prev :sc/lbracket) (= prev :sc/comma)
           (contains? prec-table prev) (contains? unary-ops prev)))))
-
 (defn- sc-dotck [tok]
   (if (and (= (:kind tok) :sc/real)
            (string? (:text tok))
            (clojure.string/starts-with? (:text tok) "."))
     (assoc tok :text (str "0" (:text tok)))
     tok))
-
-;; Stack helpers — vector-as-stack, top = last element
 (defn- stk-push [s x]   (conj s x))
 (defn- stk-peek  [s]    (when (seq s) (last s)))
-(defn- stk-pop   [s]    (when (seq s) (pop s)))  ; pop = remove last
-
+(defn- stk-pop   [s]    (when (seq s) (pop s)))
 (defn- drain-ops-to
   "Pop ops from op-stack into output until top matches pred or stack empty."
   [op-stack output stop-pred]
@@ -464,7 +332,6 @@
       (if (or (nil? top) (stop-pred top))
         [stk out]
         (recur (stk-pop stk) (conj out top))))))
-
 (defn parse-expression
   "Parse a flat infix token vector into postfix (RPN).
   Synthetic nodes carry :arg-count; unary ops carry :unary? true."
@@ -476,16 +343,12 @@
            op-stack   []
            call-stack []]
       (if (>= i n)
-        ;; Drain remaining binary ops
         (let [[_ out] (drain-ops-to op-stack output (constantly false))]
           out)
-
         (let [tok      (nth tokens i)
               kind     (:kind tok)
               next-k   (when (< (inc i) n) (:kind (nth tokens (inc i))))]
           (cond
-
-            ;; ---- Operand ----
             (sc-operand? tok)
             (cond
               (and (= kind :sc/identifier) (= next-k :sc/lparen))
@@ -493,28 +356,22 @@
                      (stk-push op-stack {:kind :sc/lparen :text "(" :line (:line tok)})
                      (stk-push call-stack {:kind :call :arg-count 0
                                            :output-start (inc (count output))}))
-
               (and (= kind :sc/identifier) (= next-k :sc/lbracket))
               (recur (+ i 2) (conj output tok)
                      (stk-push op-stack {:kind :sc/lbracket :text "[" :line (:line tok)})
                      (stk-push call-stack {:kind :array :arg-count 0
                                            :output-start (inc (count output))}))
-
               :else
               (recur (inc i) (conj output tok) op-stack call-stack))
-
-            ;; ---- Left paren (grouping) ----
             (= kind :sc/lparen)
             (recur (inc i) output
                    (stk-push op-stack tok)
                    (stk-push call-stack {:kind :group :arg-count 0
                                          :output-start (count output)}))
-
-            ;; ---- Right paren ----
             (= kind :sc/rparen)
             (let [[stk2 out2] (drain-ops-to op-stack output
                                 #(= (:kind %) :sc/lparen))
-                  stk3   (stk-pop stk2)          ; discard '('
+                  stk3   (stk-pop stk2)
                   frame  (stk-peek call-stack)
                   calls2 (stk-pop call-stack)
                   has?   (> (count out2) (:output-start frame 0))
@@ -524,15 +381,11 @@
                                        :line (:line tok) :arg-count argc})
                            out2)]
               (recur (inc i) out3 (or stk3 []) (or calls2 [])))
-
-            ;; ---- Left bracket ----
             (= kind :sc/lbracket)
             (recur (inc i) output
                    (stk-push op-stack tok)
                    (stk-push call-stack {:kind :group :arg-count 0
                                          :output-start (count output)}))
-
-            ;; ---- Right bracket ----
             (= kind :sc/rbracket)
             (let [[stk2 out2] (drain-ops-to op-stack output
                                 #(= (:kind %) :sc/lbracket))
@@ -546,8 +399,6 @@
                                        :line (:line tok) :arg-count argc})
                            out2)]
               (recur (inc i) out3 (or stk3 []) (or calls2 [])))
-
-            ;; ---- Comma ----
             (= kind :sc/comma)
             (let [[stk2 out2] (drain-ops-to op-stack output
                                 #(#{:sc/lparen :sc/lbracket} (:kind %)))
@@ -557,10 +408,6 @@
                                      (update frame :arg-count inc))
                            call-stack)]
               (recur (inc i) out2 stk2 calls2))
-
-            ;; ---- Unary operator ----
-            ;; Strategy: scan forward consuming all chained unary ops + final operand,
-            ;; emit operand first, then unaries in reverse (innermost first).
             (and (sc-unary? tok) (sc-unary-pos? tokens i))
             (let [[ops operand j]
                   (loop [j (inc i) ops [(assoc tok :unary? true)]]
@@ -577,8 +424,6 @@
                        (into output (cons operand (reverse ops)))
                        output)
                      op-stack call-stack))
-
-            ;; ---- Binary operator ----
             (sc-binary? tok)
             (let [[_ rp-new] (prec-table kind)
                   [stk2 out2] (drain-ops-to op-stack output
@@ -586,31 +431,8 @@
                                   (let [[lp-top _] (prec-table (:kind op))]
                                     (not (and lp-top (>= lp-top rp-new))))))]
               (recur (inc i) out2 (stk-push stk2 tok) call-stack))
-
             :else
             (recur (inc i) output op-stack call-stack)))))))
-
-
-;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-;; The Snocone expression grammar
-;;
-;; Snocone expression grammar (instaparse PEG).
-;;
-;; Precedence levels from the operator table (low → high):
-;;   asn  prec 1/2  =          right-assoc
-;;   qst  prec 2    ?
-;;   pip  prec 3    |
-;;   or   prec 4    ||
-;;   cat  prec 5    &&
-;;   cmp  prec 6    == != < > <= >= :: :!: :>: :<: :>=: :<=: :==: :!=:
-;;   sum  prec 7    + -
-;;   mul  prec 8    * / %
-;;   xp   prec 9/10 ^          right-assoc
-;;   cap  prec 10   . $
-;;   uop  unary     + - * & @ ~ ? . $
-;;   ndx           f(...) f[...]
-;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-
 (def sc-grammar
   " expr    ::= <ws*> asn <ws*>
     asn     ::= qst | qst  <ws* '='  ws*>  asn
@@ -644,33 +466,7 @@
     string  ::= #'\"[^\"]*\"' | #'\\'[^\\']*\\''
    <ws>     ::= #'[ \\t]+'
   ")
-
 (defparser parse-sc-expr sc-grammar :start :expr)
-
-
-;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-;; The Snocone emitter: SNOBOL4 source text
-;;
-;; Snocone expression emitter — Step 2.
-;;
-;; Transforms an instaparse AST from snocone-grammar into a SNOBOL4
-;; source string, mirroring dprint/sprint in the reference snocone.snobol4.
-;;
-;; Operator mapping (from the operator table):
-;;   infix ops:  = ? | + - / * ^ . $   → same in SNOBOL4
-;;   fn ops:     == != < > <= >= :: :!: :>: :<: :>=: :<=: :==: :!=:
-;;               → EQ NE LT GT LE GE IDENT DIFFER LGT LLT LGE LLE LEQ LNE
-;;   special:    ||  → (a,b)  pattern alternation
-;;               &&  → blank concat (space between operands)
-;;               ^   → **
-;;               %   → REMDR(a,b)
-;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-;; ---------------------------------------------------------------------------
-;; Operator tables (from the operator table)
-;; ---------------------------------------------------------------------------
-
-;; fn=1 ops → emit as FN(l,r)
 (def ^:private fn-ops
   {">"   "GT"  "<"   "LT"  ">="  "GE"  "<="  "LE"
    "=="  "EQ"  "!="  "NE"
@@ -678,39 +474,27 @@
    ":>:" "LGT" ":<:" "LLT" ":>=:" "LGE" ":<=:" "LLE"
    ":==:" "LEQ" ":!=:" "LNE"
    "%"   "REMDR"})
-
-;; infix ops → emit as  l OP r
 (def ^:private infix-ops
   #{"=" "?" "|" "+" "-" "/" "*" "." "$"})
-
-;; ---------------------------------------------------------------------------
-;; Emitter — insta/transform over the AST
-;; ---------------------------------------------------------------------------
-
 (defn- emit-binary [op l r]
   (cond
-    (= op "||") (str "(" l "," r ")")          ; pattern alternation
-    (= op "&&") (str l " " r)                   ; blank concat
-    (= op "^")  (str l " ** " r)               ; exponentiation
+    (= op "||") (str "(" l "," r ")")
+    (= op "&&") (str l " " r)
+    (= op "^")  (str l " ** " r)
     (fn-ops op) (str (fn-ops op) "(" l "," r ")")
     (infix-ops op) (str l " " op " " r)
     :else (str l " " op " " r)))
-
 (defn emit-expr
   "Transform a snocone-grammar AST node into a SNOBOL4 source string."
   [ast]
   (insta/transform
     {:expr    (fn [x] x)
-     ;; Terminals
      :ident   str
      :integer str
      :real    (fn [s] (if (clojure.string/starts-with? s ".")
-                        (str "0" s)   ; dotck: .5 → 0.5
+                        (str "0" s)
                         s))
      :string  str
-
-     ;; Binary operators — each rule has shape (rule op? l r)
-     ;; instaparse gives us the children after angle-bracket suppression
      :asn  (fn
              ([x] x)
              ([l r] (emit-binary "=" l r)))
@@ -746,29 +530,18 @@
              (if (= 1 (count args))
                (first args)
                (let [[l op r] args] (emit-binary op l r))))
-
-     ;; Unary operators
      :uop  (fn
              ([x] x)
              ([op x] (str op x)))
-
-     ;; Indexing — f(args) or f[args]
-     ;; arglist → joined string; aref → bracket-wrapped string (marker)
      :ndx  (fn
              ([x] x)
              ([f arg]
               (if (and (string? arg) (clojure.string/starts-with? arg "["))
-                (str f arg)                                     ; array ref: f[i]
-                (str f "(" arg ")"))))                          ; call: f(x)
-
+                (str f arg)
+                (str f "(" arg ")"))))
      :arglist (fn [& args] (clojure.string/join "," (remove nil? args)))
      :aref    (fn [& args] (str "[" (clojure.string/join "," (remove nil? args)) "]"))}
     ast))
-
-;; ---------------------------------------------------------------------------
-;; Public API
-;; ---------------------------------------------------------------------------
-
 (defn sc->snobol4
   "Parse a Snocone expression string and return the SNOBOL4 source string."
   [sc-src]

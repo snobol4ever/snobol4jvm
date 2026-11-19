@@ -13,100 +13,46 @@
             [clojure.tools.trace :refer :all]
             [SNOBOL4clojure.compiler :as comp :refer [emitter top-replacement parse-expression expression-end ends-in-mark?]])
   (:import  [SNOBOL4clojure.env NAME]))
-
-
-;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-;; The backtracking matcher: one loop/case over the Byrd-box frame
-;;
-;; The SNOBOL4 pattern match engine.
-;;
-;; An explicit iterative state machine over a 7-element frame vector:
-;;   [Σ Δ σ δ Π φ Ψ]
-;;   Σ/Δ — subject chars + position on entry to this frame
-;;   σ/δ — subject chars + position as updated by scanning
-;;   Π   — current pattern node
-;;   φ   — index into Π (for ALT/SEQ child iteration)
-;;   Ψ   — parent frame stack
-;; Actions: :proceed :succeed :recede :fail
-;;
-;; Public API (three entry points, matching the Python/C# siblings):
-;;
-;;   SEARCH    s pat  — slide pattern across subject; return [start end] or nil
-;;   MATCH     s pat  — anchor at position 0;         return [start end] or nil
-;;   FULLMATCH s pat  — anchor at both ends;           return [start end] or nil
-;;
-;; [start end] is a half-open span: (subs s start end) extracts the match.
-;; nil means the pattern did not match.
-;;
-;; Tracing: bind *trace* to true to enable per-step animation output.
-;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-;; A capture's target is a variable's symbol, or a function of the value that makes the assignment: an element T<I>, a variable a string names ($V) or a
-;; deferred expression (*T<I>), which the evaluator has turned into that function (operators.clj, capture-target).
-;; True when the assignment is made. A function's nil is a target that failed (*F() whose F fails, an element out of bounds): sbl -bf then fails the match at
-;; a $ or an @, which backtracks, and fails the statement at a . when the match is over.
 (defn- assign! [target v]
   (if (fn? target) (some? (target v)) (do (snobol-set! target v) true)))
-
-;; ── Tracing (off by default) ──────────────────────────────────────────────────
 (def ^:dynamic *trace* false)
-
-;; ── Pending conditional captures (for the . operator) ────────────────────────
-;; A volatile! list of [var-sym matched-text] pairs, populated during a match
-;; by CAPTURE-COND nodes and committed to variables only when the overall match
-;; succeeds.  Mirrors the NAMICL "name list" mechanism in CSNOBOL4/v311.sil.
-;; Bound fresh by SEARCH/MATCH/FULLMATCH around each engine call.
 (def ^:dynamic *pending-cond* nil)
-
-;; ── Frame accessors ───────────────────────────────────────────────────────────
-(defn ζΣ [ζ] (if ζ (ζ 0)))  ; subject chars on entry to this frame
-(defn ζΔ [ζ] (if ζ (ζ 1)))  ; position on entry
-(defn ζσ [ζ] (if ζ (ζ 2)))  ; subject chars (current)
-(defn ζδ [ζ] (if ζ (ζ 3)))  ; current position
-(defn ζΠ [ζ] (if ζ (ζ 4)))  ; pattern node
-(defn ζφ [ζ] (if ζ (ζ 5)))  ; child index (1-based)
-(defn ζΨ [ζ] (if ζ (ζ 6)))  ; parent stack
-
+(defn ζΣ [ζ] (if ζ (ζ 0)))
+(defn ζΔ [ζ] (if ζ (ζ 1)))
+(defn ζσ [ζ] (if ζ (ζ 2)))
+(defn ζδ [ζ] (if ζ (ζ 3)))
+(defn ζΠ [ζ] (if ζ (ζ 4)))
+(defn ζφ [ζ] (if ζ (ζ 5)))
+(defn ζΨ [ζ] (if ζ (ζ 6)))
 (defn- ζα [ζ] (<= (ζφ ζ) 1))
 (defn- ζω [ζ] (>= (ζφ ζ) (count (ζΠ ζ))))
-
-(defn ζλ [ζ]   ; current operation symbol
+(defn ζλ [ζ]
   (cond
     (nil?        ζ)  nil
-    (list?       ζ)  (first ζ)        ; raw list node on Ω (e.g. COND-UNDO!)
+    (list?       ζ)  (first ζ)
     (nil?    (ζΠ ζ)) nil
     (string? (ζΠ ζ)) 'LIT$
-    (number? (ζΠ ζ)) 'LIT$   ; an integer or a real in a pattern is its text
-    (instance? SNOBOL4clojure.env.NAME (ζΠ ζ)) 'LIT$   ; so is a name, the variable's name (sbl -bf: 'xxABCxx' ? .ABC matches)
+    (number? (ζΠ ζ)) 'LIT$
+    (instance? SNOBOL4clojure.env.NAME (ζΠ ζ)) 'LIT$
     (symbol? (ζΠ ζ)) (ζΠ ζ)
-    (vector? (ζΠ ζ)) 'SEQ    ; vector = inline SEQ (e.g. CAPTURE-COND expansion)
+    (vector? (ζΠ ζ)) 'SEQ
     (list?   (ζΠ ζ)) (first (ζΠ ζ))
     (seq?    (ζΠ ζ)) (first (ζΠ ζ))
     true     (out ["ζλ? " (type (ζΠ ζ)) (ζΠ ζ)])))
-
-;; ── Stack helpers ─────────────────────────────────────────────────────────────
-;; The stacks are vectors, pushed and popped at their end: the top is peek, a constant step (last walks the whole vector, so a match that built a deep stack -- the
-;; calculator demos' 32 KB subject -- spent its time reading it)
 (defn- top  [Ψ]   (peek Ψ))
 (defn- push [Ψ ζ] (if Ψ (conj Ψ ζ)))
 (defn- pull [Ψ]   (if Ψ (if-not (empty? Ψ) (pop Ψ))))
 (defn- 🡡 [Ω]     (top Ω))
 (defn- 🡥 [Ω ζ]   (push Ω ζ))
 (defn- 🡧 [Ω]     (pull Ω))
-
-;; ── Frame transitions ─────────────────────────────────────────────────────────
 (defn- ζ↓
   ([ζ Π]  (let [[Σ Δ _ _ _ _ Ψ] ζ] [Σ Δ Σ Δ Π         1       Ψ]))
   ([ζ]    (let [[Σ Δ _ _ Π φ Ψ] ζ] [Σ Δ Σ Δ (nth Π φ) 1       (🡥 Ψ ζ)])))
-
 (defn- ζ↑
   ([ζ σ δ] (let [[Σ Δ _ _ _ _ Ψ] ζ] [Σ Δ σ δ (ζΠ (🡡 Ψ)) (ζφ (🡡 Ψ)) (🡧 Ψ)]))
   ([ζ]     (let [[Σ Δ σ δ _ _ Ψ] ζ] [Σ Δ σ δ (ζΠ (🡡 Ψ)) (ζφ (🡡 Ψ)) (🡧 Ψ)])))
-
 (defn- ζ→ [ζ] (let [[_ _ σ δ Π φ Ψ] ζ] [σ δ σ δ Π (inc φ) Ψ]))
 (defn- ζ← [ζ] (let [[Σ Δ _ _ Π φ Ψ] ζ] [Σ Δ Σ Δ Π (inc φ) Ψ]))
-
-;; ── Trace helpers ─────────────────────────────────────────────────────────────
 (defn- preview
   ([action X φ] (preview action X 0 0 φ))
   ([action X pos depth φ]
@@ -138,7 +84,6 @@
                       ")")
        (set? X)     (str "\"" (apply str X) "\"")
        true         (str " Yikes!!! " (type X))))))
-
 (defn- animate [action full-subject ζ]
   (when (and *trace* full-subject ζ (vector? ζ))
     (println
@@ -150,37 +95,18 @@
         (str "\"" (apply str (reverse (ζΣ ζ))) "\"")
         (str " " action)
         (preview action (ζΠ ζ) (ζφ ζ))))))
-
-;; The scanner of each primitive node, built once (the engine built this map afresh at every primitive it matched)
 (def ^:private prim-fns
   {'ANY$  ANY$  'NOTANY$ NOTANY$ 'SPAN$ SPAN$ 'NSPAN$ NSPAN$ 'BREAK$ BREAK$ 'BREAKX$ BREAKX$ 'POS# POS# 'RPOS# RPOS#
    'LEN#  LEN#  'TAB#    TAB#    'RTAB# RTAB# 'BOL#   BOL#   'EOL#   EOL#})
-
-;; ── Core engine ───────────────────────────────────────────────────────────────
-;; Returns [start end] on success, nil on failure.
-;; Σ       — seq of chars (remaining subject at start position)
-;; Δ       — start position (integer)
-;; Π       — pattern node
-;; start-Δ — the anchor position for the returned span start
 (defn engine [Σ Δ Π start-Δ full-subject]
-  ;; the root frame stands at the start position, so a zero-width node as the whole pattern (@X, a bare FENCE) reads its cursor there (sbl -bf: A B ? @X
-  ;; sets X to 0)
   (loop [action :proceed, ζ [Σ Δ Σ Δ Π 1 []], Ω []]
     (let [λ (ζλ ζ)]
       (animate action full-subject ζ)
       (case λ
-        ;; Ω emptied fails the match at this start position; backing up into a bare FENCE's :ABORT sentinel fails it outright: "if the pattern matcher is
-        ;; backing up to try other alternatives, and encounters FENCE, the match fails ... SPITBOL cannot back up through it to try another subject starting
-        ;; position" (manual ch. 9, FENCE: 'ABC' ? FENCE 'B' is Failure)
         nil
         (case action
           (:proceed :succeed) [start-Δ (ζδ ζ)]
           (:recede :fail)     (when (clojure.core/= :ABORT ζ) :abort))
-
-        ;; ALT pushes its frame on Ω as it tries each alternative, so backing up into it tries the next. An alternative that fails at once (a primitive,
-        ;; whose :fail pushes nothing) leaves that frame on top of Ω: it comes off as the next alternative is tried, or backing up would try the rest twice
-        ;; ("P1 | P2 matches whatever P1 matches, or whatever P2 matches. SPITBOL tries the various alternatives from left to right", manual ch. 6:
-        ;; each once; sbl -bf: 'x' ? ('y' | 'x') $ OUTPUT FAIL prints x once)
         ALT
         (case action
           :proceed (if (not (ζω ζ))
@@ -189,7 +115,6 @@
           :recede  (recur :proceed (ζ← ζ) Ω)
           :succeed (recur :succeed (ζ↑ ζ) Ω)
           :fail    (recur :proceed (ζ← ζ) (🡧 Ω)))
-
         SEQ
         (case action
           :proceed (if (not (ζω ζ))
@@ -197,21 +122,16 @@
                      (recur :succeed (ζ↑ ζ) Ω))
           :succeed (recur :proceed (ζ→ ζ) Ω)
           :fail    (recur :recede  (🡡 Ω) (🡧 Ω)))
-
         LIT$
         (case action
           :proceed
           (let [[Σ Δ _ _ Π] ζ
-                ;; a node (LIT$ "text"), the pattern CONVERT makes of a string, matches its text (MEASURED on sbl -bf: 'xxQRyy' CONVERT('QR','PATTERN') . M sets
-                ;; M to QR; corpus gate_cases_snobol4 convert_of_a_matched_substring_is_that_substring__conv, where the node matched the text of the list)
                 [σ δ]        (LIT$ Σ Δ (cond (string? Π) Π (seq? Π) (str (second Π)) :else (sstr Π)))]
             (if (>= δ 0)
               (recur :succeed (ζ↑ ζ σ δ) Ω)
               (recur :fail    (ζ↑ ζ Σ Δ) Ω))))
-
         SUCCEED! (let [[Σ Δ] ζ] (recur :succeed (ζ↑ ζ Σ Δ) Ω))
         FAIL!    (let [[Σ Δ] ζ] (recur :fail    (ζ↑ ζ Σ Δ) Ω))
-
         (ANY$ NOTANY$ SPAN$ NSPAN$ BREAK$ BREAKX$ POS# RPOS# LEN# TAB# RTAB# BOL# EOL#)
         (case action
           :proceed
@@ -220,18 +140,10 @@
             (if (>= δ 0)
               (recur :succeed (ζ↑ ζ σ δ) Ω)
               (recur :fail    (ζ↑ ζ Σ Δ) Ω))))
-
         X
         (case action
           :proceed
           (let [Π ($$ 'X)] (recur :proceed (ζ↓ ζ Π) Ω)))
-
-        ;; ── BREAKX# ──────────────────────────────────────────────────────────
-        ;; BREAKX(cs) — like BREAK but allows backtracking.
-        ;; On first attempt: scan to first char in cs (same as BREAK).
-        ;; On retry (:recede): advance one MORE char past the break char, then
-        ;; scan for the next occurrence.  φ (ζ slot 5) stores the retry offset.
-        ;; This gives the "slide forward" behaviour seen in Snobol4.Net BreakX_014.
         BREAKX#
         (case action
           :proceed
@@ -239,12 +151,9 @@
                 cs           (second Π)
                 [σ δ]        (BREAKX$ Σ Δ cs)]
             (if (>= δ 0)
-              ;; matched up to a break char — push retry frame, succeed
               (recur :succeed (ζ↑ ζ σ δ) (🡥 Ω (assoc ζ 5 (inc δ))))
-              ;; no break char in sight — fail normally
               (recur :fail (ζ↑ ζ Σ Δ) Ω)))
           :recede
-          ;; retry: skip the previously-found break char and scan again
           (let [retry-Δ (ζφ ζ)
                 full-len (count full-subject)]
             (if (> retry-Δ full-len)
@@ -257,20 +166,6 @@
                   (recur :recede (🡡 Ω) (🡧 Ω))))))
           :succeed (recur :succeed (ζ↑ ζ) Ω)
           :fail    (recur :recede  (🡡 Ω) (🡧 Ω)))
-
-        ;; ── CAPTURE-IMM ($) ──────────────────────────────────────────────────
-        ;; Immediate assignment: assign to var as soon as the inner pattern P
-        ;; matches, regardless of whether the overall match eventually succeeds.
-        ;; On backtrack, the assignment is NOT undone (true SNOBOL4 $ semantics).
-        ;; ── CAPTURE-IMM ($) ──────────────────────────────────────────────────
-        ;; Immediate assignment: assign to var as soon as the inner pattern P
-        ;; matches, unconditionally (even if overall match later fails).
-        ;; IMPORTANT: on :succeed we do NOT pop Ω — any retry frames pushed by
-        ;; our child (e.g. BREAKX#) must remain on Ω so backtracking can reach them.
-        ;; We pushed our own frame at :proceed; on :recede we pop that frame.
-        ;; The start cursor is baked into the node at :proceed, as COND-ASSIGN!
-        ;; bakes it: a SEQ child moves its frame's Δ forward element by element,
-        ;; so the Δ that comes back on :succeed is not where P began.
         CAPTURE-IMM
         (case action
           :proceed
@@ -280,13 +175,11 @@
           :succeed
           (let [[_ _ var-sym start-pos] (ζΠ ζ)
                 matched-text  (subs full-subject start-pos (ζδ ζ))]
-            (if (assign! var-sym matched-text)   ; assign immediately, unconditionally
-              (recur :succeed (ζ↑ ζ) Ω)          ; leave child retry frames on Ω
-              (recur :recede (🡡 Ω) (🡧 Ω))))     ; a target that fails backtracks into P
+            (if (assign! var-sym matched-text)
+              (recur :succeed (ζ↑ ζ) Ω)
+              (recur :recede (🡡 Ω) (🡧 Ω))))
           (:fail :recede)
-          (recur :recede (🡡 Ω) (🡧 Ω)))          ; pop our own frame, pass recede
-
-        ;; ── CAPTURE (legacy alias, same as CAPTURE-IMM) ──────────────────────
+          (recur :recede (🡡 Ω) (🡧 Ω)))
         CAPTURE
         (case action
           :proceed
@@ -298,27 +191,7 @@
             (recur :succeed (ζ↑ ζ) Ω))
           (:fail :recede)
           (recur :recede (🡡 Ω) (🡧 Ω)))
-
-        ;; ── CAPTURE-COND (.) ─────────────────────────────────────────────────
-        ;; Conditional assignment — mirrors CSNOBOL4/v311 NME + ENME + FNME nodes.
-        ;;
-        ;; Reference: v311.sil lines ~3885-3930 (NME/ENME/FNME procedures).
-        ;; Architecture: NME fires BEFORE P (saves start cursor onto history stack);
-        ;; ENME fires AFTER P (computes span, adds to NAMICL "name list");
-        ;; FNME is the backtrack/undo node (removes from name list).
-        ;; The name list is committed to variables only on overall match success.
-        ;;
-        ;; Our implementation: CAPTURE-COND is a wrapper around child P.
-        ;; On :proceed — descend into P, push self onto Ω (recording entry cursor ζΔ).
-        ;; On :succeed — P matched; span is [ζΔ, ζδ].  Conj [var-sym text] onto
-        ;;               *pending-cond* (the name list).  Also push an UNDO frame
-        ;;               onto Ω so backtracking past this point removes the entry.
-        ;; On :recede  — backtracking into us; pop our frame, pass recede upward.
-        ;; The UNDO frame (COND-UNDO!) cleans up *pending-cond* on further backtrack.
-        ;; SEARCH/MATCH/FULLMATCH commit *pending-cond* when engine returns success.
         CAPTURE-COND
-        ;; Expands into SEQ[COND-MARK!(start), child-P, COND-ASSIGN!(var)]
-        ;; mirroring CSNOBOL4/v311 NME+ENME architecture.
         (case action
           :proceed
           (let [[_ child-P var-sym] (ζΠ ζ)
@@ -330,20 +203,11 @@
           :succeed (recur :succeed (ζ↑ ζ) Ω)
           (:fail :recede)
           (recur :recede (🡡 Ω) (🡧 Ω)))
-
-        ;; ── COND-MARK! ────────────────────────────────────────────
-        ;; Zero-width NME node: records start cursor in COND-ASSIGN! (baked in).
-        ;; Always succeeds immediately.
         COND-MARK!
         (case action
           :proceed        (recur :succeed (ζ↑ ζ) Ω)
           :succeed        (recur :succeed (ζ↑ ζ) Ω)
           (:fail :recede) (recur :recede (🡡 Ω) (🡧 Ω)))
-
-        ;; ── COND-ASSIGN! ─────────────────────────────────────────
-        ;; Post-P ENME node: fires after P matches.
-        ;; Computes span [start-pos baked-in, entry-cursor = end of P],
-        ;; adds [var-sym text] to *pending-cond*, pushes COND-UNDO! onto Ω.
         COND-ASSIGN!
         (case action
           :proceed
@@ -355,60 +219,29 @@
             (recur :succeed (ζ↑ ζ) (🡥 Ω (list 'COND-UNDO! var-sym))))
           :succeed        (recur :succeed (ζ↑ ζ) Ω)
           (:fail :recede) (recur :recede (🡡 Ω) (🡧 Ω)))
-
-        ;; ── COND-UNDO! (internal) ────────────────────────────────────────────
-        ;; Backtrack undo node for CAPTURE-COND.  When the engine recedes past
-        ;; a completed CAPTURE-COND, this removes the most recent pending entry
-        ;; for var-sym from *pending-cond*, mirroring CSNOBOL4 DNME/FNME undo.
         COND-UNDO!
-        ;; This node lives on Ω, not as a child frame.  It is reached only via
-        ;; :recede → (🡡 Ω).  The ζ here IS the COND-UNDO! list itself.
-        ;; On recede: pop the most-recently-added pending entry for this var,
-        ;; then continue receding.
         (let [[_ var-sym] ζ]
           (when *pending-cond*
             (vswap! *pending-cond*
                     (fn [lst]
-                      ;; the latest entry for this target is the one this undo frame stands for (the frames come off Ω last in, first out)
                       (if-let [i (last (keep-indexed (fn [i [vs _]] (when (clojure.core/= vs var-sym) i)) lst))]
                         (into (subvec lst 0 i) (subvec lst (inc i)))
                         lst))))
           (recur :recede (🡡 Ω) (🡧 Ω)))
-
-        ;; ── FENCE! ───────────────────────────────────────────────────────────
-        ;; Two forms per SNOBOL4/SPITBOL spec (C backend docstring):
-        ;;   FENCE(P)  — fence_function: P matches; backtracking *into* P blocked;
-        ;;               backtracking *past* this node to outer ALT still allowed.
-        ;;   FENCE()   — fence_simple: matches empty string; any backtrack past
-        ;;               this point aborts the entire match (returns nil).
-        ;; FENCE(P): "Given a pattern argument P, FENCE(P) is a same pattern except alternatives in P are bypassed when backing up" (manual ch. 19, FENCE).
-        ;; The depth of Ω where the fence's own frame goes is baked into the node; when P matches, Ω is cut back to it, so neither P's alternatives nor the
-        ;; fence are tried again, but the undo frames of the conditional assignments P made stay, and backing up past the fence still takes them back
-        ;; (sbl -bf: 'abc' ? (FENCE('a' . Z) 'x' | 'ab') leaves Z unassigned; 'aab' ? FENCE(ARB . V) 'b' assigns V the null string).
         FENCE!
         (case action
           :proceed
           (let [[Σ Δ _ _ _ _ Ψ] ζ
                 child            (second (ζΠ ζ))]
             (if child
-              ;; FENCE(P): descend into child; push the fence's frame, the depth it stands at baked in
               (let [ζ (assoc ζ 4 (list 'FENCE! child (count Ω)))]
                 (recur :proceed [Σ Δ Σ Δ child 1 (🡥 Ψ ζ)] (🡥 Ω ζ)))
-              ;; Bare FENCE: match the null string at the cursor once; push :ABORT sentinel onto Ω ("Pattern FENCE matches the null string", manual ch. 19)
               (recur :succeed (ζ↑ ζ Σ Δ) (🡥 Ω :ABORT))))
           :succeed
-          ;; P matched: cut Ω back to the fence, keeping the undo frames of P's conditional assignments
           (let [d (long (nth (ζΠ ζ) 2))]
             (recur :succeed (ζ↑ ζ) (into (subvec Ω 0 d) (filter #(and (list? %) (clojure.core/= 'COND-UNDO! (first %))) (subvec Ω (inc d))))))
           (:recede :fail)
-          ;; P has no alternative left: back up past the fence (to a bare FENCE's sentinel, which ends the match)
           (recur :recede (🡡 Ω) (🡧 Ω)))
-
-        ;; ── ARB! ─────────────────────────────────────────────────────────────
-        ;; ARB — matches any string, shortest first (0 chars, then 1, 2, …).
-        ;; Uses φ as the "next retry length".
-        ;; :proceed  — match 0 chars; push self onto Ω with φ=1
-        ;; :recede   — consume φ chars if enough subject remains; push φ+1 frame
         ARB!
         (case action
           :proceed
@@ -421,19 +254,6 @@
                      (ζ↑ ζ (drop len (ζΣ ζ)) (clojure.core/+ (ζΔ ζ) len))
                      (🡥 Ω (assoc ζ 5 (inc len))))
               (recur :recede (🡡 Ω) (🡧 Ω)))))
-
-        ;; ── ARBNO! ───────────────────────────────────────────────────────────
-        ;; ARBNO(P) — zero or more repetitions of P, shortest first: "Initially, it simply matches the null string. If a subsequent pattern component fails
-        ;; to match, SPITBOL backs up, and asks ARBNO to try again. Each time ARBNO is retried, it supplies another instance of its argument pattern"
-        ;; (manual ch. 9, The ARBNO Function). ARBNO succeeds at its own level and leaves one retry frame on Ω, its own frame at the cursor where the next
-        ;; repetition starts; backing up into it matches P once more from there. (It was ALT[ε, SEQ[P, ARBNO(P)]], one level deeper each repetition, so
-        ;; every success climbed back through all the repetitions before it, and a long ARBNO was quadratic.)
-        ;; :proceed  — zero repetitions: succeed at the entry cursor, push the retry frame
-        ;; :recede   — the retry frame: descend into P from its cursor, the cursor the repetition starts at kept in φ
-        ;; :succeed  — P matched: succeed with the new cursor, the retry frame above P's own alternatives, as the nested form ordered them; a repetition
-        ;;             that matched the null string succeeds too but leaves no retry frame, so ARBNO(ARB) and the like end: "a check is made that argument
-        ;;             matched more than the null string ... if not, the successor to alternative is taken so as to terminate the loop" (sbl.min, p_abc;
-        ;;             sbl -bf: 'xyz' ? ARBNO(LEN(1) | '') $ OUTPUT FAIL prints xyz twice, the second time for the null repetition after it)
         ARBNO!
         (case action
           :proceed
@@ -449,29 +269,14 @@
               (recur :succeed (ζ↑ ζ) (🡥 Ω [σ δ σ δ Π 1 Ψ]))))
           :fail
           (recur :recede (🡡 Ω) (🡧 Ω)))
-
-        ;; ── ABORT! ───────────────────────────────────────────────────────────
-        ;; ABORT — immediately terminate the entire match, regardless of context.
-        ;; Returns :abort, so the scanner tries no later start position.
         ABORT!
         :abort
-
-        ;; ── REM! ─────────────────────────────────────────────────────────────
-        ;; REM — matches all remaining characters from the current cursor.
-        ;; Always succeeds (including empty remainder). No backtrack alternative.
         REM!
         (case action
           :proceed
           (recur :succeed (ζ↑ ζ [] (count full-subject)) Ω)
           (:fail :recede)
           (recur :recede (🡡 Ω) (🡧 Ω)))
-
-        ;; -- BAL! ---------------------------------------------------------------
-        ;; Matches balanced-paren substrings, multi-yield.
-        ;; Scans from entry-Delta carrying running nest depth.
-        ;; Yields (succeeds) every time nest returns to 0.
-        ;; On retry (:recede), resumes scan from saved [pos nest].
-        ;; phi (slot 5) stores [resume-pos resume-nest].
         BAL!
         (let [sublen  (count full-subject)
               pos0    (ζΔ ζ)
@@ -505,11 +310,6 @@
                 (recur :recede (🡡 Ω) (🡧 Ω))))
             :succeed (recur :succeed (ζ↑ ζ) Ω)
             :fail    (recur :recede  (🡡 Ω) (🡧 Ω))))
-
-        ;; -- COLLECT! ------------------------------------------------------------
-        ;; (COLLECT! bag-atom P): match P; on each :succeed append [entry-Δ δ] to
-        ;; bag then immediately recede — driving P through all its Ω retry frames.
-        ;; Mirrors the SNOBOL4 idiom  P $ X FAIL  for exhausting multi-yield nodes.
         COLLECT!
         (case action
           :proceed
@@ -523,10 +323,6 @@
             (recur :recede (🡡 Ω) (🡧 Ω)))
           (:fail :recede)
           (recur :recede (🡡 Ω) (🡧 Ω)))
-
-        ;; -- CURSOR-IMM! ---------------------------------------------------------
-        ;; (@N): assign the current cursor position (integer) to variable N.
-        ;; Zero-width: succeeds without consuming input.  No backtrack alternative.
         CURSOR-IMM!
         (case action
           (:proceed :succeed)
@@ -535,25 +331,13 @@
             (recur :recede (🡡 Ω) (🡧 Ω)))
           (:fail :recede)
           (recur :recede (🡡 Ω) (🡧 Ω)))
-
-        ;; -- DEFER! --------------------------------------------------------------
-        ;; (*expr): deferred pattern — thunk is a (fn [] pattern) evaluated at
-        ;; match time, not build time.  Fixes eager-evaluation of guards like
-        ;; (EQ N 2) inside ALT branches.
-        ;; An expression that fails (nil) fails here, and the match backtracks: "PAT = *EQ(I, 4) 'ABC' | 'DEF'" (manual ch. 4, Unevaluated Expressions), as sbl -bf
-        ;; runs it; an unset variable is the null string, which matches.
         DEFER!
         (case action
           :proceed
           (let [thunk (second (ζΠ ζ))
                 P     (if (fn? thunk) (thunk) thunk)
-                ;; a value with no text is "046 expression does not evaluate to pattern" (MEASURED on sbl -bf: 'ab' ? *T of a table; corpus gate_cases_snobol4
-                ;; an_array_or_table_as_a_pattern_operand_raises_the_operand_errors_of_spitbol_in_both_modes__a, where this engine's matcher crashed)
                 _     (when (or (SNOBOL4clojure.env/array? P) (SNOBOL4clojure.env/table? P) (instance? SNOBOL4clojure.env.DataObj P))
                         (throw (ex-info (SNOBOL4clojure.env/error-message 46) {:snobol/error 46})))
-                ;; a pattern that defers to itself before it reads a character recurses without end, and SPITBOL's stack runs out: "246 stack overflow" (MEASURED
-                ;; on sbl -bf: P = *P 'Z' | 'Y' then 'Y' P . OUTPUT ends at ERROR 246 on that line; corpus snobol_playground ch2/recursive and recursive1, where this
-                ;; engine's frame stack grew until the JVM was killed). The bound is the descent's depth, far past any pattern that reads as it nests
                 _     (when (> (count (nth ζ 6)) 200000) (throw (ex-info (SNOBOL4clojure.env/error-message 246) {:snobol/error 246 :snobol/abort true})))]
             (if (nil? P)
               (let [[Σ Δ] ζ] (recur :fail (ζ↑ ζ Σ Δ) Ω))
@@ -561,9 +345,6 @@
           :succeed (recur :succeed (ζ↑ ζ) Ω)
           (:fail :recede)
           (recur :recede (🡡 Ω) (🡧 Ω)))))))
-
-;; ── Public API ────────────────────────────────────────────────────────────────
-
 (defn- commit-pending!
   "Commit all pending conditional (.) assignments to their variables.
    Called by SEARCH/MATCH/FULLMATCH when the engine returns success.
@@ -571,20 +352,11 @@
    False when a target fails (*F() whose F fails, an element out of bounds): the statement fails, as sbl -bf fails it."
   []
   (every? (fn [[var-sym text]] (assign! var-sym text)) @*pending-cond*))
-
-;; While a match is in progress an execution error with &ERRLIMIT at 0 is not fatal (sbl -bf, measured; the manual is silent): raised in a statement of a
-;; function the match called, that statement fails (runtime.clj trap); raised in an expression the matcher evaluates itself (*X, a deferred target), it ends the
-;; match, which fails, no alternative tried ('x' ? (*(1 / Z) | 'x') fails), &ERRTYPE and &ERRTEXT recording it. With &ERRLIMIT above 0 the error is trapped as
-;; any is, by the statement that made the match: one of &ERRLIMIT spent, and the label SETEXIT armed taken, or the statement failed.
 (defn- matching [f]
   (binding [SNOBOL4clojure.env/*matching* true]
     (try (f)
          (catch clojure.lang.ExceptionInfo e
            (let [{n :snobol/error abort :snobol/abort :as data} (ex-data e)]
-             ;; an error a failure point inside the match has already taken (operators.clj error-decided) goes on to it
-             ;; a pattern's own check of what its deferred argument evaluated to, 043 to 058, is fatal as anywhere else (MEASURED on sbl -bf at &ERRLIMIT 0: 'abc5' ?
-             ;; SPAN(*S) with S null ends at ERROR 056, ANY(*P) of a pattern 043, LEN(*S), POS(*S) and TAB(*S) of 'x' 047, 050 and 057, *T of a table 046, where
-             ;; *(1 + S) and *F() fail the match; corpus gate_cases_snobol4 a_deferred_cset_argument_that_evaluates_to_null_or_a_pattern_raises_spitbols_error__f)
              (if (and n (not abort) (zero? (long @SNOBOL4clojure.env/&ERRLIMIT)) (not (contains? data :snobol/to)) (not (contains? data :snobol/label))
                       (not (<= 43 (long n) 58)))
                (do (reset! SNOBOL4clojure.env/&ERRTYPE n)
@@ -592,7 +364,6 @@
                    (reset! SNOBOL4clojure.env/&ERRTEXT (ex-message e))
                    nil)
                (throw e)))))))
-
 (defn SEARCH
   "Slide pattern P across string S, trying each start position 0..n, or
    only position 0 while &ANCHOR is non-zero.
@@ -607,13 +378,12 @@
              n     (if (zero? @&ANCHOR) (count S) 0)]
          (loop [i 0]
            (when (<= i n)
-             (vswap! *pending-cond* (constantly []))          ; reset for each start pos
+             (vswap! *pending-cond* (constantly []))
              (let [result (engine (drop i chars) i P i S)]
                (cond
-                 (clojure.core/= :abort result) nil      ; ABORT: no later start position
+                 (clojure.core/= :abort result) nil
                  result (when (commit-pending!) result)
                  :else  (recur (inc i))))))))))
-
 (defn MATCH
   "Match pattern P against string S anchored at position 0.
    Returns [start end] on success, nil on failure.
@@ -624,7 +394,6 @@
       #(let [result (engine (seq S) 0 (list 'SEQ (POS 0) P) 0 S)
              result (when-not (clojure.core/= :abort result) result)]
          (when (and result (commit-pending!)) result)))))
-
 (defn FULLMATCH
   "Match pattern P against the entirety of string S (anchored both ends).
    Returns [0 (count S)] on success, nil on failure.
@@ -635,7 +404,6 @@
       #(let [result (engine (seq S) 0 (list 'SEQ (POS 0) P (RPOS 0)) 0 S)
              result (when-not (clojure.core/= :abort result) result)]
          (when (and result (commit-pending!)) result)))))
-
 (defn MATCH-REPLACE
   "Match pattern P against S; if matched, replace the matched span with R.
    Returns the new string on success, nil on failure.
@@ -643,7 +411,6 @@
   [S P R]
   (when-let [[start end] (SEARCH S P)]
     (str (subs S 0 start) R (subs S end))))
-
 (defn COLLECT!
   "Exhaustively collect every match [start end] of pattern P across string S,
    including all multi-yield backtrack alternatives (e.g. BAL, ARB, ARBNO).
@@ -659,26 +426,14 @@
       (when (and (<= i n) (not (clojure.core/= :abort (engine (drop i chars) i node i S))))
         (recur (inc i))))
     @bag))
-
-
-;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-;; The evaluator: EVAL!, INVOKE and the operators
-;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-;; ── Numeric conversion macros ─────────────────────────────────────────────────
 (defmacro numcvt [x] `(ncvt ~x))
 (defmacro uneval [x] `(if (list? ~x) ~x (list 'identity ~x)))
-
 (declare APPLY)
-
-;; The variable INPUT or OUTPUT associates: a name (.V), or a string that is the variable's name
 (defn- channel-variable [name-arg]
   (cond
     (symbol? name-arg)                            name-arg
     (instance? SNOBOL4clojure.env.NAME name-arg)  (symbol (str (.n ^SNOBOL4clojure.env.NAME name-arg)))
     :else                                         (symbol (str name-arg))))
-
-;; ── Operator helpers ──────────────────────────────────────────────────────────
 (defn annihilate    [_x]        nil)
 (defn match-replace [_n _s _p]  nil)
 (defn keyword-value [_n]        nil)
@@ -690,17 +445,11 @@
 (defn n-1           [op x]      (list op (numcvt x)))
 (defn n-2           [op x y]    (list op (numcvt x) (numcvt y)))
 (defn n-n           [op x y Ω]  (apply list op (map ncvt (conj Ω y x))))
-
-;; ── Comparison primitives (generated via eval) ────────────────────────────────
 (defn- primitive [func default missing cvt condition]
   (list 'defn func
     (list []            missing)
     (list ['x]          (list 'if (condition (cvt 'x) default) ε))
     (list ['x 'y '& '_] (list 'if (condition (cvt 'x) (cvt 'y)) ε))))
-
-;; The lexical comparisons compare their arguments as strings, the second converted first ("convert second arg to string", sbl.min lcomp), so of two that
-;; are not strings the second's error is raised (sbl -bf: LGE(ANY('bcd'), TABLE()) is 125, LGT(ANY('bcd')) 126); an omitted argument is the null string.
-;; n1 is the function's error for its first argument, n1 + 1 for its second.
 (defn- lexical [x y n1 test] (let [b (gtstg y (inc (long n1))) a (gtstg x n1)] (when (test (compare a b)) ε)))
 (defn LEQ ([] (LEQ ε ε)) ([x] (LEQ x ε)) ([x y & _] (lexical x y 122 zero?)))
 (defn LNE ([] (LNE ε ε)) ([x] (LNE x ε)) ([x y & _] (lexical x y 132 #(not (zero? %)))))
@@ -710,17 +459,15 @@
 (defn LGT ([] (LGT ε ε)) ([x] (LGT x ε)) ([x y & _] (lexical x y 126 pos?)))
 (eval (primitive 'IDENT  ε   ε identity #(list 'SNOBOL4clojure.env/snobol-ident? %1 %2)))
 (eval (primitive 'DIFFER ε nil identity #(list 'not (list 'SNOBOL4clojure.env/snobol-ident? %1 %2))))
-
-;; ── SNOBOL4 operators ─────────────────────────────────────────────────────────
-(defn =     ([_x]       η)                         ; unary  — programmable
-            ([n x]      (list '= n x)))             ; binary — assignment
-(defn ?     ([x]        (annihilate x))             ; unary  — interrogation
-            ([s p]      (let [s (sstr s)] (when-let [[a b] (SEARCH s p)] (subs s a b))))   ; binary — match, returns the text matched or nil
-            ([n s p]    (match-replace n s p)))     ; ternary — match+replace
+(defn =     ([_x]       η)
+            ([n x]      (list '= n x)))
+(defn ?     ([x]        (annihilate x))
+            ([s p]      (let [s (sstr s)] (when-let [[a b] (SEARCH s p)] (subs s a b))))
+            ([n s p]    (match-replace n s p)))
 (defn ?=    ([n s p]    (match-replace n s p)))
-(defn &     ([_n]       nil)                     ; unary  — keyword
-            ([_x _y]    η))                      ; binary — programmable
-(defn at    ([n]        (list 'CURSOR-IMM! n))   ; unary  — cursor assign
+(defn &     ([_n]       nil)
+            ([_x _y]    η))
+(defn at    ([n]        (list 'CURSOR-IMM! n))
             ([_x _y]    η))
 (defn +     ([x]        (n-1 Σ+ x))
             ([x y]      (n-2 Σ+ x y))
@@ -732,36 +479,23 @@
             ([_x _y]    η))
 (defn /     ([_x]       η)
             ([x y]      (n-2 divide x y)))
-(defn *     ([x]        (list 'DEFER! (fn [] x)))    ; unary  — defer eval
+(defn *     ([x]        (list 'DEFER! (fn [] x)))
             ([x y]      (n-2 multiply x y))
             ([x y & zs] (n-n multiply x y zs)))
 (defn %     ([_x]       η)
             ([_x _y]    η))
-;; An arithmetic operand as a number. A string converts when it has the form of a number, blanks around it ignored, and a null or blank string is 0 (manual ch. 17,
-;; String to integer and String to real); anything else is the operator's error, "1 Addition left operand is not numeric" and its kin (manual, Appendix D).
-;; The right operand converts first, as the arguments come off SPITBOL's stack (sbl.min arith: "get right operand type word ... jsr gtnum"), so of two operands
-;; neither numeric the error is the right one's (sbl -bf: 'a' + ARB, ARB + 'a' and 'a' + 'a' are 2, and so for - * / ** with 33 27 13 15; EQ('a', ARB) is 102).
 (defn- operand [x code msg]
   (let [n (num x)]
     (if (and (double? n) (Double/isNaN n) (not (double? x)))
       (throw (ex-info msg {:snobol/error code}))
       n)))
-
-;; An integer result past 64 bits is the operator's overflow error (3 addition, 34 subtraction, 28 multiplication); exact is Math/addExact and its kin.
 (defn- exact [exact-op a b code msg]
   (try (exact-op (long a) (long b)) (catch ArithmeticException _ (throw (ex-info msg {:snobol/error code})))))
-
-;; A real result too large for a real is the operator's error, "261 Addition caused real overflow" and its kin 262 to 264 and 266 (manual, Appendix D), as sbl -bf
-;; raises them; one below the least normal real is zero, as the oracle's SSE arithmetic flushes it (MXCSR 0x9fc0).
 (defn- finite [r code msg]
   (let [r (double r)]
     (cond (Double/isInfinite r)               (throw (ex-info msg {:snobol/error code}))
           (< (Math/abs r) Double/MIN_NORMAL)  (clojure.core/* r 0.0)
           :else                               r)))
-
-;; The numeric comparisons: "N1 and n2 must evaluate to integer or real values" (manual ch. 19, EQ and its kin), compared as numbers whatever their types, so EQ(2.0,2)
-;; succeeds; an argument that is not numeric is the function's error (Appendix D: EQ 101/102, NE 149/150, LT 147/148, LE 118/119, GT 111/112, GE 109/110). An argument left
-;; out is the null string, 0.
 (defmacro ^:private numeric-predicate [f cmp first-code second-code]
   (let [nm (clojure.string/lower-case (name f))]
     `(defn ~f [& args#]
@@ -774,7 +508,6 @@
 (numeric-predicate LE clojure.core/<= 118 119)
 (numeric-predicate GT clojure.core/> 111 112)
 (numeric-predicate GE clojure.core/>= 109 110)
-
 (defn pow-fn
   "SNOBOL4 exponentiation (**, and its synonyms ^ and !) as sbl.min o_exp computes it. An integer exponent not below zero is repeated multiplication: of an
    integer base, exact, 0 ** 0 error 18 and a result past 64 bits error 17; of a real base, each product rounded, 0.0 ** 0 error 18 and an overflow error 266.
@@ -809,9 +542,6 @@
       (let [b (double x) e (double y)]
         (if (zero? b)
           (if (zero? e) (undefined) 0.0)
-          ;; the power is chopped and converted to an integer as sbl.min oexp9 does with rti, which the x64 build spells cvttsd2si: a power past 64 bits
-          ;; gives 8000000000000000h, even, and the overflow test compares the result with 80000000h, so the one integer it refuses is 2147483648, error
-          ;; 266 before the power is found non-integral (sbl -bf: -1.0 ** 1E19 is 1., -0.5 ** 1E300 is 0., -1.0 ** 2147483648.5 is 266)
           (let [c   (when (neg? b)
                       (let [t (if (neg? e) (Math/ceil e) (Math/floor e))
                             c (if (< (Math/abs t) 9.223372036854775807E18) (long t) Long/MIN_VALUE)]
@@ -824,69 +554,37 @@
 (defn !     ([_x]       η)
             ([x y]      (pow-fn x y)))
 (defn **    ([x y]      (pow-fn x y)))
-(defn $     ([n]        ($$ n))                       ; unary  — indirection
-            ([x y]      (x-2 'CAPTURE-IMM x y))       ; binary — immediate capture
+(defn $     ([n]        ($$ n))
+            ([x y]      (x-2 'CAPTURE-IMM x y))
             ([x y & zs] (x-n 'CAPTURE-IMM x y zs)))
-(defn .     ([x]        (NAME. x))                    ; unary  — name
-            ([x y]      (x-2 'CAPTURE-COND x y))      ; binary — conditional capture
+(defn .     ([x]        (NAME. x))
+            ([x y]      (x-2 'CAPTURE-COND x y))
             ([x y & zs] (x-n 'CAPTURE-COND x y zs)))
-(defn tilde ([x]        (list 'ALT x ε))              ; unary  — optional (~P = P | ε)
+(defn tilde ([x]        (list 'ALT x ε))
             ([_x _y]    η))
-(defn |     ([_x]       η)                       ; unary  — programmable
-            ([x y]      (x-2 'ALT x y))          ; binary — alternation
+(defn |     ([_x]       η)
+            ([x y]      (x-2 'ALT x y))
             ([x y & zs] (x-n 'ALT x y zs)))
-
-;; OPSYN files an operator's definition under its spelling and arity, so unary
-;; and binary | are separate, and a function synonym under its name alone.
 (defn- opsyn-key [spelling arity] (str spelling "/" arity))
-
-;; The source spelling of an operator the emitter renames.
-;; Its names hold a hyphen, which no SNOBOL4 name does, so a call written in the program (tilde(X), at(X)) is never one of these operators (CEO-2028).
 (def ^:private op-spelling {'at-op "@", 'sharp-op "#", 'tilde-op "~"})
-
 (defn- arg-or-local [[fname n] k e1 t1 e2 t2]
   (let [meta (get @<FDEFS> (name-string fname))
         _    (when-not meta (throw (ex-info t1 {:snobol/error e1})))
         i    (let [v (SNOBOL4clojure.env/num n)] (if (and (number? v) (not (and (double? v) (Double/isNaN v)))) (long v) (throw (ex-info t2 {:snobol/error e2}))))]
     (when-some [p (when (pos? i) (nth (k meta) (dec i) nil))]
       (NAME. (symbol p)))))
-
-;; ── INVOKE ────────────────────────────────────────────────────────────────────
 (declare EVAL! compile-expression compile-failed! compiled! deferred? expression-of unused-unary-ops unused-binary-ops name-of)
-
-;; A concatenation evaluates to (SEQ v ...). It is a string when every part is
-;; a string, a number or a NAME (text: its variable's name), and otherwise a
-;; pattern, which the matcher reads as a SEQ list and which must not be
-;; flattened into text. Null parts drop out, and a part they leave alone is
-;; the value itself: P '' is P, NE(1,2) 5 is the INTEGER 5. (A one-part SEQ that had no null parts, as
-;; CONVERT(x,'PATTERN') builds it, stays as it is.)
-;; A value that is neither a string nor a pattern and has no text: the name of a keyword, of an element or of an expression, a table, an array, a DATA object or
-;; code (sbl.min gtstg converts only an integer, a real or the name of a natural variable).
 (defn- textless? [v]
   (or (and (instance? NAME v) (not (symbol? (.n ^NAME v))))
       (array? v) (table? v) (instance? SNOBOL4clojure.env.DataObj v) (instance? SNOBOL4clojure.env.CodeBlock v)))
-
-;; A value with no text where a pattern is wanted is its operator's error (Appendix D; MEASURED on sbl -bf, T a table and A an array: '0' ? T and ('a' ? A) are
-;; "240 pattern match right operand is not pattern", ARBNO(T) 061, FENCE(T) 259, T . X 030, A $ X 025; an alternation checks its right operand first, "005
-;; alternation right operand is not pattern", then its left, 006, the operator grouping to the right: LEN(2) | A is 5, A | LEN(2) 6, 'a' | A | 'b' 6, 'a' | 'b' | A
-;; 5, A | T 5; corpus gate_cases_snobol4 an_array_or_table_as_a_pattern_operand_raises_the_operand_errors_of_spitbol_in_both_modes__a, whose '0' ? T crashed here)
 (defn- pattern-argument [p err] (if (textless? p) (throw (ex-info (SNOBOL4clojure.env/error-message err) {:snobol/error err})) p))
-
 (defn- pattern-operands! [args]
   (let [v (vec args) n (count v)]
     (pattern-argument (v (dec n)) 5)
     (doseq [i (range (clojure.core/- n 2) -1 -1)] (pattern-argument (v i) 6))))
-
-;; The null string concatenated is the other operand, as it was; a concatenation of a value with no text with anything else is "008 concatenation left operand is
-;; not a string or pattern" for the first operand, "009 ... right operand" for a later one, the concatenation being left to right (sbl -bf: '' T is the table T,
-;; T 'x' and T '' 'x' are 8, 'x' 'y' N of a keyword's name N is 9, LEN(1) T is 9).
 (defn- concat-value [r]
   (if (and (list? r) (clojure.core/= (first r) 'SEQ))
     (let [parts (remove #(clojure.core/= ε %) (rest r))
-          ;; concatenation groups to the right, a (b (c d)), and the innermost is done first, its left operand checked before its right: so the part before the
-          ;; last is 8, then the last 9, then any earlier part 8 (MEASURED on sbl -bf, A an array: 'x' A 'y', 'x' A A and LEN(1) A 'x' are 8, A 'x' 'y' A and
-          ;; 'x' A 'y' A 9, A 'x' 'y' 8; corpus tests/snobol4 user_function_array_keyword_1, X = 'x' A F(), where this engine said 9, the first odd part's
-          ;; place read left to right)
           _     (when (next parts)
                   (let [v (vec parts) n (count v) e8 #(throw (ex-info "concatenation left operand is not a string or pattern" {:snobol/error 8}))]
                     (cond (textless? (v (clojure.core/- n 2)))                (e8)
@@ -895,9 +593,7 @@
       (cond
         (every? #(or (string? %) (number? %) (instance? NAME %)) parts)
         (if (and (clojure.core/= 1 (count parts)) (< 1 (count (rest r))))
-          (first parts)                      ; one part left after the nulls: it, as it was
-          ;; a string longer than &MAXLNGTH is "205 string length exceeds value of maxlngth keyword" (manual ch. 7, &MAXLNGTH; MEASURED on sbl -bf: X =
-          ;; DUPL('a', &MAXLNGTH) then X 'b' is 205; corpus mikebeer_snobol bench/recursion, whose PERM doubles its string each level, ends at 205 on sbl)
+          (first parts)
           (let [t (apply str (map sstr parts))]
             (if (clojure.core/> (count t) (long @SNOBOL4clojure.env/&MAXLNGTH))
               (throw (ex-info "string length exceeds value of maxlngth keyword" {:snobol/error 205}))
@@ -906,14 +602,10 @@
         (empty? (rest parts))                        (first parts)
         :else                                        (apply list 'SEQ parts)))
     r))
-
-;; What OUTPUT writes for a value: an object that is not a string, a number or a name prints as its datatype name, as SPITBOL prints it (PATTERN, EXPRESSION, ARRAY,
-;; TABLE, the type of a DATA object); everything else as sstr.
 (defn- output-text [v]
   (if (or (and (or (list? v) (vector? v)) (#{"PATTERN" "EXPRESSION"} (SNOBOL4clojure.env/DATATYPE v))) (textless? v))
     (SNOBOL4clojure.env/DATATYPE v)
     (sstr v)))
-
 (defn- program-fn
   "The function a program gave the name op, or nil: a DATA constructor or field (held as the value of the name), or a DEFINEd or OPSYN function (held in
    <FUNS>). Only names that start with a letter: operators are not looked up."
@@ -921,33 +613,20 @@
   (when (and (symbol? op) (Character/isLetter (.charAt (name op) 0)))
     (let [v (reference op)]
       (if (fn? v) v (get @<FUNS> (name op))))))
-
-;; A variable put back as its caller had it: set to the value it had, or unset again when it had none.
 (defn- restore-var! [sym v]
   (if (nil? v)
     (do (swap! SNOBOL4clojure.env/<VARS> dissoc sym) (swap! SNOBOL4clojure.env/<ASSOC-LAST> dissoc sym))
     (snobol-set! sym v)))
-
-;; what a call saves of a variable: an output-associated one's value is the one a read finds (env/output-associated?)
 (defn- saved-value [sym] (if (SNOBOL4clojure.env/output-associated? sym) (get @SNOBOL4clojure.env/<ASSOC-LAST> sym) (reference sym)))
-
-;; "In SPITBOL, extra arguments are ignored, and missing arguments are supplied as null strings" (manual ch. 19, APPLY). A built-in handed more arguments
-;; than it takes is called with as many as it takes (sbl -bf: EVAL('1', 'x') is 1, ARRAY(2, 0, 'x') an ARRAY, TABLE(1, 1, 'd', 'x') a TABLE, SORT(T, 1, 'x'),
-;; DATE(0, 'x'), SETEXIT('', 'x') succeed, BACKSPACE(99, 'x') is 317); a variadic function takes them all. The arity is read once a class from its invoke methods.
 (def ^:private fixed-arity
   (memoize (fn [^Class c]
              (let [ms (.getDeclaredMethods c)]
                (when-not (some (fn [^java.lang.reflect.Method m] (clojure.core/= "doInvoke" (.getName m))) ms)
                  (reduce max -1 (keep (fn [^java.lang.reflect.Method m] (when (clojure.core/= "invoke" (.getName m)) (alength (.getParameterTypes m)))) ms)))))))
-
 (defn- apply-builtin [f args]
   (let [n (fixed-arity (class f))]
     (if (and n (clojure.core/>= n 0) (clojure.core/> (count args) n)) (apply f (take n args)) (apply f args))))
-
 (defn INVOKE [op & args]
-  ;; A program's own DATA function wins over the engine's arm of the same
-  ;; name: SPITBOL refuses to redefine its own functions (ERROR 248), so a
-  ;; program can only own a name SPITBOL does not, such as REAL or STRING.
   (if-let [pf (program-fn op)]
     (apply pf args)
   (case op
@@ -966,8 +645,6 @@
     BREAKX  (BREAKX (first args))
     NOTANY  (NOTANY (first args))
     SPAN    (SPAN   (first args))
-    ;; FENCE() is the function given the null string, FENCE(''), which the scanner backs up past; the bare FENCE that ends the match is the pattern the variable
-    ;; FENCE holds (sbl -bf: 'ABC' FENCE() 'B' succeeds, 'ABC' FENCE 'B' fails)
     FENCE   (FENCE (pattern-argument (if (seq args) (first args) ε) 259))
     ARBNO   (ARBNO  (pattern-argument (first args) 61))
     EQ      (EQ     (first args) (second args))
@@ -976,8 +653,6 @@
     LT      (LT     (first args) (second args))
     GE      (GE     (first args) (second args))
     GT      (GT     (first args) (second args))
-    ;; Arithmetic — coerce to SNOBOL numeric type (integer if both integer, else real)
-    ;; unary + is affirmation (error 4), unary - negation (error 10)
     +       (if (clojure.core/= 1 (count args))
               (operand (first args) 4 "affirmation operand is not numeric")
               (let [b (operand (second args) 2 "addition right operand is not numeric")
@@ -998,9 +673,8 @@
               (if (and (integer? a) (integer? b))
                 (exact #(Math/multiplyExact ^long %1 ^long %2) a b 28 "multiplication caused integer overflow")
                 (finite (clojure.core/* a b) 263 "multiplication caused real overflow")))
-    tilde-op (let [v (first args)]      ; ~ negates success/failure
+    tilde-op (let [v (first args)]
               (if (nil? v) ε nil))
-    ;; a zero divisor is "14 Division caused integer overflow" between integers and "262 Division caused real overflow" otherwise, as sbl -bf reports them
     /       (let [b (operand (second args) 13 "division right operand is not numeric")
                   a (operand (first args) 12 "division left operand is not numeric")]
               (cond
@@ -1008,67 +682,45 @@
                 (if (or (zero? b) (and (clojure.core/= b -1) (clojure.core/= a Long/MIN_VALUE)))
                   (throw (ex-info "division caused integer overflow" {:snobol/error 14}))
                   (quot a b))
-                ;; a real division of zero by zero is zero, and of anything else by zero 262 (MEASURED on sbl -bf: 0 / 0.0, 0.0 / 0, -0.0 / 0 and 0.0 / 0.0 are all
-                ;; 0., REAL; 1.5 / 0.0 and 1 / (0 / 0.0) are 262; corpus gate_cases_snobol4 real_zero_over_zero, where this engine raised 262 for 0 / 0.0)
                 (and (zero? (double b)) (zero? (double a))) 0.0
                 (zero? (double b)) (throw (ex-info "division caused real overflow" {:snobol/error 262}))
                 :else (finite (clojure.core// (double a) (double b)) 262 "division caused real overflow")))
     **      (let [[x y] args] (pow-fn x y))
-    ;; "(SUBJECT ? PATTERN) performs pattern matching and returns the substring matched, or failure as its value" (manual ch. 9, Binary operator extensions)
-    ;; the subject is a string, a real its SPITBOL text (0.0 is 0.)
-    ;; a subject with no text is "241 pattern match left operand is not a string" (sbl.min gtstg; sbl -bf: N ? 'x' of a keyword's name N, and T ? 'x')
     ?       (let [[s p] args s (gtstg s 241)] (when-let [[a b] (SEARCH s (pattern-argument p 240))] (subs s a b)))
     =       (let [[N r] args]
-              ;; nil replacement = sub-expression failure → statement fails
               (when-not (nil? r)
               (cond
-                ;; the name of an expression is assigned through the expression evaluated by name (sbl.min asign: "assignment to expression variable")
                 (instance? SNOBOL4clojure.env.ExprVar N)
                 (when-some [t (name-of (.ir ^SNOBOL4clojure.env.ExprVar N))] (INVOKE '= t r))
-                ;; keyword assignment: (= (& K) val). The keyword keeps what it takes, and the assignment's value is the value given, as it was (sbl -bf:
-                ;; (&ANCHOR = ' 1') is the STRING ' 1' and &ANCHOR 1; (&ERRTEXT = 5) the INTEGER 5 and &ERRTEXT '5')
                 (and (list? N) (clojure.core/= (first N) '&))
                 (do (assign-keyword! (second N) r) r)
-                ;; subscript assignment: (= (A k...) val) — mutate TABLE, ARRAY, or PDD
                 (and (list? N) (>= (count N) 2))
                 (let [[container-sym & ks] N
                       r (concat-value r)
-                      ;; the container is a variable's name, or the table or array itself when it came from a subscript (tt['blue']['green'])
-                      ;; a field of a DATA type, F(x) = v: written with parentheses, or with brackets when the name holds no table or array (the subscript form
-                      ;; carries :subscript; sbl -bf: a(x) = a sets the field a while a local a holds an array)
                       raw-container (cond
-                                      (:container (meta N)) (:container (meta N))   ; the element a name of an element holds
+                                      (:container (meta N)) (:container (meta N))
                                       (symbol? container-sym)
                                       (let [v ($$ container-sym) f (get @<FUNS> (name container-sym))]
                                         (if (and (:data (meta f)) (or (not (:subscript (meta N))) (and (not (table? v)) (not (array? v))))) f v))
                                       :else container-sym)
-                      ;; NAME indirect reference — dereference to the actual array/table
                       container (if (instance? NAME raw-container)
                                   ($$ (symbol (str (.n raw-container))))
                                   raw-container)]
                   (cond
                     (table? container)
                     (let [v (table-set container (SNOBOL4clojure.env/table-subscript ks) r)] (fire-element! container ks r) v)
-                    ;; a subscript out of bounds fails the statement, as a read of one does (manual ch. 14, -FAIL: "...especially when array subscripts are out of bounds")
-                    ;; an element's value trace fires once it is set (trace.clj, fire-element!)
                     (array? container)
                     (when-some [v (array-set container (vec ks) r)] (fire-element! container ks r) v)
-                    ;; DATA field setter: accessor(instance) = val assigns the field of the object in place (the instance is already evaluated)
                     (fn? container)
                     (when (container (first ks) r) r)
-                    ;; a variable that holds no table, array or object cannot be subscripted: ERROR 235, as SPITBOL raises it; written with parentheses it is a
-                    ;; call of a function no DEFINE made, ERROR 022 (MEASURED on sbl -bf: F(1) = 2 and X(1) = 2 of X = 3 are 22, X<1> = 2 and X[1] = 2 235; corpus
-                    ;; rosetta-snobol4 memory-allocation-6, whose datafield1(newnode) = "updated data value 1" this engine named 235)
                     (and (symbol? container-sym) (not (:subscript (meta N)))) (throw (ex-info "undefined function called" {:snobol/error 22}))
                     :else (throw (ex-info "subscripted operand is not table or array" {:snobol/error 235}))))
-                ;; normal variable assignment
                 (clojure.core/contains? #{'OUTPUT 'TERMINAL 'INPUT} N)
                 (let [out-val (concat-value r)]
                   (swap! SNOBOL4clojure.env/<ASSOC-LAST> assoc N out-val)
                   (when (and (clojure.core/= N 'OUTPUT) (not (zero? (long @&OUTPUT)))) (println (output-text out-val)))
                   (when (clojure.core/= N 'TERMINAL) (binding [*out* *err*] (println (output-text out-val))))
                   out-val)
-                ;; Named output channel: var is registered as :output → write to channel writer
                 (clojure.core/= :output (:type (get @<CHANNELS> N)))
                 (let [out-val (concat-value r)]
                   (write-to-channel! N out-val)
@@ -1079,27 +731,22 @@
                   (snobol-set! N v)
                   (fire-value! N v)
                   v))))
-    ;; the subject is a variable, or an element or field whose subscripts the evaluator has already taken
     ?=      (let [[n p R] args
                   subject (gtstg (if (list? n)
                                   (apply INVOKE (or (:container (meta n)) (first n)) (rest n))
-                                  (let [v ($$ n)] (when (pos? (long @SNOBOL4clojure.env/&TRACE)) (fire-access! n v)) v))   ; the subject is a reference
+                                  (let [v ($$ n)] (when (pos? (long @SNOBOL4clojure.env/&TRACE)) (fire-access! n v)) v))
                                 241)
-                  pat     (pattern-argument p 240)]   ; already evaluated by EVAL! dispatch
+                  pat     (pattern-argument p 240)]
               (when-let [[start end] (SEARCH subject pat)]
-                ;; The replacement is evaluated after the match, so it sees the
-                ;; variables the match assigned (S RTAB(N) . S REM . S1 = S1 S).
                 (let [repl   (sstr (EVAL! R))
                       result (str (subs subject 0 start)
                                   repl
                                   (subs subject end))]
-                  ;; a subject made longer than &MAXLNGTH is 205 (MEASURED on sbl -bf: X = DUPL('a', &MAXLNGTH) then X 'a' = 'bb')
                   (when (clojure.core/> (count result) (long @SNOBOL4clojure.env/&MAXLNGTH))
                     (throw (ex-info "string length exceeds value of maxlngth keyword" {:snobol/error 205})))
-                  (INVOKE '= n result)       ; assigned as any assignment is: a value trace fires, OUTPUT writes
+                  (INVOKE '= n result)
                   result)))
     DEFINE  (let [[proto entry-arg] args
-                  ;; Parse: 'fname(p1,p2,...)l1,l2,...'  or  'fname(p1,...)'
                   lp        (.indexOf ^String proto "(")
                   rp        (.indexOf ^String proto ")")
                   fname     (if (>= lp 0) (.substring ^String proto 0 lp) proto)
@@ -1116,74 +763,44 @@
                                          (mapv clojure.string/trim
                                                (clojure.string/split s #",")))))
                   f-sym     (symbol fname)
-                  ;; Entry point: explicit .label arg, or the keyword of fname, in the case it is written (sbl -bf folds no name)
-                  ;; a null name is an absent one: "If absent, a label with the same name as the function is the assumed entry point" (manual ch. 19, DEFINE)
                   entry     (if (and (>= (count args) 2) entry-arg (not (clojure.core/= "" (sstr entry-arg))))
-                              ;; entry-arg may be a NAME (symbol) from (.label) notation
                               (if (symbol? entry-arg)
                                 (keyword (str (name entry-arg)))
                                 (keyword (str entry-arg)))
                               (keyword fname))
                   all-saved (into params locals)]
               (letfn [(the-fn [& call-args]
-                        ;; Save current values of params + locals
-                        ;; The result variable is saved with the params and locals: it belongs to one activation, so a recursive call must not
-                        ;; leave the function object, or its own result, in the caller's.
-                        ;; What is saved is the program's own variable (nil: it was not set), never the engine's built-in of that name that $$ would
-                        ;; find in the core namespace, so the restore leaves the variable as the caller had it.
                         (let [saved   (zipmap all-saved (map #(saved-value (symbol %)) all-saved))
                               f-saved (saved-value f-sym)
                               stno-saved @&STNO
                               file-saved (if-some [[f _] SNOBOL4clojure.env/*eval-block*] f @&FILE)
                               line-saved (if-some [[_ l] SNOBOL4clojure.env/*eval-block*] l @&LINE)]
-                          ;; Clear the result slot, then bind the parameters: a parameter that has the function's name starts the result with its argument, as sbl -bf
-                          ;; has it (mx(9,2) of DEFINE('mx(mx,x)') returns 9 when the body assigns nothing)
                           (snobol-set! f-sym ε)
                           (doseq [i (range (count params))]
                             (snobol-set! (symbol (params i))
                                          (nth call-args i ε)))
-                          ;; Clear locals
                           (doseq [l locals]
                             (snobol-set! (symbol l) ε))
-                          ;; CALL trace
                           (fire-call! fname (map #(reference (symbol %)) params))
-                          ;; Run from entry label; catch RETURN/FRETURN/NRETURN. The function level is one deeper while the body runs.
                           (fire-keyword! "FNCLEVEL" (swap! &FNCLEVEL inc))
                           (let [run-fn  (ns-resolve 'SNOBOL4clojure.runtime 'RUN)
-                                ;; the body is the failure point of its statements, the innermost function's
                                 d       (inc (long SNOBOL4clojure.env/*fp*))
                                 outcome (try
                                           (when run-fn (binding [SNOBOL4clojure.env/*fp* d SNOBOL4clojure.env/*flprt* d SNOBOL4clojure.env/*eval-block* nil] ((var-get run-fn) entry)))
-                                          :return   ; normal fall-through = return
-                                          ;; only the three returns end a call; END, the step limit and an error go on up (END in a function ends the program)
-                                          ;; what goes on up carries the function level it left, the innermost's, which &FNCLEVEL reads again if it ends the program:
-                                          ;; sbl -bf's dump and report show the level the program ended at (MEASURED: an error, END and the statement limit inside a
-                                          ;; function each dump &FNCLEVEL = 1; corpus setl4_spitbol sbl-sonnets and concord, ERROR 041 at level 1, where this engine
-                                          ;; dumped 0), while an error EVAL or a match catches leaves the level restored
+                                          :return
                                           (catch clojure.lang.ExceptionInfo e
                                             (let [sig (:snobol/signal (ex-data e))]
                                               (if (#{:return :freturn :nreturn} sig)
                                                 sig
                                                 (throw (if (contains? (ex-data e) :fnclevel) e (ex-info (ex-message e) (assoc (ex-data e) :fnclevel @&FNCLEVEL) e))))))
                                           (finally (fire-keyword! "FNCLEVEL" (swap! &FNCLEVEL dec))))]
-                            ;; Collect result before restoring
                             (let [result ($$ f-sym)
-                                  ;; RETURN trace; a return trace function reads &RTNTYPE as the return it traces (MEASURED on sbl -bf: TRACE('G','RETURN',,'TRF') of
-                                  ;; a G that ends :(FRETURN) reads FRETURN in TRF; corpus gate_cases_snobol4 a_return_trace_function_sees_..._still_bound__fret)
                                   _      (reset! &RTNTYPE (case outcome :freturn "FRETURN" :nreturn "NRETURN" "RETURN"))
                                   _      (fire-return! fname result outcome stno-saved)
-                                  ;; and the function's names are still bound while it runs, so what it assigns to the result variable is the value returned
-                                  ;; (MEASURED on sbl -bf: a RETURN trace function TF that sets F = 'changed-by-tf' makes F('abc','def') return it; corpus
-                                  ;; gate_cases_snobol4 a_traced_call_keeps_its_procedure_and_its_value_across_a_collection__wb)
                                   result ($$ f-sym)]
-                              ;; Restore saved values
                               (doseq [[k v] saved]
                                 (restore-var! (symbol k) v))
-                              ;; Restore the caller's result variable
                               (restore-var! f-sym f-saved)
-                              ;; the function's own last statement is the one last executed, and the statement that called it is again the current one (MEASURED on
-                              ;; sbl -bf: OUTPUT = F() &LASTNO &LASTLINE, F's body ending at statement 3, line 3, prints 3 and 3 where this engine printed 2 and 2,
-                              ;; the statement before F's last; csnobol4_suite setexit4 reads &LASTNO 18 in the statement its STCOUNT trace function returned to)
                               (reset! SNOBOL4clojure.env/&LASTNO @&STNO)
                               (reset! SNOBOL4clojure.env/&LASTLINE @&LINE)
                               (reset! SNOBOL4clojure.env/&LASTFILE @&FILE)
@@ -1192,34 +809,19 @@
                               (reset! &LINE line-saved)
                               (reset! SNOBOL4clojure.env/<STMT-LINE> line-saved)
                               (reset! &RTNTYPE (case outcome :freturn "FRETURN" :nreturn "NRETURN" "RETURN"))
-                              ;; Dispatch on outcome
                               (case outcome
                                 :return  result
-                                :freturn nil    ; nil → statement failure → :F branch
-                                ;; NRETURN returns a name: the NAME the function variable holds, or the variable a string or a number spells; the null string or
-                                ;; any other value is "243 function result in NRETURN is not name" (sbl -bf: H = LEN(1) :(NRETURN), and H = '' too)
+                                :freturn nil
                                 :nreturn (cond (instance? NAME result) (SNOBOL4clojure.env/->NameResult (.n ^NAME result))
                                                (and (string? result) (seq result)) (SNOBOL4clojure.env/->NameResult (symbol result))
                                                (number? result) (SNOBOL4clojure.env/->NameResult (symbol (sstr result)))
                                                :else (throw (ex-info "function result in NRETURN is not name" {:snobol/error 243})))
-                                result)))))]   ; fall-through = return
-                ;; The function lives in <FUNS>, not in the variable of its name: a function and a variable are two things (sbl -bf).
+                                result)))))]
                 (swap! <FUNS>  assoc fname the-fn)
-                ;; the function's name, its parameters and its locals are names the program has made, which &DUMP = 3 lists (env/<NAMES>)
                 (SNOBOL4clojure.env/note-names! (concat [fname] params locals))
                 (swap! <FDEFS> assoc fname
                                {:params params :locals locals})
                 ε))
-    ;; ── OPSYN(new, old, n) ── Sprint 25E ─────────────────────────────────────────────
-    ;; Makes 'new' a synonym for 'old'.  n omitted/0=function, 1=unary op, 2=binary op.
-    ;; Stores a wrapper fn in <FUNS> under new-name, as it is written, so the INVOKE fallthrough
-    ;; arm dispatches to it automatically (it already checks <FUNS> by that key).
-    ;; For operator synonyms (n=1/2), also index under the raw symbol string.
-    ;; Always succeeds (even if old is unknown — wraps to no-op fn).
-    ;; As sbl -bf checks it (manual ch. 19, OPSYN; Appendix D 152 to 156): the third argument is an integer ("152 OPSYN third argument is not integer", "153 ...
-    ;; is negative or too large" past 2**24), a real cut to one; 0 or null makes a function synonym, which may not take the name of one of SPITBOL's own functions
-    ;; ("248 attempted redefinition of system function"); 1 names one of the unused unary operators ! % / # = |, and 2 or more one of the unused binary operators
-    ;; & @ # % ~, else "156 OPSYN first arg is not correct operator name"; a null first argument is 155, a null second 154.
     OPSYN   (let [[new-arg old-arg n-arg] args
                   new-name (name-string new-arg)
                   old-name (name-string old-arg)
@@ -1235,10 +837,6 @@
                              (clojure.core/= "" old-name) (fail! 154 "OPSYN second arg is not natural variable name")
                              (or (nil? n) (zero? n))
                              (when (contains? SNOBOL4clojure.env/system-functions new-name) (fail! 248 "attempted redefinition of system function"))
-                             ;; an operator synonym may take any operator's name, the operators SPITBOL defines among them: SNOBOL4++, as CSNOBOL4 has it (Lon
-                             ;; 2026-11-17 18:1x CST, in the JVM window: "Since SPITBOL restricts OPSYN for optimization. But Clojure will not see any of that
-                             ;; optimization so let's do more of a SNOBOL4++"; MEASURED on CSNOBOL4 -b: OPSYN('+','ADD',2) and each of - * / ** ^ ! ? $ . | take,
-                             ;; then 1 + 2 calls ADD; sbl -bf answers 156 for each; corpus vanilla diff, OPSYN("+","ADD",2))
                              :else nil)
                   n        (when n (min n 2))
                   old-fn   (or (get @<FUNS> old-name)
@@ -1248,14 +846,9 @@
                                    (fn [a b] (INVOKE old-sym a b)))
                                  (fn [& a] (apply INVOKE old-sym (vec a)))))]
               (if (and n (pos? n))
-                ;; ^ and ! are SPITBOL's spellings of **, one operator (the emitter reads all three as **), so a synonym for one is a synonym for the three
                 (swap! <FUNS> assoc (opsyn-key (if (and (clojure.core/= 2 n) (#{"^" "!"} new-name)) "**" new-name) n) old-fn)
                 (swap! <FUNS> assoc new-name old-fn))
               ε)
-    ;; LOAD(prototype, library) loads an external function (manual ch. 19, LOAD). This engine loads no native code, so no external function exists for it, and a
-    ;; LOAD that names one is "142 load function does not exist", after the prototype's own checks, in sbl -bf's order (MEASURED, each statement alone: LOAD('')
-    ;; 138, LOAD('ZZZ') 139, LOAD('()') 140, LOAD('ZZZ(') 141; LOAD('ZZZ()'), LOAD('ZZZ()','xyzzy') and LOAD('ZZZ(A,B)INTEGER','/usr/lib/libc.so.6') 142). It was a
-    ;; stub that failed, so csnobol4_suite loaderr ran on to its next line where sbl -bf ends at 142.
     LOAD    (let [p  (sstr (nth args 0 ""))
                   lp (clojure.string/index-of p "(")
                   e  #(throw (ex-info (SNOBOL4clojure.env/error-message %) {:snobol/error %}))]
@@ -1264,10 +857,6 @@
                     (zero? (long lp))                                 (e 140)
                     (nil? (clojure.string/index-of p ")" lp))        (e 141)
                     :else                                             (e 142)))
-    ;; UNLOAD(name) "undefines the user-defined function name ... In SPITBOL, only user-defined functions can be UNLOADed" (manual ch. 19, UNLOAD). As sbl -bf
-    ;; has it: one of SPITBOL's own is "248 attempted redefinition of system function", the null string "201 UNLOAD argument is not natural variable name", and
-    ;; any other name succeeds with the null string, its function (if it has one) gone, so a call is "022 undefined function called"; a variable of the name
-    ;; keeps its value, and a function OPSYN made from it stays.
     UNLOAD  (let [nm (name-string (first args))]
               (cond
                 (clojure.core/= "" nm)                          (throw (ex-info "UNLOAD argument is not natural variable name" {:snobol/error 201}))
@@ -1278,22 +867,14 @@
     TABLE   (apply-builtin SNOBOL4clojure.env/TABLE args)
     ARRAY   (apply-builtin SNOBOL4clojure.env/ARRAY args)
     REMDR   (REMDR  (first args) (second args))
-    ;; TRACE / STOPTR register and remove traces in trace.clj.
     TRACE   (let [[nm ty lbl f] args] (trace! nm (or ty "VALUE") lbl f) ε)
     STOPTR  (let [[nm ty] args] (stoptr! nm (or ty "VALUE")) ε)
-    ;; "The COLLECT function forces a garbage collection ... If this amount of storage cannot be obtained, the COLLECT function fails. When successful, it returns the
-    ;; number of free words" (manual ch. 19, COLLECT): the JVM heap's limit in words of 8 bytes less the words the program's data occupies as SPITBOL lays it out
-    ;; (env/storage-words), DATATYPE INTEGER. The JVM heap's own use moves with the engine's work, so storage the program lets go of shows as freed only when it is
-    ;; counted this way (Gimpel timegc: the words two collections apart are not negative)
     COLLECT (do (System/gc)
                 (let [free (clojure.core/- (quot (.maxMemory (Runtime/getRuntime)) 8) (SNOBOL4clojure.env/storage-words))
                       want (SNOBOL4clojure.env/num (first args))]
                   (when-not (and (integer? want) (clojure.core/> want free)) free)))
     CLEAR     (SNOBOL4clojure.env/clear-vars! (first args))
     BACKSPACE (apply-builtin SNOBOL4clojure.env/BACKSPACE args)
-    ;; EJECT(channel) "sends an ASCII form-feed character (decimal 12) to the I/O channel specified, or to the listing file if channel is omitted" (manual ch. 19,
-    ;; EJECT). As sbl -bf writes it: a record of its own on an output channel; the form feed alone, with no line end, on the listing, standard output here; nothing
-    ;; on an input channel; a channel nothing opened is "093 EJECT file does not exist".
     EJECT     (let [u (first args)]
                 (if (or (nil? u) (clojure.core/= ε u))
                   (do (print "\f") (flush) ε)
@@ -1304,7 +885,6 @@
                       :else                                    ε))))
     SETEXIT (apply-builtin SETEXIT args)
     HOST    (apply HOST args)
-    ;; DUMP(i) writes a dump now: 1 the variables and keywords, 2 and 3 the elements and fields too; any other value writes nothing (manual ch. 19, DUMP)
     DUMP    (let [n (num (first args))] (when (and (integer? n) (clojure.core/<= 1 n 3)) (print (dump-text n))) ε)
     ATAN    (ATAN   (first args))
     CHOP    (CHOP   (first args))
@@ -1315,17 +895,12 @@
     SQRT    (SQRT   (first args))
     TAN     (TAN    (first args))
     INTEGER (integer-predicate (first args))
-    ;; SPITBOL has no function REAL (the data type is spelled in DATATYPE and CONVERT), and BAL and FAIL are pattern variables only: a call of one is "22 undefined
-    ;; function" (sbl -bf, and env/$$fn for the names core defines; a DATA field may be named REAL). ABORT(), ASCII, STRING and CONJ, which no
-    ;; SNOBOL4 before defined, are gone, as are the lower-case spellings of the built-ins: each is 22 as under sbl -bf (Lon, CEO-2027 and CEO-2028).
     SIZE    (SIZE   (first args))
     TRIM    (TRIM   (first args))
     DUPL    (DUPL   (first args) (second args))
     REVERSE (REVERSE (first args))
     ITEM      (apply ITEM args)
     PROTOTYPE (apply-builtin PROTOTYPE args)
-    ;; "String to expression: The string must represent a legal SPITBOL expression. The compiler is used to convert the string into its equivalent expression"; an integer
-    ;; or a real becomes "an EXPRESSION which when evaluated yields the original" value (manual ch. 17)
     CONVERT   (let [[x t] args]
                 (if (clojure.core/= "EXPRESSION" (clojure.string/upper-case (str t)))
                   (cond (deferred? x) x
@@ -1339,42 +914,25 @@
     RSORT     (apply-builtin RSORT args)
     DATA      (DATA      (first args))
     DATATYPE  (SNOBOL4clojure.env/DATATYPE (first args))
-    ;; String functions missing from original dispatch
     CHAR      (CHAR      (first args))
     ORD       (when (seq args) (ORD (first args)))
-    ;; "If i2 is omitted or zero, the remaining characters of the argument string are extracted" (manual ch. 19, SUBSTR)
     SUBSTR    (SUBSTR    (first args) (second args) (nth args 2 ""))
     DATE      (apply-builtin DATE args)
     TIME      (TIME)
-    ;; LPAD/RPAD with optional 3rd fill-char arg (functions.clj handles both arities)
-    LPAD      (LPAD (nth args 0 "") (nth args 1 "") (nth args 2 ""))   ; "If trailing arguments are omitted, SPITBOL will supply null strings" (manual ch. 4)
-    RPAD      (RPAD (nth args 0 "") (nth args 1 "") (nth args 2 ""))   ; "If trailing arguments are omitted, SPITBOL will supply null strings" (manual ch. 4)
-    ;; String comparisons (lexicographic) — were defined by primitive macro but missing here
+    LPAD      (LPAD (nth args 0 "") (nth args 1 "") (nth args 2 ""))
+    RPAD      (RPAD (nth args 0 "") (nth args 1 "") (nth args 2 ""))
     LEQ       (LEQ    (first args) (second args))
     LNE       (LNE    (first args) (second args))
     LLE       (LLE    (first args) (second args))
     LLT       (LLT    (first args) (second args))
     LGE       (LGE    (first args) (second args))
     LGT       (LGT    (first args) (second args))
-    ;; ARG(fname, n) — nth parameter name of function fname (1-based), as a NAME
-    ;; (CEO-1861: sbl -bf returns one; the manual's string is not followed)
-    ;; ARG and LOCAL of a name that is no function a DEFINE made are "063 arg first argument is not program function name" and "135 local first arg is not a
-    ;; program function name"; a second argument that is no integer, and converts to none, is 062 and 134; an integer out of range fails (MEASURED on sbl -bf:
-    ;; ARG('FIB',1), ARG('SIZE',1) and ARG('',1) are 063, LOCAL('FIB',1) 135, ARG('F','x') 062, LOCAL('F','x') 134; ARG('F','2') and ARG('F',2.5) are B;
-    ;; ARG('F',0) and ARG('F',-1) fail; corpus mikebeer_snobol tests/features, ARG('FIB',1), where this engine failed silently)
     ARG       (arg-or-local args :params 63 "ARG first argument is not program function name" 62 "ARG second argument is not integer")
-    ;; LOCAL(fname, n) — nth local variable name of function fname (1-based), as a NAME
     LOCAL     (arg-or-local args :locals 135 "LOCAL first arg is not a program function name" 134 "LOCAL second argument is not integer")
-    ;; ── Named I/O channel registration ───────────────────────────────────────
-    ;; INPUT(name, channel, file) and OUTPUT(name, channel, file) (manual ch. 19, INPUT): what the channel and the file argument name is functions/association.
-    ;; sbl -bf reads three arguments; a fourth, CSNOBOL4's and Catspaw's file name (INPUT(.V, unit, len, 'file')), is not read.
     INPUT     (let [[name-arg unit filename] args]
                 (open-input-channel! (channel-variable name-arg) unit filename))
     OUTPUT    (let [[name-arg unit filename] args]
                 (open-output-channel! (channel-variable name-arg) unit filename))
-    ;; ENDFILE(unit) closes the file on unit (manual ch. 19, ENDFILE): a null argument is "097 endfile argument is null", a unit no INPUT or OUTPUT holds open
-    ;; "098 endfile file does not exist" (MEASURED on sbl -bf: ENDFILE(), ENDFILE(7) never opened, and a second ENDFILE(3) after one closed it; corpus
-    ;; rosetta-snobol4 create-a-file, whose ENDFILE(1) follows an OUTPUT that could not open /output.txt, where this engine ran on)
     ENDFILE   (let [u (first args)]
                 (cond (or (nil? u) (clojure.core/= "" u))           (throw (ex-info (SNOBOL4clojure.env/error-message 97) {:snobol/error 97}))
                       (nil? (get @<CHANNELS> (channel-key u)))       (throw (ex-info (SNOBOL4clojure.env/error-message 98) {:snobol/error 98}))
@@ -1384,98 +942,55 @@
                           (symbol? v) v
                           (instance? SNOBOL4clojure.env.NAME v) (symbol (str (.n ^SNOBOL4clojure.env.NAME v)))
                           :else (symbol (str v)))]
-                ;; "it is possible to remove the I/O association between a variable and a channel, without closing or disturbing the channel or file in any way"
-                ;; (manual ch. 8, DETACH): the variable's key goes and the unit stays open (MEASURED on sbl -bf: OUTPUT(.X,10,'f'); DETACH(.X); ENDFILE(10) runs
-                ;; on, and OUTPUT(.Z,10) after the DETACH writes to f; corpus gimpel asm_driver, whose asm.spt does REWIND(10), DETACH(.DISK), ENDFILE(10), where
-                ;; this engine closed the unit at the DETACH and the ENDFILE was 098)
                 (do (swap! <CHANNELS> dissoc sym) ε))
     REWIND    (rewind-channel! (first args))
     EXIT      (apply-builtin SNOBOL4clojure.env/EXIT args)
-    ;; CODE(src) — compile and execute a SNOBOL4 source fragment in the current env.
-    ;; Returns nil on success; :F branch taken on compile/runtime error.
-    ;; Uses resolve to avoid circular dependency (runtime → operators → compiler).
-    ;; Sprint 25F.
     CODE      (let [src       (str (first args))
                     compile-f (ns-resolve 'SNOBOL4clojure.compiler 'CODE-block)]
                 (when-not compile-f
                   (throw (ex-info "CODE: compiler not loaded"
                                   {:snobol/signal :error})))
-                ;; Compile src and load statements into the running label/code tables.
-                ;; Returns the entry-point label string (success) or nil (failure).
-                ;; Does NOT execute — caller uses a computed goto to invoke it.
                 (let [entry (try (compile-f src) (catch Exception e (throw (ex-info (.getMessage e) {:snobol/signal :error}))))]
                     (if (map? entry)
-                      ;; under &ERRLIMIT with a SETEXIT label armed, the compile error is raised as an error is and the label takes it (MEASURED on sbl -bf:
-                      ;; &ERRLIMIT = 10, SETEXIT('h'), CODE(' X = 1 :') goes to h with &ERRTYPE 219, and :(CONTINUE) fails the CODE statement, &ERRLIMIT 9;
-                      ;; 226 and 227 alike; at &ERRLIMIT 0, or with no label armed, CODE fails with &ERRTYPE set; corpus gate_cases_snobol4
-                      ;; a_goto_field_takes_a_blank_before_its_paren_and_refuses_an_empty_field__ce)
                       (if (and (pos? (long @SNOBOL4clojure.env/&ERRLIMIT)) @SNOBOL4clojure.env/<SETEXIT>)
                         (do (compiled! false) (throw (ex-info (SNOBOL4clojure.env/error-message (:error entry)) {:snobol/error (:error entry)})))
                         (compile-failed! (:error entry) (SNOBOL4clojure.env/error-message (:error entry))))
                       (when (some? entry) (compiled! true) (SNOBOL4clojure.env/->CodeBlock entry)))))
-            (let [raw-f (if (symbol? op) ($$fn op) op)   ; op is the container itself when it came from a subscript
-                  ;; NAME indirect reference — dereference to actual array/table
+            (let [raw-f (if (symbol? op) ($$fn op) op)
                   f (if (instance? NAME raw-f)
                       ($$ (symbol (str (.n raw-f))))
                       raw-f)
-                  ;; When f is not callable (e.g. result-slot cleared to ε during
-                  ;; recursive execution), fall back to the functions registry.
                   f (if (fn? f) f
                       (get @<FUNS> (str op) f))]
               (cond
-                (table? f) (table-get f (SNOBOL4clojure.env/table-subscript args))   ; TABLE subscript read
-                (array? f) (array-get f (vec args))     ; ARRAY subscript read
+                (table? f) (table-get f (SNOBOL4clojure.env/table-subscript args))
+                (array? f) (array-get f (vec args))
                 (fn? f)    (apply-builtin f args)
-                ;; Nothing callable by this name: ERROR 022, as SPITBOL raises it.
-                ;; The IR spells a call F(x) and a subscript A<x> alike, so a
-                ;; subscripted non-array reads 022 here where SPITBOL says 235.
                 :else      (throw (ex-info "undefined function called"
                                            {:snobol/error 22 :function op})))))))
-
-;; ── APPLY ─────────────────────────────────────────────────────────────────────
-;; APPLY's first argument names a natural variable, the function of that name (sbl.min s_apy, gtnvr): a string, a number or the name of a variable; the null
-;; string, an array, a pattern or the name of an element is "060 apply first arg is not natural variable name" (sbl -bf: APPLY(Y, 1) of an unset Y is 60,
-;; APPLY('NOSUCH', 1) and APPLY(5) are 22, APPLY(.SIZE, 'abc') is 3).
 (defn- applied-function [fname]
   (let [s (SNOBOL4clojure.env/gtstg fname 60)]
     (when (clojure.core/= "" s) (throw (ex-info (SNOBOL4clojure.env/error-message 60) {:snobol/error 60})))
     (symbol s)))
-
 (defn APPLY
   "APPLY(fname, arg1, ...) — call the function fname names as a call written in the program calls it: through INVOKE, built-ins included."
   [fname & fargs]
   (apply INVOKE (applied-function fname) fargs))
-
-;; ── EVAL! / EVAL ─────────────────────────────────────────────────────────────
-;; Unary operators SPITBOL leaves unused, each with the name OPSYN files it
-;; under. The emitter spells unary # as sharp-op.
 (def ^:private unused-unary-ops
   {'! "!", '% "%", '/ "/", 'sharp-op "#", '= "=", '| "|", (symbol "^") "^"})
-
-;; "The following binary operations are undefined and are available for user definition using OPSYN(): & @ # % ~" (manual ch. 15, Binary Operators), each with
-;; the name OPSYN files it under; the emitter spells them &, at-op, sharp-op, % and tilde-op.
 (def ^:private unused-binary-ops
   {'& "&", 'at-op "@", 'sharp-op "#", '% "%", 'tilde-op "~"})
-
-;; What $v refers to: the element a NAME of an element names, as its subscript
-;; form (A k ...) with k already evaluated, or else the variable v names.
 (defn- indirect-target [v]
   (cond
     (and (instance? NAME v) (list? (.n ^NAME v))) (.n ^NAME v)
     (and (instance? NAME v) (instance? SNOBOL4clojure.env.ExprVar (.n ^NAME v))) (.n ^NAME v)
     (instance? NAME v)                             (symbol (name-string v))
-    ;; "The indirect reference operator ($) converts a string to a variable name" (manual ch. 15); a number converts by its string (ch. 17, Integer to name);
-    ;; "The null string cannot be converted to a name" (ch. 17), and an object is no name: "239 Indirection operand is not name" (Appendix D)
     (or (and (string? v) (not= "" v)) (number? v)) (symbol (sstr v))
     :else (throw (ex-info "indirection operand is not name" {:snobol/error 239}))))
-
-;; The pattern the variable FENCE and the keyword &FENCE hold: one object, so IDENT(&FENCE, FENCE) succeeds as it does for the other six (sbl -bf)
 (def ^:private bare-fence (FENCE))
-
 (def ^:private pattern-keywords
   {"ABORT" (fn [] ABORT) "ARB" (fn [] SNOBOL4clojure.env/ARB) "BAL" (fn [] BAL) "FAIL" (fn [] FAIL) "FENCE" (fn [] bare-fence)
    "REM" (fn [] SNOBOL4clojure.env/REM) "SUCCEED" (fn [] SNOBOL4clojure.env/SUCCEED)})
-
 (defn- eval-operands
   "Evaluate the operands left to right. The first one that fails (nil) fails the
    whole expression, and the operands after it are not evaluated, so a call among
@@ -1486,56 +1001,31 @@
       (let [v (EVAL! (first ops))]
         (when-not (nil? v) (recur (next ops) (conj vals v))))
       vals)))
-
-;; A call that returned a name (NRETURN) is a NameResult. Used as a value it is the value of the variable or element it names; used as the target of an assignment
-;; or a capture it is that variable or element.
-;; A keyword's name, (& K), is the keyword's value (MEASURED on sbl -bf: K() of K = .&MAXLNGTH :(NRETURN) reads 16777216; corpus gate_cases_snobol4
-;; an_nreturn_fix_up_is_emitted_by_the_box_and_agrees_with_sbl_in_a_value_and_a_name_context__n, where this engine called & as a function, 022).
 (defn- name-value [target]
   (cond (symbol? target)                                                           ($$ target)
         (and (list? target) (equal (first target) '&) (clojure.core/= 2 (count target))) (EVAL! target)
         :else (apply INVOKE (or (:container (meta target)) (first target)) (rest target))))
-
 (defn- deref-result [r]
   (if (instance? SNOBOL4clojure.env.NameResult r) (name-value (:target r)) r))
-
 (defn- call-form?
   "True for a form F(args) that calls a function the program DEFINEd (and not a subscript of a table or an array of that name)."
   [X]
   (and (list? X) (symbol? (first X)) (contains? @<FUNS> (name (first X)))
-       (not (:data (meta (get @<FUNS> (name (first X))))))   ; a DATA constructor or field is not a DEFINEd function
+       (not (:data (meta (get @<FUNS> (name (first X))))))
        (let [v (reference (first X))] (not (or (table? v) (array? v))))))
-
 (defn- name-of-call
   "Call the DEFINEd function of the form F(args) and return the name it returned (a NameResult), or nil."
   [X]
   (when-some [args (eval-operands (rest X))]
     (let [r (apply INVOKE (first X) args)]
       (when (instance? SNOBOL4clojure.env.NameResult r) r))))
-
-;; The target of . $ and @ says where the matcher puts a value, as a function of the value. A plain variable is assigned as a statement assigns it. An element
-;; T<I> takes its subscripts now, a variable named by a string ($V) takes its name now, and a deferred expression (*T<I>) takes its subscripts when the assignment
-;; is made, so a loop that moves I fills a different element each time.
 (defn- assign-to [target v] (INVOKE '= target v))
-
-;; and a container that is itself an expression, ($V)[S], is evaluated with them, to the table or array it gives (MEASURED on sbl -bf: 'xyz' REM . ($VARS_)[S], VARS_ =
-;; .V and S = 'VAR', sets V['VAR'] to xyz; corpus snolib ROUTING.tst, whose ROUTING builds REM . ($VARS_)[S], where this engine failed the match)
 (defn- element-target [N]
   (when-some [c (if (seq? (first N)) (EVAL! (first N)) (first N))]
     (when-some [ks (eval-operands (rest N))] (with-meta (apply list c ks) (meta N)))))
-
-;; The operators whose result is a value and never a name: an expression made with one of them cannot be the target of an assignment.
 (def ^:private value-operators '#{= ?= ? | at-op + - sharp-op / * % ** ^ ! . tilde-op & SEQ})
-
 (declare compile-or-fail evaluated-or-fail)
-
 (defn- returned-value! [] (throw (ex-info "expression evaluated by name returned value" {:snobol/error 249})))
-
-;; A function called by name, F(args) where a name is wanted (.F(args), APPLY by name), gives the name its call names: a field of a DATA type is that field, ITEM
-;; the element, APPLY its function called by name, EVAL its expression evaluated by name (sbl.min s_evl: "evaluate expression by name"); any other function
-;; is called, and fails if it fails, or gives the name it returned by NRETURN, or gives a value, "021 function called by name returned a value" (sbl -bf:
-;; .SIZE('abc'), .CONVERT(X, 'STRING'), .NODE(1, 2) of a DATA type NODE and .APPLY('G') of a G that returns are 21; .ITEM(A, 1) and .APPLY('LEFT', P) are names).
-;; The target named (a symbol, an element or a field), or nil when the call fails.
 (defn- call-by-name [fsym args]
   (let [fname (name fsym) f (get @<FUNS> fname)]
     (cond
@@ -1546,7 +1036,6 @@
       (and (nil? f) (clojure.core/= fname "EVAL"))
       (let [x (first args)]
         (cond
-          ;; a variable deferred, *X, is X; any other expression was compiled to give a value (sbl -bf: .EVAL(*X) is .X, .EVAL(*$'X') is 249)
           (deferred? x)  (if (symbol? (:defer-var (meta x))) (:defer-var (meta x)) (when-not (nil? (evaluated-or-fail (second x))) (returned-value!)))
           (string? x)    (do (when (ends-in-mark? x) (throw (ex-info "eval argument is not expression" {:snobol/error 103})))
                              (let [ir (compile-or-fail x)] (when-not (nil? ir) (evaluated-or-fail #(name-of ir)))))
@@ -1556,11 +1045,6 @@
         (cond (nil? r)                                      nil
               (instance? SNOBOL4clojure.env.NameResult r) (:target r)
               :else (throw (ex-info "function called by name returned a value" {:snobol/error 21})))))))
-
-;; The name an expression gives evaluated by name, as sbl.min compiles one in a name position (the target of a capture *E, the name of an expression .*E, EVAL
-;; by name): a variable; the variable $V names; a keyword; an element, its subscripts taken now; the name a function called by name gives (call-by-name). Any
-;; other expression gives a value, "249 expression evaluated by name returned value" (sbl -bf: 'abc' ? LEN(1) . *(X Y) is 249, . *LEN(1) is 21, and
-;; 'xyz' LEN(1) . *(K = K + 1) assigns K before it is 249). nil when the evaluation fails.
 (defn- name-of [X]
   (cond
     (symbol? X)                                                          X
@@ -1573,30 +1057,22 @@
         (element-target X)
         (when-some [args (eval-operands (rest X))] (call-by-name (first X) args))))
     :else (when-not (nil? (EVAL! X)) (returned-value!))))
-
 (defn- capture-target [N]
   (cond
-    ;; A plain variable is assigned as a statement assigns it: OUTPUT writes the line, an output channel its record, a traced variable fires its trace.
     (symbol? N)
     (fn [x] (assign-to N x))
     (and (list? N) (equal (first N) '$) (clojure.core/= 2 (count N)))
     (when-some [v (EVAL! (second N))]
       (let [t (indirect-target v)] (fn [x] (assign-to t x))))
-    ;; a keyword takes the value as an assignment to it does, through integer conversion (sbl -bf: '12345' LEN(3) $ &STLIMIT sets &STLIMIT to 123)
     (and (list? N) (equal (first N) '&) (clojure.core/= 2 (count N)))
     (fn [x] (assign-to N x))
-    ;; *X is evaluated by name when the assignment is made (name-of), so a loop that moves I fills a different element of *T<I> each time
     (and (list? N) (equal (first N) '*) (clojure.core/= 2 (count N)))
     (let [X (second N)]
       (fn [x] (when-some [t (name-of X)] (assign-to t x))))
-    ;; F(args) is called by name as the pattern is built (call-by-name): a function the program defined gives the name it returns by NRETURN, ITEM its element,
-    ;; a field the field, EVAL its expression's name, and any other value is "021 function called by name returned a value" (sbl -bf: LEN(1) . S(), S returning
-    ;; .G by NRETURN, assigns G; LEN(1) . BREAK('a'), LEN(1) $ SIZE('a') and @SIZE('a') are 21 as the pattern is built)
     (and (list? N) (symbol? (first N)) (not (:subscript (meta N))) (not (contains? value-operators (first N)))
          (let [v (reference (first N))] (not (or (table? v) (array? v)))))
     (when-some [args (eval-operands (rest N))]
       (when-some [t (call-by-name (first N) args)] (fn [x] (assign-to t x))))
-    ;; an element takes its subscripts now, and one out of bounds fails the statement, as a reference to it does (sbl -bf: 'y' . A[7] of ARRAY(3))
     (list? N)
     (let [t (element-target N)
           c (when (symbol? (first t)) ($$ (first t)))]
@@ -1604,15 +1080,6 @@
         (fn [x] (assign-to t x))))
     true
     N))
-
-;; An execution error goes to a failure point (sbl.min, error section). With &ERRLIMIT above 0 one of it is spent and the error is recorded in &ERRTYPE and
-;; &ERRTEXT; the label SETEXIT armed takes control, or else the innermost failure point fails: a negation's operand, so the negation succeeds, a selection's
-;; alternative, so the next is tried, the expression EVAL evaluates, so EVAL fails, or the statement. With &ERRLIMIT at 0 the error is fatal, except while EVAL
-;; evaluates an expression or a match is in progress: then the failure point fails and nothing is spent. While EVAL evaluates, the failure point is the one EVAL
-;; was called in, so EVAL fails as a whole, unless a function's body is as deep as that or deeper (sbl -bf: (EVAL('1 / N'), 'f') is f, EVAL('~(1 / N)') fails,
-;; and in a function's statement T = EVAL('~(1 / N)') gives the null string).
-;; e, an error a failure point at depth d catches first: e marked :snobol/to, the depth of the failure point that fails, or :snobol/label, the label it goes to,
-;; with :snobol/fp d and :snobol/resume, the depth a CONTINUE fails (sbl.min err07 keeps it, stxof, for either), or e itself when it is fatal or no error.
 (defn error-decided [^clojure.lang.ExceptionInfo e d]
   (let [{n :snobol/error abort :snobol/abort :as data} (ex-data e)]
     (if (or (nil? n) abort (contains? data :snobol/to) (contains? data :snobol/label))
@@ -1633,17 +1100,6 @@
             (reset! SNOBOL4clojure.env/&ERRTEXT (ex-message e))
             (when h (reset! SNOBOL4clojure.env/<SETEXIT> nil))
             (ex-info (ex-message e) (if h (assoc data :snobol/label h :snobol/serial k :snobol/fp d :snobol/resume to) (assoc data :snobol/to to)) e)))))))
-
-;; The handler of an error raised in a failure point inside a statement (a negation's operand, a selection's alternative but its last, the expression EVAL
-;; evaluates) runs at the error, on top of the statement, as SPITBOL runs the first trap statement where the error is and resumes at its failure offset with
-;; the stack reset to it (sbl.min err07, lcnt2). The handler goes on through its own gotos; CONTINUE fails the failure point the error fails with no handler
-;; armed: a negation's operand, so the negation succeeds, a selection's alternative, so the next is tried, an evaluation, so EVAL fails (sbl -bf: Y = ~$H(),
-;; $H() error 239, is the null string after the handler's CONTINUE, and after the handler goes to another statement of its own and continues there). Any other
-;; way the handler leaves goes on up (runtime.clj RUN-AT-ERROR). An error decided in a statement, or past 100 handlers running one inside another, goes on up
-;; to the statement, whose failure exit a CONTINUE takes, and the handlers below, which a later error has given up, unwind: a handler that goes back to its
-;; statement and never continues holds no more than 100 statements' frames (each about 3 KB; the main thread's 1 MB stack overflowed past 300 under lein).
-;; sbl -bf continues at the innermost failure point at any depth, so a handler that continues at the 101st error in a row diverges.
-;; e, an error the failure point at depth d caught: e marked :snobol/to after the handler continued, or e itself.
 (defn- at-error [^clojure.lang.ExceptionInfo e d]
   (let [{h :snobol/label k :snobol/serial fp :snobol/fp to :snobol/resume :as data} (ex-data e)]
     (if (and h (clojure.core/= d fp) (< (long SNOBOL4clojure.env/*handlers*) 100))
@@ -1651,8 +1107,6 @@
             ((var-get (ns-resolve 'SNOBOL4clojure.runtime 'RUN-AT-ERROR)) h k e))
           (ex-info (ex-message e) (-> data (dissoc :snobol/label :snobol/serial :snobol/fp :snobol/resume) (assoc :snobol/to to)) e))
       e)))
-
-;; f evaluated one failure point deeper: nil, failure, when an error in it fails this failure point
 (defn- failure-point [f]
   (let [d (inc (long SNOBOL4clojure.env/*fp*))]
     (binding [SNOBOL4clojure.env/*fp* d]
@@ -1660,7 +1114,6 @@
            (catch clojure.lang.ExceptionInfo e
              (let [e (at-error (error-decided e d) d) to (:snobol/to (ex-data e))]
                (if (and to (>= (long to) d)) nil (throw e))))))))
-
 (defn EVAL! [E]
   (when E
     (cond
@@ -1669,25 +1122,17 @@
       (float? E)   E
       (string? E)  E
       (integer? E) E
-      ;; a reference to a variable fires its ACCESS trace (trace.clj); a bare FENCE is the pattern, not the function that builds one
       (symbol? E)  (let [v ($$ E)] (when (pos? (long @SNOBOL4clojure.env/&TRACE)) (fire-access! E v)) (if (identical? v FENCE) bare-fence v))
-      ;; the name of an expression is read as the expression's value (sbl.min acess: "here for expression variable, evaluate variable")
       (instance? SNOBOL4clojure.env.ExprVar E) (EVAL! (.ir ^SNOBOL4clojure.env.ExprVar E))
-      ;; (e1, e2, ...): the value of the first expression that succeeds, the later ones not evaluated; failure if none does. Each alternative but the last is a
-      ;; failure point; the last is evaluated in the selection's own (sbl.min o_sld: "pop failure offset ... restore old failure pointer")
       (and (vector? E) (clojure.core/= :comma (first E)))
       (loop [[a & more] (rest E)] (if more (if-some [v (failure-point #(EVAL! a))] v (recur more)) (EVAL! a)))
       (vector? E)  (let [evaled (eval-operands E)]
-                    ;; nil in any SEQ element = sub-expression failed → whole SEQ fails
                     (when evaled
                       (concat-value (apply list 'SEQ evaled))))
       (list? E)
       (let [[op & parms] E]
         (cond
-          ;; a pattern variable an expression of constants reads: the pattern itself, as SPITBOL's compiler takes it (compiler.clj freeze)
           (equal op 'pattern-constant) (let [v (SNOBOL4clojure.env/primitive-pattern (first parms))] (if (identical? v FENCE) bare-fence v))
-          ;; A<k> or A[k]: an element of the table or array the name holds; a name that holds neither is "235 Subscripted operand is not table or array" (manual,
-          ;; Appendix D), whatever function has that name
           (:subscript (meta E))
           (let [c (if (symbol? op) ($$ op) (EVAL! op))
                 c (if (instance? NAME c) ($$ (symbol (str (.n ^NAME c)))) c)]
@@ -1695,7 +1140,6 @@
               (cond (table? c) (table-get c (SNOBOL4clojure.env/table-subscript ks))
                     (array? c) (array-get c (vec ks))
                     :else (throw (ex-info "subscripted operand is not table or array" {:snobol/error 235})))))
-          ;; The unused unary and binary operators are ERROR 029 until OPSYN defines one.
           (or (and (clojure.core/= 1 (count parms))
                    (contains? unused-unary-ops op)
                    (nil? (get @<FUNS> (opsyn-key (unused-unary-ops op) 1))))
@@ -1703,11 +1147,8 @@
                    (contains? unused-binary-ops op)
                    (nil? (get @<FUNS> (opsyn-key (unused-binary-ops op) 2)))))
           (throw (ex-info "undefined operator referenced" {:snobol/error 29}))
-          ;; Unary ?X — interrogation: the null string if X succeeds, failure if not
           (and (equal op '?) (clojure.core/= 1 (count parms)) (nil? (get @<FUNS> (opsyn-key "?" 1))))
           (when-not (nil? (EVAL! (first parms))) ε)
-          ;; binary . and $ and unary * and ? redefined by OPSYN (SNOBOL4++, above at OPSYN) call their synonym with the operands evaluated, as any other
-          ;; operator does (MEASURED on CSNOBOL4 -b: OPSYN('*','NEG',1) then *3 is neg(3))
           (and (or (and (clojure.core/= 2 (count parms)) (or (equal op '.) (equal op '$)))
                    (and (clojure.core/= 1 (count parms)) (or (equal op '*) (equal op '?))))
                (get @<FUNS> (opsyn-key (str op) (count parms))))
@@ -1715,30 +1156,18 @@
           (equal op '.)
           (let [n (count parms)]
             (if (clojure.core/= n 1)
-              ;; Unary .VAR — NAME reference (indirect). Return a NAME wrapping the symbol.
-              ;; Do NOT evaluate the arg — we want the symbol itself, not its current value.
-              ;; The name of an element, .A<k>, is that element of the table or array A holds now, its subscripts taken now: the table or array rides on the
-              ;; name as its :container, so a function that returns it by NRETURN gives the element even after its own A is restored (sbl -bf), while the
-              ;; name still reads .A<k>; a field F(x) keeps its function's name.
-              ;; A subscript or argument that fails fails the name (sbl -bf: .A<DIFFER(1, 1)> fails).
               (let [x (first parms)]
                 (cond
-                  ;; .F(args), F a function the program defined, calls F now and is the name F returns by NRETURN; failing, it fails, and a value is "021
-                  ;; function called by name returned a value" (sbl -bf: N = .FLD(P, 2) calls FLD once, and $N = 'changed' sets the field it names)
                   (call-form? x)
                   (when-some [args (eval-operands (rest x))]
                     (let [r (apply INVOKE (first x) args)]
                       (cond (instance? SNOBOL4clojure.env.NameResult r) (NAME. (:target r))
                             (nil? r)                                    nil
                             :else (throw (ex-info "function called by name returned a value" {:snobol/error 21})))))
-                  ;; .&K is the name of the keyword K, which $ reads and assigns (sbl -bf: K = .&ANCHOR; $K = 1 sets &ANCHOR)
                   (and (list? x) (equal (first x) '&) (clojure.core/= 2 (count x)))
                   (NAME. x)
-                  ;; .$X is the name of the variable or element X names (sbl -bf: IDENT(.$M, .VB) when M is 'VB')
                   (and (list? x) (equal (first x) '$) (clojure.core/= 2 (count x)))
                   (when-some [v (EVAL! (second x))] (NAME. (indirect-target v)))
-                  ;; .*E is the name of an expression: .X when E is the variable X ("a variable which is of the form *var is equivalent to var"), else a
-                  ;; pseudo-variable, a new one each time (sbl.min o_lex, evblk; sbl -bf: $N of N = .*A[I] reads A[I] with I as it is then)
                   (and (list? x) (equal (first x) '*) (clojure.core/= 2 (count x)))
                   (let [E (second x)] (NAME. (if (symbol? E) E (SNOBOL4clojure.env/->ExprVar E))))
                   (and (list? x) (>= (count x) 2))
@@ -1747,33 +1176,25 @@
                       (if (or (table? v) (array? v) (:subscript (meta x)) (not (symbol? (first x))))
                         (NAME. (cond-> (apply list (first x) ks)
                                  (or (table? v) (array? v)) (with-meta {:container v})))
-                        ;; any other function is called by name: APPLY(F, args) is the call F(args), so .APPLY('LEFT', N) is the field LEFT(N) (sbl -bf)
                         (when-some [t (call-by-name (first x) ks)] (NAME. t)))))
                   :else (NAME. x)))
-              ;; Binary P . V — CAPTURE-COND (conditional assignment on match success).
               (let [[P N] parms] (when-some [p (EVAL! P)] (when-some [t (capture-target N)] (INVOKE '. p t))))))
-          ;; Unary @V — cursor assignment. The matcher assigns the cursor to V by
-          ;; name, so the operand is passed as written and not read as a value.
           (and (equal op 'at-op) (clojure.core/= 1 (count parms)))
           (when-some [t (capture-target (first parms))] (list 'CURSOR-IMM! t))
           (equal op '$)     (if (clojure.core/= 1 (count parms))
-                              ;; Unary $X — the variable X's value names (a string or a NAME)
                               (when-some [v (EVAL! (first parms))]
                                 (EVAL! (indirect-target v)))
                               (let [[P N] parms] (when-some [p (EVAL! P)] (when-some [t (capture-target N)] (INVOKE '$ p t)))))
-          ;; $X = V — assign the variable X's value names
           (and (equal op '=) (list? (first parms)) (clojure.core/= 2 (count (first parms)))
                (equal (first (first parms)) '$))
           (let [[[_ X] R] parms]
             (when-some [v (EVAL! X)]
               (INVOKE '= (indirect-target v) (EVAL! R))))
-          ;; ITEM(container, key...) = v: the element, as container<key...> = v
           (and (equal op '=) (list? (first parms)) (equal (first (first parms)) 'ITEM) (clojure.core/<= 3 (count (first parms))))
           (let [[_ container-expr & key-exprs] (first parms)]
             (when-some [c (EVAL! container-expr)]
               (when-some [ks (eval-operands key-exprs)]
                 (when-some [v (EVAL! (second parms))] (INVOKE '= (apply list c ks) v)))))
-          ;; APPLY(F, args) = v is F(args) = v (sbl -bf: APPLY('RIGHT', N) = 'r2' assigns the field)
           (and (equal op '=) (list? (first parms)) (equal (first (first parms)) 'APPLY) (clojure.core/<= 2 (count (first parms))))
           (when-some [[f & as] (eval-operands (rest (first parms)))]
             (let [fsym (symbol (SNOBOL4clojure.env/name-string f))
@@ -1782,9 +1203,6 @@
                 (let [r (apply INVOKE fsym as)]
                   (when (instance? SNOBOL4clojure.env.NameResult r) (when-some [v (EVAL! (second parms))] (INVOKE '= (:target r) v))))
                 (when-some [v (EVAL! (second parms))] (INVOKE '= (apply list fsym as) v)))))
-          ;; %X = v, an operator OPSYN defined as a function that returns a name: the value goes to the name it returns, as for F(args) = v below (sbl -bf, MEASURED:
-          ;; with F(A) ending F = .Q :(NRETURN) and OPSYN('%','F',1), %X = 'v' calls F with X's value and sets Q to 'v'; this engine read (% X) as a subscript
-          ;; of a container named %, ERROR 235, so corpus snoflake_suite stack-opsyn, Griswold's PUSH and TOP stack, stopped at its first push)
           (and (equal op '=) (list? (first parms))
                (or (and (clojure.core/= 2 (count (first parms))) (contains? unused-unary-ops (first (first parms)))
                         (get @<FUNS> (opsyn-key (unused-unary-ops (first (first parms))) 1)))
@@ -1795,105 +1213,59 @@
             (when-some [args (eval-operands (rest N))]
               (let [r (apply f args)]
                 (when (instance? SNOBOL4clojure.env.NameResult r) (when-some [v (EVAL! (second parms))] (INVOKE '= (:target r) v))))))
-          ;; F(args) = v, F a function that returns a name: the value goes to the name it returns
           (and (equal op '=) (call-form? (first parms)))
           (when-some [r (name-of-call (first parms))]
             (when-some [v (EVAL! (second parms))] (INVOKE '= (:target r) v)))
           (equal op '=)     (let [[N R]   parms
-                                  ;; If N is a subscript call (container key...),
-                                  ;; evaluate the keys — EXCEPT for PDD field setters
-                                  ;; where the first key must remain a symbol so
-                                  ;; snobol-set! can rebind the instance variable.
                                   N' (if (and (list? N) (>= (count N) 2)
                                               (not (clojure.core/= (first N) '&)))
                                        (let [container-sym (first N)
-                                             ;; a subscript on a subscript: the container is whatever the inner one names
                                              container-val (if (list? container-sym) (EVAL! container-sym) ($$ container-sym))]
                                          (cond
                                            (nil? container-val) nil
-                                           ;; TABLE/ARRAY: evaluate keys, left to right, and a key that fails fails the statement, nothing stored (manual ch. 8: a failure
-                                           ;; anywhere in the statement's subject fails the statement; sbl -bf: T[K] = 0 :F(DONE) over a K input from a two-line file takes
-                                           ;; :F at the third read, where this engine stored T[nil] and looped, as spitbol_x64_tests demos/keyword's KEYTABLE[KEYS] = 0 did)
-                                           ;; the form keeps its :subscript mark, which tells A[k] from F(k)
                                            :else (when-some [ks (eval-operands (rest N))]
                                                    (with-meta (apply list (if (list? container-sym) container-val container-sym) ks) (meta N)))))
                                        N)]
-                              ;; the subject is evaluated before the replacement: an element out of bounds fails the statement and the replacement is never
-                              ;; evaluated (sbl -bf: A[3] = F() on a two-element array does not call F)
-                              ;; (F(x) with parentheses is a field of a DATA type F, whatever a variable F holds)
                               (let [c      (when (list? N') (if (symbol? (first N')) ($$ (first N')) (first N')))
                                     field? (and (list? N') (symbol? (first N')) (not (:subscript (meta N'))) (:data (meta (get @<FUNS> (name (first N'))))))]
                                 (when (and N' (not (and (array? c) (not field?) (not (SNOBOL4clojure.env/array-in-bounds? c (vec (rest N')))))))
-                                  ;; a direct store into a pattern variable is 042 once the value is in hand (vrsto, b_vre; env/protected-variables)
                                   (let [r (EVAL! R)]
                                     (when (and (some? r) (symbol? N') (SNOBOL4clojure.env/protected-variables N')) (SNOBOL4clojure.env/protected-store! N' r))
                                     (INVOKE '= N' r)))))
-          ;; "Replacement occurs only if evaluation of the subject, pattern, and replacement succeeded" (manual ch. 14): a pattern that fails to evaluate fails the statement
-          ;; an element or field subject takes its subscripts before the pattern is evaluated and matched (sbl -bf: A<I> BUMP() = 'W' fills A<2> when BUMP
-          ;; moves I from 2)
           (equal op '?=)    (let [[N P R] parms
                                   N' (cond
-                                       ;; $N: the variable or element N names
                                        (and (list? N) (equal (first N) '$) (clojure.core/= 2 (count N)))
                                        (when-some [v (EVAL! (second N))] (indirect-target v))
                                        (and (list? N) (not (equal (first N) '&)))
                                        (when-some [ks (eval-operands (rest N))] (with-meta (apply list (first N) ks) (meta N)))
                                        :else N)]
                               (when N' (when-some [p (EVAL! P)] (INVOKE '?= N' p R))))
-          ;; the protected keywords &ABORT, &ARB, &BAL, &FAIL, &FENCE, &REM and &SUCCEED hold "the primitive pattern" of their name (manual ch. 16)
           (and (equal op '&) (clojure.core/= 1 (count parms)) (pattern-keywords (str (first parms))))
           ((pattern-keywords (str (first parms))))
-          ;; unary &K is the keyword K; binary & is an operator OPSYN may define (above, and the dispatch below)
           (and (equal op '&) (clojure.core/= 1 (count parms)))
-                            ;; the keywords are defs in env.clj, the manual's 37 (ch. 16); any other name is "251 keyword operand is not name of defined keyword"
                             (let [[N]     parms
                                   kw-sym  (symbol (str "&" N))
                                   vr      (ns-resolve (find-ns 'SNOBOL4clojure.env) kw-sym)
                                   v       (if vr (var-get vr) (throw (ex-info "keyword operand is not name of defined keyword" {:snobol/error 251})))]
                               (if (instance? clojure.lang.IDeref v) @v v))
-          ;; the engine's own forms, unless the program defined a function of the name (SPITBOL has no SEQ, so a program may: Gimpel's seq.inc)
           (and (equal op 'SEQ) (not (program-fn op)))   (apply str (map #(sstr (EVAL! %)) parms))
-          ;; Unary * = deferred pattern: do NOT pre-evaluate the arg.
-          ;; The thunk must re-read the variable at match time so that
-          ;; SPAN(*B) / ANY(*B) / NOTANY(*B) see the current value of B,
-          ;; not the value B held when the pattern was first assigned.
           (and (equal op '*) (clojure.core/= (count parms) 1))
           (let [sym (first parms)]
-            ;; the expression keeps its source in its metadata when that is a variable, which a dump spells *NAME
             (with-meta (list 'DEFER! (fn [] (EVAL! sym))) {:defer-var sym}))
-          ;; a subscript on a subscript, tt['blue']['green']: the operator is the inner subscript, whose value is the container
           (list? op) (when-some [container (EVAL! op)] (when-some [args (eval-operands parms)] (apply INVOKE container args)))
-          true (let [;; ~X negates success and failure, so it takes a failed operand
-                     ;; as its input; any other operator or function fails with it, binary ~ among them, an operator "available for user definition
-                     ;; using OPSYN()" (manual ch. 15)
+          true (let [
                      args     (if (and (equal op 'tilde-op) (clojure.core/= 1 (count parms)))
                                 [(failure-point #(EVAL! (first parms)))]
                                 (eval-operands parms))
-                     ;; OPSYN: an operator may be redefined, under its spelling
-                     ;; and arity (opsyn-key). Check before the built-in INVOKE table.
                      opsyn-fn (get @<FUNS> (opsyn-key (get op-spelling op (str op)) (count parms)))]
                  (when args
                    (deref-result
                      (if opsyn-fn
                        (apply opsyn-fn args)
                        (apply INVOKE op args)))))))
-      ;; anything else is a value already (a DATA object, an array, a table, a NAME, code) that an IR form carries, as the name of a field .COUNT(A) does
       true E)))
-
-;; A compile error in the text EVAL or CODE is given makes it fail, with &ERRTYPE and &ERRTEXT set and one of &ERRLIMIT spent when it is above 0; it is never fatal
-;; (sbl -bf: EVAL('1.797693135E+308') under &ERRLIMIT = 0 fails with &ERRTYPE 231; CODE(' X = (') fails with 226, "syntax error: missing right paren").
-;; While EVAL compiles its string, a compile error is raised as an error is, in EVAL's failure point (evaluated-or-fail): under &ERRLIMIT the label SETEXIT armed
-;; takes control, as SPITBOL's error section takes it for an error while EVAL compiles (sbl.min err04; sbl -bf: SETEXIT('E') then EVAL("X Y ? 'b' = 'c'") goes to
-;; E with &ERRTYPE 212); with no label armed EVAL fails as before.
 (def ^:private ^:dynamic *raise-compile-errors* false)
-
-;; A compile at run time ended: one that succeeds puts the stage back to execute, one that fails in a function leaves it at compile, and one that fails in the main
-;; program puts it back (sbl.min err04 pops to the deeper of the innermost function call and the compile's own call, and only the compile's restores the stage).
-;; MEASURED on sbl -bf: after F() runs EVAL('X +'), G(0) running G = LN(X) :F(GF) takes GF with &ERRTYPE 307 and returns, twice; ~LN(X) there succeeds and
-;; (LN(X), 'b') is 'b'; LN(0) in the main program is still fatal; an EVAL('1'), or an EVAL('X +') in the main program, between makes G(0)'s error fatal again;
-;; CODE(' X = (') in a function leaves it as EVAL does; corpus snolib LOG.tst, whose LOG.INC hands CODE a LOGB text that does not compile)
 (defn- compiled! [ok?] (reset! SNOBOL4clojure.env/<XC> (and (not ok?) (pos? (long @SNOBOL4clojure.env/&FNCLEVEL)))))
-
 (defn- compile-failed! [n text]
   (compiled! false)
   (when *raise-compile-errors* (throw (ex-info text {:snobol/error n})))
@@ -1902,22 +1274,11 @@
   (reset! SNOBOL4clojure.env/&ERRTEXT text)
   (when (pos? (long @SNOBOL4clojure.env/&ERRLIMIT)) (swap! SNOBOL4clojure.env/&ERRLIMIT dec))
   nil)
-
-;; The IR of an expression in a string (folded to upper case while &CASE is not 0), or nil when the string is not a legal expression. A string the parser refuses
-;; is scanned as SPITBOL's scan reads it (syntax.clj expression-end): the syntax error the scan meets first is its error; an expression that ends before the string
-;; does, at a colon or a semicolon outside every bracket, is the error early, which EVAL gives as "103 eval argument is not expression", and CONVERT, giving none,
-;; fails with &ERRTYPE and &ERRLIMIT as they were (sbl.min gtexp: "error if not end of image"; sbl -bf: EVAL('4 :(L)'), EVAL('4; 5') and EVAL(' B = 4 :S(OK)')
-;; fail with 103, EVAL('4 + ; ') with 221, EVAL('(4 :(L))') with 226; CONVERT('4 :(L)', 'EXPRESSION') and CONVERT('0:35', 'EXPRESSION') fail with nothing set);
-;; 220 when the scan finds neither.
-;; The expression is compiled as a statement's is: a value where a name is wanted is 212, and an error folding its constants is its error (sbl -bf:
-;; EVAL("X Y ? 'b' = 'c'") and EVAL('1 + 1 = 3') are 212, EVAL('(1 / 0)') is 14, EVAL('SIZE(ARB)') 189; compiler.clj fold-error).
 (defn- compile-expression
   ([s] (compile-expression s nil))
   ([^String s early]
-   ;; the text as written: snobol4jvm never folds case, whatever &CASE holds (Lon 2026-11-17 18:2x CST, in the JVM win ...)
    (let [p (parse-expression s)]
      (cond
-       ;; the null string, or blanks, is the null expression (sbl -bf: EVAL('') and EVAL('   ') are the null string, CONVERT('', 'EXPRESSION') an EXPRESSION)
        (re-matches #"[ \t]*" s) (do (compiled! true) "")
        (instance? instaparse.gll.Failure p)
        (let [{n :error i :end} (expression-end s)
@@ -1927,27 +1288,14 @@
        (let [ir (top-replacement (first (emitter p)))
              n  ((requiring-resolve 'SNOBOL4clojure.compiler/fold-error) ir)]
          (if n (compile-failed! n (SNOBOL4clojure.env/error-message n)) (do (compiled! true) ((requiring-resolve 'SNOBOL4clojure.compiler/freeze) ir))))))))
-
-;; EVAL's compilation: an expression that ends early is 103 (sbl.min s_evl: "err 103,eval argument is not expression" on gtexp's error exit).
 (defn- compile-or-fail [^String s]
   (try (compile-expression s 103)
        (catch clojure.lang.ExceptionInfo e
          (let [{n :snobol/error c :snobol/compile} (ex-data e)]
            (when-not c (throw e))
            (compile-failed! n (ex-message e))))))
-
-;; An unevaluated expression, the value *X makes: DATATYPE EXPRESSION, evaluated by EVAL.
 (defn- deferred? [x] (and (seq? x) (clojure.core/= 'DEFER! (first x)) (fn? (second x))))
 (defn- expression-of [ir] (list 'DEFER! (fn [] (EVAL! ir))))
-
-;; EVAL(s) compiles the expression s and evaluates it, failing when s is not a legal expression; EVAL(n) of a number is n; "If the argument is an unevaluated expression,
-;; it is evaluated, and the result returned" (manual ch. 19, EVAL). A syntax error fails it with &ERRTYPE and &ERRTEXT set, as sbl -bf sets them (221 and kin).
-;; "EVAL fails if evaluation of the argument fails, or if the argument contains a syntax error. The SPITBOL keyword &ERRTEXT will contain a string describing the
-;; error" (manual ch. 9): with &ERRLIMIT at 0 an error raised while the expression is evaluated fails EVAL as a syntax error does, &ERRTYPE and &ERRTEXT set, and is
-;; not fatal (sbl -bf: EVAL('X / Z') with Z = 0 fails with 14, and so does EVAL(*(X / Z))); above 0 it is trapped as any error is, one of &ERRLIMIT spent and the
-;; label SETEXIT armed taken, or the statement failed (spitbol_x64_tests setexit: EVAL('n1 / n0') goes to the handler with 262).
-;; The expression is a failure point, the stage :ee while it is evaluated, and the depth EVAL was called at is kept for an error in it (error-decided); the stage
-;; is :xt again when EVAL returns, the next EVAL out too (sbl.min evalx: evlx2, evlx7).
 (defn- evaluated-or-fail [f]
   (let [d0 (long SNOBOL4clojure.env/*fp*)]
     (when (clojure.core/= :xt @SNOBOL4clojure.env/<STAGE>) (reset! SNOBOL4clojure.env/<STAGE> :ee))
@@ -1959,21 +1307,11 @@
                        (if (and to (>= (long to) d0)) nil (throw e))))))]
       (reset! SNOBOL4clojure.env/<STAGE> :xt)
       v)))
-
-;; The name of a natural variable is its name, compiled as any string is; a pattern or a value with no text is "103 eval argument is not expression" (sbl.min
-;; gtexp; sbl -bf: EVAL(.X) is the value of X, EVAL(LEN(1)), EVAL(TABLE()) and EVAL(.&ERRTEXT) are 103). A pattern is a matcher node list; the engine's own
-;; callers hand EVAL the IR, a vector or an operator's list, which is evaluated.
 (defn EVAL [X]
   (cond
-    ;; a pattern function's element deferred to the match is a PATTERN, which EVAL refuses below (sbl -bf: EVAL(BREAK(*X)) and EVAL(LEN(*N)) are 103)
     (and (deferred? X) (not (:pattern (meta X)))) (evaluated-or-fail (second X))
-    ;; a string ending in a colon or a semicolon is refused before it is compiled, so 103 is an error at run time, fatal at &ERRLIMIT 0 (sbl -bf: EVAL('4 ;')
-    ;; and .EVAL('X ;') end the program with 103; under &ERRLIMIT the label SETEXIT armed takes it)
     (string? X)   (if (ends-in-mark? X)
                     (throw (ex-info "eval argument is not expression" {:snobol/error 103}))
-                    ;; the expression runs in a block of its own, whose line is the compiler's last, so a function it calls returns to that line, not the
-                    ;; statement's (MEASURED on sbl -bf: Y = EVAL('G()') on line 4, END on line 12, then OUTPUT = &LASTLINE ' ' &LINE prints 12 5, where
-                    ;; EVAL('&LINE') reads the statement's line; corpus rosetta-snobol4 leap-year, whose dump reads &LASTLINE = 13, its END's line)
                     (evaluated-or-fail #(when-some [ir (binding [*raise-compile-errors* true] (compile-or-fail X))]
                                           (binding [SNOBOL4clojure.env/*eval-block* @SNOBOL4clojure.env/<CODELINE>] (EVAL! ir)))))
     (number? X)   X
