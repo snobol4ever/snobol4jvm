@@ -689,7 +689,10 @@
 (defn- parse-array-proto
   "[dims proto]: the [lo hi] pairs of ARRAY's first argument and the prototype PROTOTYPE answers."
   [proto]
-  (let [whole (when (or (number? proto) (string? proto)) (let [n (num proto)] (when (or (integer? n) (and (double? n) (not (Double/isNaN n)))) (long n))))]
+  ;; The name of a natural variable is its text here, as where a number is wanted (sbl -bf: ARRAY(.$'3', .$'7') is ARRAY 3 of 7s, ARRAY(.$'2:4') has bounds 2:4,
+  ;; ARRAY(.X) is 066 as ARRAY('X'); the name of an element, .A<1>, has no text and stays 064; corpus snobol4-rungs array_convert_dupl_replace_1)
+  (let [proto (if (and (instance? NAME proto) (symbol? (.n ^NAME proto))) (str (.n ^NAME proto)) proto)
+        whole (when (or (number? proto) (string? proto)) (let [n (num proto)] (when (or (integer? n) (and (double? n) (not (Double/isNaN n)))) (long n))))]
     (cond
       whole                [[(dimension 1 whole)] (str whole)]
       (not (string? proto)) (throw (ex-info (error-message 64) {:snobol/error 64}))
