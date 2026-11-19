@@ -126,6 +126,11 @@
 (def ^:dynamic *handlers* 0)   ; the SETEXIT handlers running one inside another, each at its error in a failure point inside a statement (runtime.clj RUN-AT-ERROR)
 (def <STAGE> (atom :xt))
 (def <GTCEF> (atom 0))
+;; The stage left at execute-time compile (sbl.min err04, errc4): a compile at run time (EVAL of a string, CODE, CONVERT to EXPRESSION) that fails in a function's
+;; statement pops to the function's frame, found before the compile's own call, and leaves the stage at compile; every later error is then taken there, and at
+;; &ERRLIMIT 0 an error in a function fails its innermost failure point instead of ending the program, until a compile at run time succeeds or one fails in the
+;; main program (operators.clj compiled!, error-decided)
+(def <XC> (atom false))
 (def <ERRFT> (atom 0))   ; the fatal errors so far (sbl.min errft): at the third the program ends whatever &ERRLIMIT is
 (def <ERRSERIAL> (atom 0))   ; the errors so far that went on (sbl.min err07 sets r_cnt for each): CONTINUE goes on from the latest only
 ;; the page width sbl's -tN switch sets, 120 when none is given: the listing's lines, the column of "page N" (width less 8) and the lines of a compile or an
@@ -367,6 +372,7 @@
    (reset! <SETEXIT>  nil)
    (reset! <STAGE>    :xt)
    (reset! <GTCEF>    0)
+   (reset! <XC>       false)
    (reset! <ERRFT>    0)
    (reset! <ERRSERIAL> 0)
    (reset! <OBJNO>    0)

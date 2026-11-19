@@ -31,3 +31,14 @@
          (first (run-sno (str "        &ERRLIMIT = 10\n        N3 = .$'3'\n        N7 = .$'7'\n        V = ARRAY(N3, N7)\n        OUTPUT = PROTOTYPE(V) ' ' V<3>\n"
                        "        OUTPUT = PROTOTYPE(ARRAY(.$'2:4'))\n        X = 'abc'\n        V = ARRAY(.X)\n        OUTPUT = &ERRTYPE\n"
                        "        A = ARRAY(3)\n        V = ARRAY(.A<1>)\n        OUTPUT = &ERRTYPE\nEND\n"))))))
+
+;; A compile at run time that fails in a function's statement leaves the stage at compile (sbl.min err04, errc4): at &ERRLIMIT 0 a later error in a function then
+;; fails its innermost failure point and the program goes on, until a compile at run time succeeds. MEASURED on sbl -bf, this program: after F's EVAL('X +'),
+;; G's LN(0) takes :F with &ERRTYPE 307, ~LN(0) succeeds and (LN(0), 'b') is 'b', twice; after EVAL('1') the same error ends the run; corpus snolib LOG.tst.
+(deftest a-failed-compile-in-a-function-leaves-a-functions-errors-failing
+  (let [out (first (run-sno (str "         DEFINE('F()') :(F_E)\nF        EVAL('X +') :(RETURN)\nF_E      DEFINE('G(X)') :(G_E)\n"
+                                 "G        G = LN(X) :S(RETURN)F(GF)\nGF       G = 'f' &ERRTYPE ~LN(X) (LN(X), 'b') :(RETURN)\n"
+                                 "G_E      F()\n         OUTPUT = G(0) ' ' G(0)\n         EVAL('1')\n         OUTPUT = 'not ' G(0)\nEND\n")))]
+    (is (clojure.string/starts-with? out "f307b f307b\n"))
+    (is (clojure.string/includes? out "(4) : ERROR 307 -- ln produced real overflow"))
+    (is (not (clojure.string/includes? out "not ")))))

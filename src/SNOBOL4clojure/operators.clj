@@ -213,7 +213,7 @@
       (NAME. (symbol p)))))
 
 ;; ── INVOKE ────────────────────────────────────────────────────────────────────
-(declare EVAL! compile-expression compile-failed! deferred? expression-of unused-unary-ops unused-binary-ops name-of)
+(declare EVAL! compile-expression compile-failed! compiled! deferred? expression-of unused-unary-ops unused-binary-ops name-of)
 
 ;; A concatenation evaluates to (SEQ v ...). It is a string when every part is
 ;; a string, a number or a NAME (text: its variable's name), and otherwise a
@@ -771,9 +771,9 @@
                       ;; 226 and 227 alike; at &ERRLIMIT 0, or with no label armed, CODE fails with &ERRTYPE set; corpus gate_cases_snobol4
                       ;; a_goto_field_takes_a_blank_before_its_paren_and_refuses_an_empty_field__ce)
                       (if (and (pos? (long @SNOBOL4clojure.env/&ERRLIMIT)) @SNOBOL4clojure.env/<SETEXIT>)
-                        (throw (ex-info (SNOBOL4clojure.env/error-message (:error entry)) {:snobol/error (:error entry)}))
+                        (do (compiled! false) (throw (ex-info (SNOBOL4clojure.env/error-message (:error entry)) {:snobol/error (:error entry)})))
                         (compile-failed! (:error entry) (SNOBOL4clojure.env/error-message (:error entry))))
-                      (when (some? entry) (SNOBOL4clojure.env/->CodeBlock entry)))))
+                      (when (some? entry) (compiled! true) (SNOBOL4clojure.env/->CodeBlock entry)))))
             (let [raw-f (if (symbol? op) ($$fn op) op)   ; op is the container itself when it came from a subscript
                   ;; NAME indirect reference — dereference to actual array/table
                   f (if (instance? NAME raw-f)
@@ -981,7 +981,8 @@
       (let [ee?    (clojure.core/= :ee @SNOBOL4clojure.env/<STAGE>)
             gtcef? (and ee? (< (long SNOBOL4clojure.env/*flprt*) (long @SNOBOL4clojure.env/<GTCEF>)))
             lim    (long @SNOBOL4clojure.env/&ERRLIMIT)]
-        (if (and (zero? lim) (not ee?) (not SNOBOL4clojure.env/*matching*))
+        (if (and (zero? lim) (not ee?) (not SNOBOL4clojure.env/*matching*)
+                 (not (and @SNOBOL4clojure.env/<XC> (pos? (long @SNOBOL4clojure.env/&FNCLEVEL)))))
           e
           (let [h  (when (pos? lim) @SNOBOL4clojure.env/<SETEXIT>)
                 k  (swap! SNOBOL4clojure.env/<ERRSERIAL> inc)
@@ -1247,7 +1248,15 @@
 ;; E with &ERRTYPE 212); with no label armed EVAL fails as before.
 (def ^:private ^:dynamic *raise-compile-errors* false)
 
+;; A compile at run time ended: one that succeeds puts the stage back to execute, one that fails in a function leaves it at compile, and one that fails in the main
+;; program puts it back (sbl.min err04 pops to the deeper of the innermost function call and the compile's own call, and only the compile's restores the stage).
+;; MEASURED on sbl -bf: after F() runs EVAL('X +'), G(0) running G = LN(X) :F(GF) takes GF with &ERRTYPE 307 and returns, twice; ~LN(X) there succeeds and
+;; (LN(X), 'b') is 'b'; LN(0) in the main program is still fatal; an EVAL('1'), or an EVAL('X +') in the main program, between makes G(0)'s error fatal again;
+;; CODE(' X = (') in a function leaves it as EVAL does; corpus snolib LOG.tst, whose LOG.INC hands CODE a LOGB text that does not compile)
+(defn- compiled! [ok?] (reset! SNOBOL4clojure.env/<XC> (and (not ok?) (pos? (long @SNOBOL4clojure.env/&FNCLEVEL)))))
+
 (defn- compile-failed! [n text]
+  (compiled! false)
   (when *raise-compile-errors* (throw (ex-info text {:snobol/error n})))
   (reset! SNOBOL4clojure.env/&ERRTYPE n)
   (fire-keyword! "ERRTYPE" n)
@@ -1270,7 +1279,7 @@
    (let [p (parse-expression s)]
      (cond
        ;; the null string, or blanks, is the null expression (sbl -bf: EVAL('') and EVAL('   ') are the null string, CONVERT('', 'EXPRESSION') an EXPRESSION)
-       (re-matches #"[ \t]*" s) ""
+       (re-matches #"[ \t]*" s) (do (compiled! true) "")
        (instance? instaparse.gll.Failure p)
        (let [{n :error i :end} (expression-end s)
              n (cond n n (< (long i) (count s)) early :else 220)]
@@ -1278,7 +1287,7 @@
        :else
        (let [ir (top-replacement (first (emitter p)))
              n  ((requiring-resolve 'SNOBOL4clojure.compiler/fold-error) ir)]
-         (if n (compile-failed! n (SNOBOL4clojure.env/error-message n)) ((requiring-resolve 'SNOBOL4clojure.compiler/freeze) ir)))))))
+         (if n (compile-failed! n (SNOBOL4clojure.env/error-message n)) (do (compiled! true) ((requiring-resolve 'SNOBOL4clojure.compiler/freeze) ir))))))))
 
 ;; EVAL's compilation: an expression that ends early is 103 (sbl.min s_evl: "err 103,eval argument is not expression" on gtexp's error exit).
 (defn- compile-or-fail [^String s]
