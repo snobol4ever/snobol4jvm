@@ -87,7 +87,7 @@ This seat runs its own boards (CEO-1912). The engine arm is `../harness/scripts/
 | `snocone.clj` | The Snocone front end. |
 | `harness.clj` | Development tools: the differential harness, the worm generator and the benchmark grid. |
 
-**The source holds no comments, no docstrings and no blank lines** (Lon 2026-11-19: "Remove every single comment and every single blank line." / "Next remove every docstring."). Within each file the code stands in the order of the files it was merged from, and the section names below (`grammar`, `trace`, `match` and so on) are those files. `git show 4205ae2:src/SNOBOL4clojure/<file>` has the section banners, every comment and every docstring, with the manual quotes and `sbl -bf` measurements they carried.
+**The source holds no comments, no docstrings and no blank lines** (Lon 2026-11-19: "Remove every single comment and every single blank line." / "Next remove every docstring."), and is laid out by the 200-column rule below; its one comment is the separator. Within each file the code stands in the order of the files it was merged from, and the section names below (`grammar`, `trace`, `match` and so on) are those files. `git show 4205ae2:src/SNOBOL4clojure/<file>` has the section banners, every comment and every docstring, with the manual quotes and `sbl -bf` measurements they carried.
 
 ### Front end (source to IR)
 
@@ -220,7 +220,11 @@ Each commit cures one defect and names the witness that proves it: the corpus en
   - names the board entry it cures;
   - ends with `Witness: <suite> <entry>` and the `lein test` count (tests and failures).
 - **No comments and no docstrings in the source:** the manual's rule and the `sbl -bf` measurement are the commit message's, which `git log` and `git blame` lead to.
-- **Line width:** source lines run up to 200 characters. Do not reflow lines that already fit. No blank line separates forms.
+- **Layout, the 200-column rule** (Lon 2026-11-19: "place all complete lists on a line by itself. The max line length is 200 characters. Place a 200-char line-break comment between all sequences of one-liners, and between all multi-liners." / "I'm thinking 4 character indent."; the rule of SCRIP's C, skill `scrip-c-code`):
+  - a form that fits in 200 characters is one line;
+  - one that does not opens with its head and the atoms that lead it, and each list among its children goes on its own line four columns deeper, by the same rule; atoms pack onto a line, and the closing brackets end the last line;
+  - one separator, `;` and 199 dashes, stands between every run of one-line top-level forms and around every multi-line one.
+  - `script/reflow200.py` lays a file out so: run `python3 script/reflow200.py src/SNOBOL4clojure/*.clj` after an edit, and `--check` reads rc 0 before a commit. Strings, regexes and character literals are never touched.
 
 ## Repo notes
 
