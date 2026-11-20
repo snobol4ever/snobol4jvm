@@ -526,14 +526,14 @@
 (defn array? [x] (instance? SnobolArray x))
 (defn table? [x] (and (instance? clojure.lang.IDeref x) (map? @x)))
 (deftype CodeBlock [entry])
-(defn- textless? [v] (or (and (instance? NAME v) (not (symbol? (.n ^NAME v)))) (array? v) (table? v) (instance? SNOBOL4clojure.core.DataObj v) (instance? SNOBOL4clojure.core.CodeBlock v)))
-(defn- pattern-argument [p err] (if (textless? p) (throw (ex-info (SNOBOL4clojure.core/error-message err) {:snobol/error err})) p))
+(defn- textless? [v] (or (and (instance? NAME v) (not (symbol? (.n ^NAME v)))) (array? v) (table? v) (instance? DataObj v) (instance? CodeBlock v)))
+(defn- pattern-argument [p err] (if (textless? p) (throw (ex-info (error-message err) {:snobol/error err})) p))
 (defn- pattern-operands! [args] (let [v (vec args) n (count v)] (pattern-argument (v (dec n)) 5) (doseq [i (range (clojure.core/- n 2) -1 -1)] (pattern-argument (v i) 6))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- read-raw
     [^java.io.Reader rdr n]
     (let [buf (char-array n)]
-        (loop [k 0] (if (clojure.core/< k n) (let [r (.read rdr buf k (clojure.core/- n k))] (if (neg? r) (when (pos? k) (String. buf 0 k)) (recur (clojure.core/+ k r)))) (String. buf 0 k)))))
+        (loop [k 0] (if (< k n) (let [r (.read rdr buf k (clojure.core/- n k))] (if (neg? r) (when (pos? k) (String. buf 0 k)) (recur (clojure.core/+ k r)))) (String. buf 0 k)))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- read-line-counted
     [^java.io.BufferedReader rdr at]
@@ -542,8 +542,8 @@
             (let [c (.read rdr)]
                 (cond
                     (neg? c) (do (swap! at clojure.core/+ n) (when (pos? n) (str sb)))
-                    (clojure.core/== c 10) (do (swap! at clojure.core/+ n 1) (str sb))
-                    (clojure.core/== c 13) (do (.mark rdr 1) (if (clojure.core/== (.read rdr) 10) (swap! at clojure.core/+ n 2) (do (.reset rdr) (swap! at clojure.core/+ n 1))) (str sb))
+                    (== c 10) (do (swap! at clojure.core/+ n 1) (str sb))
+                    (== c 13) (do (.mark rdr 1) (if (== (.read rdr) 10) (swap! at clojure.core/+ n 2) (do (.reset rdr) (swap! at clojure.core/+ n 1))) (str sb))
                     :else (do (.append sb (char c)) (recur (inc n))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn channel-read
@@ -556,7 +556,7 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn input-record
     ([line] (input-record line nil))
-    ([line maxlen] (let [s (str line) n (or maxlen record-length) s (if (clojure.core/> (count s) n) (subs s 0 n) s)] (if (zero? (long @&TRIM)) s (clojure.string/replace s #"[ \t]+$" "")))))
+    ([line maxlen] (let [s (str line) n (or maxlen record-length) s (if (> (count s) n) (subs s 0 n) s)] (if (zero? (long @&TRIM)) s (clojure.string/replace s #"[ \t]+$" "")))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def <ASSOC-LAST> (atom {}))
 (def &INPUT (atom 1))
@@ -646,11 +646,7 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn $ ([n] ($$ n)) ([x y] (x-2 'CAPTURE-IMM x y)) ([x y & zs] (x-n 'CAPTURE-IMM x y zs)))
 (defn . ([x] (NAME. x)) ([x y] (x-2 'CAPTURE-COND x y)) ([x y & zs] (x-n 'CAPTURE-COND x y zs)))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- real->integer
-    [x]
-    (let [lo (double Long/MIN_VALUE)] (if (and (clojure.core/<= lo x) (clojure.core/< x (clojure.core/- lo))) (let [i (long x)] (when-not (clojure.core/= i 2147483648) i)) Long/MIN_VALUE)))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- real->integer [x] (let [lo (double Long/MIN_VALUE)] (if (and (<= lo x) (< x (clojure.core/- lo))) (let [i (long x)] (when-not (clojure.core/= i 2147483648) i)) Long/MIN_VALUE)))
 (defn sign-then-blanks? [x] (and (string? x) (boolean (re-matches #"[ \t]*[+-][ \t]+" x))))
 (defn- ftz ^double [^double x] (if (< (Math/abs x) Double/MIN_NORMAL) (clojure.core/* x 0.0) x))
 (def ^:private ten-powers (double-array [1.0 1e1 1e2 1e3 1e4 1e5 1e6 1e7 1e8 1e9 1e10]))
@@ -699,10 +695,7 @@
 (defn- int-pattern
     [op I bad big]
     (let [n (integer-of I)]
-        (cond
-            (nil? n) (throw (ex-info (error-message bad) {:snobol/error bad}))
-            (or (neg? n) (clojure.core/> n 16777216)) (throw (ex-info (error-message big) {:snobol/error big}))
-            :else (list op n))))
+        (cond (nil? n) (throw (ex-info (error-message bad) {:snobol/error bad})) (or (neg? n) (> n 16777216)) (throw (ex-info (error-message big) {:snobol/error big})) :else (list op n))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- int-pattern-of [op I [bad big ebad ebig]] (if (deferred-arg? I) (deferred-pattern (fn [] (when-some [v ((second I))] (int-pattern op v ebad ebig)))) (int-pattern op I bad big)))
 (defn LEN [I] (int-pattern-of 'LEN# I [120 121 47 48]))
@@ -734,7 +727,7 @@
                       [a e] (if (< a 1.0) [a e] [(clojure.core// a 10.0) (inc (long e))])
                       n (long (clojure.core/* (double a) (double gts-scale)))
                       e (long e)
-                      fixed (clojure.core/<= 0 e 15)
+                      fixed (<= 0 e 15)
                       nd (if fixed (clojure.core/- 15 e) 15)
                       p (long (Math/pow 10.0 nd))
                       frac (if (zero? nd) "" (clojure.string/replace (format (str "%0" nd "d") (rem n p)) #"0+$" ""))]
@@ -744,8 +737,7 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- set-of
     [S err]
-    (let [s (if (or (string? S) (number? S) (and (instance? SNOBOL4clojure.core.NAME S) (symbol? (.n ^SNOBOL4clojure.core.NAME S)))) (sstr S) "")]
-        (if (seq s) (charset s) (throw (ex-info (error-message err) {:snobol/error err})))))
+    (let [s (if (or (string? S) (number? S) (and (instance? NAME S) (symbol? (.n ^NAME S)))) (sstr S) "")] (if (seq s) (charset s) (throw (ex-info (error-message err) {:snobol/error err})))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- set-pattern-of [op S bad ebad] (if (deferred-arg? S) (deferred-pattern (fn [] (when-some [v ((second S))] (list op (set-of v ebad))))) (list op (set-of S bad))))
 (defn ANY [S] (set-pattern-of 'ANY$ S 59 43))
@@ -775,24 +767,24 @@
              (let [b# (operand (second args#) ~second-code ~(str nm " second argument is not numeric")) a# (operand (first args#) ~first-code ~(str nm " first argument is not numeric"))]
                  (when (~cmp a# b#) ε)))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(numeric-predicate EQ clojure.core/== 101 102)
-(numeric-predicate NE (fn [a b] (not (clojure.core/== a b))) 149 150)
-(numeric-predicate LE clojure.core/<= 118 119)
-(numeric-predicate LT clojure.core/< 147 148)
-(numeric-predicate GE clojure.core/>= 109 110)
-(numeric-predicate GT clojure.core/> 111 112)
+(numeric-predicate EQ == 101 102)
+(numeric-predicate NE (fn [a b] (not (== a b))) 149 150)
+(numeric-predicate LE <= 118 119)
+(numeric-predicate LT < 147 148)
+(numeric-predicate GE >= 109 110)
+(numeric-predicate GT > 111 112)
 (defn ncvt [x] (list 'num x))
 (defmacro numcvt [x] `(ncvt ~x))
 (defn n-1 [op x] (list op (numcvt x)))
-(defn Σ+ ([x y] (clojure.core/+' x y)) ([x] (clojure.core/+' x)))
+(defn Σ+ ([x y] (+' x y)) ([x] (+' x)))
 (defn n-2 [op x y] (list op (numcvt x) (numcvt y)))
 (defn n-n [op x y Ω] (apply list op (map ncvt (conj Ω y x))))
 (defn + ([x] (n-1 Σ+ x)) ([x y] (n-2 Σ+ x y)) ([x y & zs] (n-n Σ+ x y zs)))
 (defn- exact [exact-op a b code msg] (try (exact-op (long a) (long b)) (catch ArithmeticException _ (throw (ex-info msg {:snobol/error code})))))
 (defn- finite [r code msg] (let [r (double r)] (cond (Double/isInfinite r) (throw (ex-info msg {:snobol/error code})) (< (Math/abs r) Double/MIN_NORMAL) (clojure.core/* r 0.0) :else r)))
-(defn subtract ([x y] (clojure.core/-' x y)) ([x] (clojure.core/-' x)))
+(defn subtract ([x y] (-' x y)) ([x] (-' x)))
 (defn - ([x] (n-1 subtract x)) ([x y] (n-2 subtract x y)) ([x y & zs] (n-n subtract x y zs)))
-(defn multiply ([x y] (clojure.core/*' x y)) ([x] (clojure.core/*' x)))
+(defn multiply ([x y] (*' x y)) ([x] (*' x)))
 (defn * ([x] (list 'DEFER! (fn [] x))) ([x y] (n-2 multiply x y)) ([x y & zs] (n-n multiply x y zs)))
 (defn divide [x y] (if (and (integer? x) (integer? y)) (quot x y) (clojure.core// x y)))
 (defn / ([_x] η) ([x y] (n-2 divide x y)))
@@ -811,8 +803,8 @@
                     (zero? x) 0
                     (clojure.core/= x 1) 1
                     (clojure.core/= x -1) (if (even? y) 1 -1)
-                    (clojure.core/> y 64) (throw (ex-info "exponentiation caused integer overflow" {:snobol/error 17}))
-                    :else (let [r (.pow (biginteger x) (int y))] (if (clojure.core/< (.bitLength r) 64) (long r) (throw (ex-info "exponentiation caused integer overflow" {:snobol/error 17})))))
+                    (> y 64) (throw (ex-info "exponentiation caused integer overflow" {:snobol/error 17}))
+                    :else (let [r (.pow (biginteger x) (int y))] (if (< (.bitLength r) 64) (long r) (throw (ex-info "exponentiation caused integer overflow" {:snobol/error 17})))))
             (and (integer? y) (not (neg? y)))
                 (let [b (double x)] (if (zero? y) (if (zero? b) (undefined) 1.0) (loop [r b k (dec (long y))] (if (or (zero? k) (zero? r)) r (recur (finite (clojure.core/* r b) 266 ovf) (dec k))))))
             :else
@@ -846,7 +838,7 @@
         (nil? (ζΠ ζ)) nil
         (string? (ζΠ ζ)) 'LIT$
         (number? (ζΠ ζ)) 'LIT$
-        (instance? SNOBOL4clojure.core.NAME (ζΠ ζ)) 'LIT$
+        (instance? NAME (ζΠ ζ)) 'LIT$
         (symbol? (ζΠ ζ)) (ζΠ ζ)
         (vector? (ζΠ ζ)) 'SEQ
         (list? (ζΠ ζ)) (first (ζΠ ζ))
@@ -920,7 +912,7 @@
 (defn- ζ↑ ([ζ σ δ] (let [[Σ Δ _ _ _ _ Ψ] ζ] [Σ Δ σ δ (ζΠ (🡡 Ψ)) (ζφ (🡡 Ψ)) (🡧 Ψ)])) ([ζ] (let [[Σ Δ σ δ _ _ Ψ] ζ] [Σ Δ σ δ (ζΠ (🡡 Ψ)) (ζφ (🡡 Ψ)) (🡧 Ψ)])))
 (defn- ζ→ [ζ] (let [[_ _ σ δ Π φ Ψ] ζ] [σ δ σ δ Π (inc φ) Ψ]))
 (defn err [Σ Δ] [Σ (clojure.core/- -1 Δ)])
-(defn not-equal [x y] (clojure.core/not= x y))
+(defn not-equal [x y] (not= x y))
 (defn LIT$ [Σ Δ Π] (loop [σ Σ δ Δ π Π] (if (not (seq π)) [σ δ] (if (not (seq σ)) (err σ δ) (if (not-equal (first σ) (first π)) (err σ δ) (recur (rest σ) (inc δ) (rest π)))))))
 (defn SUCCEED! [Σ Δ _Π] [Σ Δ])
 (defn FAIL! [Σ Δ _Π] (err Σ Δ))
@@ -1055,10 +1047,10 @@
                                   [pos nest]
                                   (loop [p pos n nest]
                                       (cond
-                                          (clojure.core/>= p sublen) nil
+                                          (>= p sublen) nil
                                           :else
                                               (let [ch (nth full-subject p) n2 (case ch \( (inc n) \) (dec n) n)]
-                                                  (cond (clojure.core/< n2 0) nil (clojure.core/= n2 0) [(inc p) (inc p) 0] :else (recur (inc p) n2))))))]
+                                                  (cond (< n2 0) nil (clojure.core/= n2 0) [(inc p) (inc p) 0] :else (recur (inc p) n2))))))]
                         (case action
                             :proceed (if-let [[end np nn] (scan-bal pos0 0)] (recur :succeed (ζ↑ ζ (drop end (seq full-subject)) end) (🡥 Ω (assoc ζ 5 [np nn]))) (recur :fail (ζ↑ ζ (ζΣ ζ) pos0) Ω))
                             :recede
@@ -1081,11 +1073,8 @@
                             (let [
                                   thunk (second (ζΠ ζ))
                                   P (if (fn? thunk) (thunk) thunk)
-                                  _
-                                      (when
-                                          (or (SNOBOL4clojure.core/array? P) (SNOBOL4clojure.core/table? P) (instance? SNOBOL4clojure.core.DataObj P))
-                                          (throw (ex-info (SNOBOL4clojure.core/error-message 46) {:snobol/error 46})))
-                                  _ (when (> (count (nth ζ 6)) 200000) (throw (ex-info (SNOBOL4clojure.core/error-message 246) {:snobol/error 246 :snobol/abort true})))]
+                                  _ (when (or (array? P) (table? P) (instance? DataObj P)) (throw (ex-info (error-message 46) {:snobol/error 46})))
+                                  _ (when (> (count (nth ζ 6)) 200000) (throw (ex-info (error-message 246) {:snobol/error 246 :snobol/abort true})))]
                                 (if (nil? P) (let [[Σ Δ] ζ] (recur :fail (ζ↑ ζ Σ Δ) Ω)) (recur :proceed (ζ↓ ζ P) (🡥 Ω ζ))))
                         :succeed (recur :succeed (ζ↑ ζ) Ω)
                         (:fail :recede) (recur :recede (🡡 Ω) (🡧 Ω)))))))
@@ -1121,12 +1110,7 @@
 (defn = ([_x] η) ([n x] (list '= n x)))
 (deftype ExprVar [ir])
 (def &LINE (atom 0))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- call-trace-fn!
-    [f item-name entry]
-    (swap! &TRACE dec)
-    (let [tr @&TRACE] (reset! &TRACE 0) (let [r (f (NAME. (symbol (str item-name))) (:label entry))] (reset! &TRACE tr) (reset! SNOBOL4clojure.core/&LINE 2) r)))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- call-trace-fn! [f item-name entry] (swap! &TRACE dec) (let [tr @&TRACE] (reset! &TRACE 0) (let [r (f (NAME. (symbol (str item-name))) (:label entry))] (reset! &TRACE tr) (reset! &LINE 2) r)))
 (def ^:dynamic *trace-output* nil)
 (defn- trace-println [& args] (let [w (or *trace-output* *out*) l (apply str args)] (binding [*out* w] (if (<= (count l) 120) (println l) (doseq [p (partition-all 120 l)] (println (apply str p)))))))
 (def &STNO (atom 0))
@@ -1152,13 +1136,13 @@
 (defn- trace-val
     [v]
     (cond
-        (or (SNOBOL4clojure.core/array? v) (SNOBOL4clojure.core/table? v) (instance? DataObj v)) (value-text v)
+        (or (array? v) (table? v) (instance? DataObj v)) (value-text v)
         (nil? v) "''"
         (string? v) (str "'" v "'")
         (instance? NAME v) (str "." (.n ^NAME v))
         (integer? v) (str v)
         (double? v) (real-str v)
-        (and (or (list? v) (vector? v)) (clojure.core/= "PATTERN" (SNOBOL4clojure.core/DATATYPE v))) "PATTERN"
+        (and (or (list? v) (vector? v)) (clojure.core/= "PATTERN" (DATATYPE v))) "PATTERN"
         :else (str v)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (declare trace-fn)
@@ -1180,9 +1164,7 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- level-zero-return!
     []
-    (when
-        (zero? (long @SNOBOL4clojure.core/&FNCLEVEL))
-        (throw (ex-info (SNOBOL4clojure.core/error-message 242) (if (and (pos? (long @&ERRLIMIT)) @SNOBOL4clojure.core/<SETEXIT>) {:snobol/error 242} {:snobol/error 242 :snobol/abort true})))))
+    (when (zero? (long @&FNCLEVEL)) (throw (ex-info (error-message 242) (if (and (pos? (long @&ERRLIMIT)) @<SETEXIT>) {:snobol/error 242} {:snobol/error 242 :snobol/abort true})))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def ^:private return-signal (clojure.lang.ExceptionInfo. "RETURN" {:snobol/signal :return}))
 (defn snobol-return! [] (throw return-signal))
@@ -1201,10 +1183,7 @@
 (defn- label-name [tgt] (when (or (keyword? tgt) (string? tgt) (symbol? tgt)) (name tgt)))
 (def <ERRSERIAL> (atom 0))
 (def <ERRFT> (atom 0))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- fatal-error
-    [n]
-    (let [msg (SNOBOL4clojure.core/error-message n)] (if (< (long (swap! SNOBOL4clojure.core/<ERRFT> inc)) 3) (ex-info msg {:snobol/error n}) (ex-info msg {:snobol/error n :snobol/abort true}))))
+(defn- fatal-error [n] (let [msg (error-message n)] (if (< (long (swap! <ERRFT> inc)) 3) (ex-info msg {:snobol/error n}) (ex-info msg {:snobol/error n :snobol/abort true}))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn fire-label!
     [label-key]
@@ -1228,20 +1207,17 @@
         (if
             (or (nil? n) abort (contains? data :snobol/to) (contains? data :snobol/label))
             e
-            (let [
-                  ee? (clojure.core/= :ee @SNOBOL4clojure.core/<STAGE>)
-                  gtcef? (and ee? (< (long SNOBOL4clojure.core/*flprt*) (long @SNOBOL4clojure.core/<GTCEF>)))
-                  lim (long @SNOBOL4clojure.core/&ERRLIMIT)]
+            (let [ee? (clojure.core/= :ee @<STAGE>) gtcef? (and ee? (< (long *flprt*) (long @<GTCEF>))) lim (long @&ERRLIMIT)]
                 (if
-                    (and (zero? lim) (not ee?) (not SNOBOL4clojure.core/*matching*) (not (and @SNOBOL4clojure.core/<XC> (pos? (long @SNOBOL4clojure.core/&FNCLEVEL)))))
+                    (and (zero? lim) (not ee?) (not *matching*) (not (and @<XC> (pos? (long @&FNCLEVEL)))))
                     e
-                    (let [h (when (pos? lim) @SNOBOL4clojure.core/<SETEXIT>) k (swap! SNOBOL4clojure.core/<ERRSERIAL> inc) to (if gtcef? @SNOBOL4clojure.core/<GTCEF> d)]
-                        (when gtcef? (reset! SNOBOL4clojure.core/<STAGE> :xt))
-                        (when (pos? lim) (swap! SNOBOL4clojure.core/&ERRLIMIT dec))
-                        (reset! SNOBOL4clojure.core/&ERRTYPE n)
+                    (let [h (when (pos? lim) @<SETEXIT>) k (swap! <ERRSERIAL> inc) to (if gtcef? @<GTCEF> d)]
+                        (when gtcef? (reset! <STAGE> :xt))
+                        (when (pos? lim) (swap! &ERRLIMIT dec))
+                        (reset! &ERRTYPE n)
                         (fire-keyword! "ERRTYPE" n)
-                        (reset! SNOBOL4clojure.core/&ERRTEXT (ex-message e))
-                        (when h (reset! SNOBOL4clojure.core/<SETEXIT> nil))
+                        (reset! &ERRTEXT (ex-message e))
+                        (when h (reset! <SETEXIT> nil))
                         (ex-info (ex-message e) (if h (assoc data :snobol/label h :snobol/serial k :snobol/fp d :snobol/resume to) (assoc data :snobol/to to)) e)))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defrecord Trapped [label ex])
@@ -1251,7 +1227,7 @@
     (if
         (clojure.core/= :transfer (:snobol/signal (ex-data e)))
         (->Transfer (:snobol/at (ex-data e)) (:snobol/err (ex-data e)))
-        (let [e (error-decided e SNOBOL4clojure.core/*fp*) {to :snobol/to h :snobol/label} (ex-data e)] (cond h (->Trapped h e) to false :else (throw e)))))
+        (let [e (error-decided e *fp*) {to :snobol/to h :snobol/label} (ex-data e)] (cond h (->Trapped h e) to false :else (throw e)))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def ^:private system-labels #{"CONTINUE" "ABORT" "RETURN" "FRETURN" "NRETURN" "END" "end"})
 (def &STCOUNT (atom 0))
@@ -1272,7 +1248,7 @@
     (let [lim (long @&STLIMIT)]
         (reset! &STCOUNT lim)
         (swap! &STLIMIT clojure.core/+ 10)
-        (if (and (pos? (long @&ERRLIMIT)) (< (long (swap! SNOBOL4clojure.core/<ERRFT> inc)) 3)) (ex-info (SNOBOL4clojure.core/error-message 244) {:snobol/error 244}) (snobol-steplimit! n))))
+        (if (and (pos? (long @&ERRLIMIT)) (< (long (swap! <ERRFT> inc)) 3)) (ex-info (error-message 244) {:snobol/error 244}) (snobol-steplimit! n))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn statement-trace-active? [] (and (pos? @&TRACE) (@registry (reg-key "*" :label))))
 (def block-end [::block-end])
@@ -1288,7 +1264,7 @@
             (reset! &STNO (get @<DISPNO> n n))
             (reset! &LASTFILE @&FILE)
             (reset! &LASTLINE @&LINE)
-            (let [[f l] (get @<POS> n ["" 0])] (reset! &FILE f) (reset! &LINE l) (reset! SNOBOL4clojure.core/<STMT-LINE> l))
+            (let [[f l] (get @<POS> n ["" 0])] (reset! &FILE f) (reset! &LINE l) (reset! <STMT-LINE> l))
             (when (and counted (pos? (long @&TRACE))) (fire-keyword! "STCOUNT" counted)))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (declare INVOKE)
@@ -1309,12 +1285,11 @@
                 (cond
                     (and (list? tgt) (clojure.core/= '$ (first tgt)) (clojure.core/= 2 (count tgt))) (when-some [v (EVAL! (second tgt))] (if (integer? v) v (keyword (str v))))
                     (and (list? tgt) (clojure.core/= 'DIRECT (first tgt)))
-                        (when-some [v (EVAL! (second tgt))]
-                            (if (instance? SNOBOL4clojure.core.CodeBlock v) (.entry ^SNOBOL4clojure.core.CodeBlock v) (throw (ex-info "goto operand in direct goto is not code" {:snobol/error 24}))))
+                        (when-some [v (EVAL! (second tgt))] (if (instance? CodeBlock v) (.entry ^CodeBlock v) (throw (ex-info "goto operand in direct goto is not code" {:snobol/error 24}))))
                     (and (list? tgt) (symbol? (first tgt)) (not (:subscript (meta tgt))))
                         (let [args (mapv EVAL! (rest tgt)) _ (when (some nil? args) (throw (ex-info "goto evaluation failure" {:snobol/error 20}))) r (apply INVOKE (first tgt) args)]
                             (cond
-                                (instance? SNOBOL4clojure.core.NameResult r) (let [t (:target r)] (if (symbol? t) (keyword (name t)) t))
+                                (instance? NameResult r) (let [t (:target r)] (if (symbol? t) (keyword (name t)) t))
                                 (nil? r) (throw (ex-info "goto evaluation failure" {:snobol/error 20}))
                                 :else (throw (ex-info "function called by name returned a value" {:snobol/error 21}))))
                     :else tgt))
@@ -1324,10 +1299,10 @@
                 [r goto err current]
                 (let [g (when (map? goto) goto) tgt (computed-target (if r (or (:G g) (:S g)) (or (:G g) (:F g)))) nm (label-name tgt)]
                     (cond
-                        (and (clojure.core/= nm "CONTINUE") (:resume err) (clojure.core/= (:resume err) @SNOBOL4clojure.core/<ERRSERIAL>)) [::resume nil]
+                        (and (clojure.core/= nm "CONTINUE") (:resume err) (clojure.core/= (:resume err) @<ERRSERIAL>)) [::resume nil]
                         (clojure.core/= nm "CONTINUE")
                             (if
-                                (and err (clojure.core/= (:snobol/serial (ex-data (:ex err))) @SNOBOL4clojure.core/<ERRSERIAL>))
+                                (and err (clojure.core/= (:snobol/serial (ex-data (:ex err))) @<ERRSERIAL>))
                                 (let [g2 (:goto err) f2 (when (map? g2) (or (:G g2) (:F g2)))]
                                     (if
                                         (and (:in-goto err) f2 (not (keyword? f2)))
@@ -1338,21 +1313,11 @@
                             (let [e ^clojure.lang.ExceptionInfo (:ex err)]
                                 (throw (ex-info (ex-message e) (-> (ex-data e) (dissoc :snobol/label :snobol/serial :snobol/fp :snobol/resume) (assoc :snobol/abort true)))))
                         (clojure.core/= nm "ABORT")
-                            (let [n (long @&ERRTYPE)]
-                                (throw
-                                    (if
-                                        (zero? n)
-                                        (ex-info (SNOBOL4clojure.core/error-message 36) {:snobol/error 36})
-                                        (ex-info (SNOBOL4clojure.core/error-message n) {:snobol/error n :snobol/abort true}))))
+                            (let [n (long @&ERRTYPE)] (throw (if (zero? n) (ex-info (error-message 36) {:snobol/error 36}) (ex-info (error-message n) {:snobol/error n :snobol/abort true}))))
                         (clojure.core/= nm "SCONTINUE")
                             (throw
                                 (fatal-error
-                                    (if
-                                        (and err
-                                            (or
-                                                (and (:resume err) (clojure.core/= (:resume err) @SNOBOL4clojure.core/<ERRSERIAL>))
-                                                (clojure.core/= (:snobol/serial (ex-data (:ex err))) @SNOBOL4clojure.core/<ERRSERIAL>)))
-                                        331 321)))
+                                    (if (and err (or (and (:resume err) (clojure.core/= (:resume err) @<ERRSERIAL>)) (clojure.core/= (:snobol/serial (ex-data (:ex err))) @<ERRSERIAL>))) 331 321)))
                         tgt (do (goto! tgt) (let [a (label-addr tgt)] (when (pos? (long @&TRACE)) (fire-label! (or (second a) tgt))) [a err]))
                         :else [(saddr (inc (current 0))) err])))
             (follow
@@ -1371,7 +1336,7 @@
             (loop [[current err] (if k (enter at err0 nil) [(saddr at) err0])]
                 (cond
                     (identical? ::resume current) ::resume
-                    (and k (or (nil? current) (not (clojure.core/= k @SNOBOL4clojure.core/<ERRSERIAL>)))) (throw (ex-info "transfer" {:snobol/signal :transfer :snobol/at current :snobol/err err}))
+                    (and k (or (nil? current) (not (clojure.core/= k @<ERRSERIAL>)))) (throw (ex-info "transfer" {:snobol/signal :transfer :snobol/at current :snobol/err err}))
                     :else
                         (when-let [key (skey current)]
                             (when (special-targets key) (dispatch-special! key))
@@ -1379,19 +1344,19 @@
                                 (reset! &LASTNO @&STNO)
                                 (reset! &LASTFILE @&FILE)
                                 (reset! &LASTLINE @&LINE)
-                                (when-some [[f l] (get @<POS> (first current))] (reset! &FILE f) (reset! &LINE l) (reset! SNOBOL4clojure.core/<STMT-LINE> l))
+                                (when-some [[f l] (get @<POS> (first current))] (reset! &FILE f) (reset! &LINE l) (reset! <STMT-LINE> l))
                                 (reset! &STNO (get @<DISPNO> (first current) (first current)))
                                 (let [over
                                           (let [n (if (neg? (long @&STLIMIT)) @&STCOUNT (swap! &STCOUNT inc))]
                                               (let [
-                                                    step (if (or (SNOBOL4clojure.core/stcount-traced?) (not (zero? (long @SNOBOL4clojure.core/&PROFILE)))) 1 0)
+                                                    step (if (or (stcount-traced?) (not (zero? (long @&PROFILE)))) 1 0)
                                                     over (when (and (pos? (long @&STLIMIT)) (> (clojure.core/+ (long n) step) (long @&STLIMIT))) (overrun n))
                                                     _ (when (and (not over) (pos? (long @&TRACE)) (not (neg? (long @&STLIMIT)))) (fire-keyword! "STCOUNT" n))]
                                                   (when (pos? @&TRACE) (when (statement-trace-active?) (binding [*out* *err*] (println (format ">>> stmt %5d  %s" (dec n) (str key))))))
                                                   over))]
                                     (when (identical? stmt block-end) (throw (ex-info "END" {:snobol/signal :end :snobol/closing true})))
                                     (let [ferst (first stmt) seqond (second stmt) body (if (map? ferst) seqond ferst) goto (if (map? ferst) ferst seqond)]
-                                        (let [r (cond over (trap over) (identical? stmt compile-error) (trap (ex-info (SNOBOL4clojure.core/error-message 7) {:snobol/error 7})) :else (exec-body body))]
+                                        (let [r (cond over (trap over) (identical? stmt compile-error) (trap (ex-info (error-message 7) {:snobol/error 7})) :else (exec-body body))]
                                             (cond
                                                 (instance? Transfer r) (recur [(:at r) (:err r)])
                                                 (instance? Trapped r) (recur (enter (:label r) {:at current :goto goto :ex (:ex r)} current))
@@ -1414,17 +1379,16 @@
     [^clojure.lang.ExceptionInfo e d]
     (let [{h :snobol/label k :snobol/serial fp :snobol/fp to :snobol/resume :as data} (ex-data e)]
         (if
-            (and h (clojure.core/= d fp) (< (long SNOBOL4clojure.core/*handlers*) 100))
+            (and h (clojure.core/= d fp) (< (long *handlers*) 100))
             (do
-                (binding [SNOBOL4clojure.core/*handlers* (inc (long SNOBOL4clojure.core/*handlers*))] ((var-get (ns-resolve 'SNOBOL4clojure.core 'RUN-AT-ERROR)) h k e))
+                (binding [*handlers* (inc (long *handlers*))] ((var-get (ns-resolve 'SNOBOL4clojure.core 'RUN-AT-ERROR)) h k e))
                 (ex-info (ex-message e) (-> data (dissoc :snobol/label :snobol/serial :snobol/fp :snobol/resume) (assoc :snobol/to to)) e))
             e)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- failure-point
     [f]
-    (let [d (inc (long SNOBOL4clojure.core/*fp*))]
-        (binding [SNOBOL4clojure.core/*fp* d]
-            (try (f) (catch clojure.lang.ExceptionInfo e (let [e (at-error (error-decided e d) d) to (:snobol/to (ex-data e))] (if (and to (>= (long to) d)) nil (throw e))))))))
+    (let [d (inc (long *fp*))]
+        (binding [*fp* d] (try (f) (catch clojure.lang.ExceptionInfo e (let [e (at-error (error-decided e d) d) to (:snobol/to (ex-data e))] (if (and to (>= (long to) d)) nil (throw e))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- eval-operands [operands] (loop [ops (seq operands) vals []] (if ops (let [v (EVAL! (first ops))] (when-not (nil? v) (recur (next ops) (conj vals v)))) vals)))
 (def &MAXLNGTH (atom 16777216))
@@ -1448,8 +1412,7 @@
                     (if
                         (and (clojure.core/= 1 (count parts)) (< 1 (count (rest r))))
                         (first parts)
-                        (let [t (apply str (map sstr parts))]
-                            (if (clojure.core/> (count t) (long @SNOBOL4clojure.core/&MAXLNGTH)) (throw (ex-info "string length exceeds value of maxlngth keyword" {:snobol/error 205})) t)))
+                        (let [t (apply str (map sstr parts))] (if (> (count t) (long @&MAXLNGTH)) (throw (ex-info "string length exceeds value of maxlngth keyword" {:snobol/error 205})) t)))
                 (clojure.core/= (count parts) (count (rest r))) r
                 (empty? (rest parts)) (first parts)
                 :else (apply list 'SEQ parts)))
@@ -1478,7 +1441,7 @@
         (and (list? target) (equal (first target) '&) (clojure.core/= 2 (count target))) (EVAL! target)
         :else (apply INVOKE (or (:container (meta target)) (first target)) (rest target))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- deref-result [r] (if (instance? SNOBOL4clojure.core.NameResult r) (name-value (:target r)) r))
+(defn- deref-result [r] (if (instance? NameResult r) (name-value (:target r)) r))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- call-form?
     [X]
@@ -1490,25 +1453,25 @@
     [v]
     (cond
         (and (instance? NAME v) (list? (.n ^NAME v))) (.n ^NAME v)
-        (and (instance? NAME v) (instance? SNOBOL4clojure.core.ExprVar (.n ^NAME v))) (.n ^NAME v)
+        (and (instance? NAME v) (instance? ExprVar (.n ^NAME v))) (.n ^NAME v)
         (instance? NAME v) (symbol (name-string v))
         (or (and (string? v) (not= "" v)) (number? v)) (symbol (sstr v))
         :else (throw (ex-info "indirection operand is not name" {:snobol/error 239}))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- applied-function [fname] (let [s (SNOBOL4clojure.core/gtstg fname 60)] (when (clojure.core/= "" s) (throw (ex-info (SNOBOL4clojure.core/error-message 60) {:snobol/error 60}))) (symbol s)))
+(defn- applied-function [fname] (let [s (gtstg fname 60)] (when (clojure.core/= "" s) (throw (ex-info (error-message 60) {:snobol/error 60}))) (symbol s)))
 (defn- deferred? [x] (and (seq? x) (clojure.core/= 'DEFER! (first x)) (fn? (second x))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- evaluated-or-fail
     [f]
-    (let [d0 (long SNOBOL4clojure.core/*fp*)]
-        (when (clojure.core/= :xt @SNOBOL4clojure.core/<STAGE>) (reset! SNOBOL4clojure.core/<STAGE> :ee))
-        (reset! SNOBOL4clojure.core/<GTCEF> d0)
+    (let [d0 (long *fp*)]
+        (when (clojure.core/= :xt @<STAGE>) (reset! <STAGE> :ee))
+        (reset! <GTCEF> d0)
         (let [v
-                  (binding [SNOBOL4clojure.core/*fp* (inc d0)]
+                  (binding [*fp* (inc d0)]
                       (try
                           (f)
                           (catch clojure.lang.ExceptionInfo e (let [e (at-error (error-decided e (inc d0)) (inc d0)) to (:snobol/to (ex-data e))] (if (and to (>= (long to) d0)) nil (throw e))))))]
-            (reset! SNOBOL4clojure.core/<STAGE> :xt)
+            (reset! <STAGE> :xt)
             v)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- returned-value! [] (throw (ex-info "expression evaluated by name returned value" {:snobol/error 249})))
@@ -1581,7 +1544,7 @@
 (defmacro ^:private compiled-rules [] (list 'quote (:grammar (insta/parser grammar))))
 (def ^:private rules (compiled-rules))
 (def parse-expression (insta/parser rules :start :expr))
-(defn- compiled! [ok?] (reset! SNOBOL4clojure.core/<XC> (and (not ok?) (pos? (long @SNOBOL4clojure.core/&FNCLEVEL)))))
+(defn- compiled! [ok?] (reset! <XC> (and (not ok?) (pos? (long @&FNCLEVEL)))))
 (defn- blank? [c] (or (clojure.core/= c \space) (clojure.core/= c \tab)))
 (defn- char-at [^String s i] (when (< i (count s)) (.charAt s i)))
 (defn- skip-blanks [s i] (if (blank? (char-at s i)) (recur s (inc i)) i))
@@ -1704,10 +1667,10 @@
     [n text]
     (compiled! false)
     (when *raise-compile-errors* (throw (ex-info text {:snobol/error n})))
-    (reset! SNOBOL4clojure.core/&ERRTYPE n)
+    (reset! &ERRTYPE n)
     (fire-keyword! "ERRTYPE" n)
-    (reset! SNOBOL4clojure.core/&ERRTEXT text)
-    (when (pos? (long @SNOBOL4clojure.core/&ERRLIMIT)) (swap! SNOBOL4clojure.core/&ERRLIMIT dec))
+    (reset! &ERRTEXT text)
+    (when (pos? (long @&ERRLIMIT)) (swap! &ERRLIMIT dec))
     nil)
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn top-replacement
@@ -1816,7 +1779,7 @@
     (let [eval! (requiring-resolve 'SNOBOL4clojure.core/EVAL!)]
         (cond
             (or (string? n) (number? n)) [true n]
-            (and (symbol? n) (SNOBOL4clojure.core/protected-variables n)) [true (pattern-variable n)]
+            (and (symbol? n) (protected-variables n)) [true (pattern-variable n)]
             (vector? n) (let [comma? (clojure.core/= :comma (first n)) parts (mapv fold (if comma? (rest n) n))] (if (and (not comma?) (every? first parts)) [true (eval! n)] [false nil]))
             (list? n)
                 (let [[op & args] n names (name-positions op args)]
@@ -1861,7 +1824,7 @@
         [(mark
              [n]
              (cond
-                 (and (symbol? n) (SNOBOL4clojure.core/protected-variables n)) (list 'pattern-constant n)
+                 (and (symbol? n) (protected-variables n)) (list 'pattern-constant n)
                  (vector? n) (with-meta (mapv mark n) (meta n))
                  (list? n) (let [[op & args] n names (name-positions op args)] (with-meta (apply list op (map-indexed (fn [i a] (if (names i) a (mark a))) args)) (meta n)))
                  :else n))
@@ -1873,7 +1836,7 @@
                     (vector? n) (with-meta (mapv walk n) (meta n))
                     (list? n) (with-meta (apply list (first n) (map walk (rest n))) (meta n))
                     :else n))]
-        (if (some #(and (symbol? %) (SNOBOL4clojure.core/protected-variables %)) (tree-seq coll? seq n)) (walk n) n)))
+        (if (some #(and (symbol? %) (protected-variables %)) (tree-seq coll? seq n)) (walk n) n)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- compile-expression
     ([s] (compile-expression s nil))
@@ -1881,11 +1844,10 @@
         (let [p (parse-expression s)]
             (cond
                 (re-matches #"[ \t]*" s) (do (compiled! true) "")
-                (instance? instaparse.gll.Failure p)
-                    (let [{n :error i :end} (expression-end s) n (cond n n (< (long i) (count s)) early :else 220)] (when n (compile-failed! n (SNOBOL4clojure.core/error-message n))))
+                (instance? instaparse.gll.Failure p) (let [{n :error i :end} (expression-end s) n (cond n n (< (long i) (count s)) early :else 220)] (when n (compile-failed! n (error-message n))))
                 :else
                     (let [ir (top-replacement (first (emitter p))) n ((requiring-resolve 'SNOBOL4clojure.core/fold-error) ir)]
-                        (if n (compile-failed! n (SNOBOL4clojure.core/error-message n)) (do (compiled! true) ((requiring-resolve 'SNOBOL4clojure.core/freeze) ir))))))))
+                        (if n (compile-failed! n (error-message n)) (do (compiled! true) ((requiring-resolve 'SNOBOL4clojure.core/freeze) ir))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- compile-or-fail
     [^String s]
@@ -1909,9 +1871,7 @@
                                 (when (ends-in-mark? x) (throw (ex-info "eval argument is not expression" {:snobol/error 103})))
                                 (let [ir (compile-or-fail x)] (when-not (nil? ir) (evaluated-or-fail #(name-of ir)))))
                         :else (returned-value!)))
-            :else
-                (let [r (apply INVOKE fsym args)]
-                    (cond (nil? r) nil (instance? SNOBOL4clojure.core.NameResult r) (:target r) :else (throw (ex-info "function called by name returned a value" {:snobol/error 21})))))))
+            :else (let [r (apply INVOKE fsym args)] (cond (nil? r) nil (instance? NameResult r) (:target r) :else (throw (ex-info "function called by name returned a value" {:snobol/error 21})))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- assign-to [target v] (INVOKE '= target v))
 (def ^:private value-operators '#{= ?= ? | at-op + - sharp-op / * % ** ^! . tilde-op & SEQ})
@@ -1927,11 +1887,10 @@
         (and (list? N) (equal (first N) '*) (clojure.core/= 2 (count N))) (let [X (second N)] (fn [x] (when-some [t (name-of X)] (assign-to t x))))
         (and (list? N) (symbol? (first N)) (not (:subscript (meta N))) (not (contains? value-operators (first N))) (let [v (reference (first N))] (not (or (table? v) (array? v)))))
             (when-some [args (eval-operands (rest N))] (when-some [t (call-by-name (first N) args)] (fn [x] (assign-to t x))))
-        (list? N)
-            (let [t (element-target N) c (when (symbol? (first t)) ($$ (first t)))] (when-not (and (array? c) (not (SNOBOL4clojure.core/array-in-bounds? c (vec (rest t))))) (fn [x] (assign-to t x))))
+        (list? N) (let [t (element-target N) c (when (symbol? (first t)) ($$ (first t)))] (when-not (and (array? c) (not (array-in-bounds? c (vec (rest t))))) (fn [x] (assign-to t x))))
         true N))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- name-of-call [X] (when-some [args (eval-operands (rest X))] (let [r (apply INVOKE (first X) args)] (when (instance? SNOBOL4clojure.core.NameResult r) r))))
+(defn- name-of-call [X] (when-some [args (eval-operands (rest X))] (let [r (apply INVOKE (first X) args)] (when (instance? NameResult r) r))))
 (defn protected-store! [sym val] (when (protected-variables (symbol (name sym))) (throw (ex-info (error-message 42) {:snobol/error 42}))) (snobol-set! sym val))
 (def ABORT (list 'ABORT!))
 (def ARB (list 'ARB!))
@@ -1939,17 +1898,7 @@
 (def FAIL (list 'FAIL!))
 (def REM (list 'REM!))
 (def SUCCEED (list 'SUCCEED!))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(def ^:private pattern-keywords
-    {
-     "ABORT" (fn [] ABORT)
-     "ARB" (fn [] SNOBOL4clojure.core/ARB)
-     "BAL" (fn [] BAL)
-     "FAIL" (fn [] FAIL)
-     "FENCE" (fn [] bare-fence)
-     "REM" (fn [] SNOBOL4clojure.core/REM)
-     "SUCCEED" (fn [] SNOBOL4clojure.core/SUCCEED)})
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(def ^:private pattern-keywords {"ABORT" (fn [] ABORT) "ARB" (fn [] ARB) "BAL" (fn [] BAL) "FAIL" (fn [] FAIL) "FENCE" (fn [] bare-fence) "REM" (fn [] REM) "SUCCEED" (fn [] SUCCEED)})
 (def ^:private op-spelling {'at-op "@" 'sharp-op "#" 'tilde-op "~"})
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn EVAL!
@@ -1961,19 +1910,19 @@
             (float? E) E
             (string? E) E
             (integer? E) E
-            (symbol? E) (let [v ($$ E)] (when (pos? (long @SNOBOL4clojure.core/&TRACE)) (fire-access! E v)) (if (identical? v FENCE) bare-fence v))
-            (instance? SNOBOL4clojure.core.ExprVar E) (EVAL! (.ir ^SNOBOL4clojure.core.ExprVar E))
+            (symbol? E) (let [v ($$ E)] (when (pos? (long @&TRACE)) (fire-access! E v)) (if (identical? v FENCE) bare-fence v))
+            (instance? ExprVar E) (EVAL! (.ir ^ExprVar E))
             (and (vector? E) (clojure.core/= :comma (first E))) (loop [[a & more] (rest E)] (if more (if-some [v (failure-point #(EVAL! a))] v (recur more)) (EVAL! a)))
             (vector? E) (let [evaled (eval-operands E)] (when evaled (concat-value (apply list 'SEQ evaled))))
             (list? E)
                 (let [[op & parms] E]
                     (cond
-                        (equal op 'pattern-constant) (let [v (SNOBOL4clojure.core/primitive-pattern (first parms))] (if (identical? v FENCE) bare-fence v))
+                        (equal op 'pattern-constant) (let [v (primitive-pattern (first parms))] (if (identical? v FENCE) bare-fence v))
                         (:subscript (meta E))
                             (let [c (if (symbol? op) ($$ op) (EVAL! op)) c (if (instance? NAME c) ($$ (symbol (str (.n ^NAME c)))) c)]
                                 (when-some [ks (eval-operands parms)]
                                     (cond
-                                        (table? c) (table-get c (SNOBOL4clojure.core/table-subscript ks))
+                                        (table? c) (table-get c (table-subscript ks))
                                         (array? c) (array-get c (vec ks))
                                         :else (throw (ex-info "subscripted operand is not table or array" {:snobol/error 235})))))
                         (or
@@ -1995,12 +1944,12 @@
                                                 (when-some [args (eval-operands (rest x))]
                                                     (let [r (apply INVOKE (first x) args)]
                                                         (cond
-                                                            (instance? SNOBOL4clojure.core.NameResult r) (NAME. (:target r))
+                                                            (instance? NameResult r) (NAME. (:target r))
                                                             (nil? r) nil
                                                             :else (throw (ex-info "function called by name returned a value" {:snobol/error 21})))))
                                             (and (list? x) (equal (first x) '&) (clojure.core/= 2 (count x))) (NAME. x)
                                             (and (list? x) (equal (first x) '$) (clojure.core/= 2 (count x))) (when-some [v (EVAL! (second x))] (NAME. (indirect-target v)))
-                                            (and (list? x) (equal (first x) '*) (clojure.core/= 2 (count x))) (let [E (second x)] (NAME. (if (symbol? E) E (SNOBOL4clojure.core/->ExprVar E))))
+                                            (and (list? x) (equal (first x) '*) (clojure.core/= 2 (count x))) (let [E (second x)] (NAME. (if (symbol? E) E (->ExprVar E))))
                                             (and (list? x) (>= (count x) 2))
                                                 (when-some [ks (eval-operands (rest x))]
                                                     (let [v (when (symbol? (first x)) (reference (first x)))]
@@ -2018,15 +1967,15 @@
                                 (let [[P N] parms] (when-some [p (EVAL! P)] (when-some [t (capture-target N)] (INVOKE '$ p t)))))
                         (and (equal op '=) (list? (first parms)) (clojure.core/= 2 (count (first parms))) (equal (first (first parms)) '$))
                             (let [[[_ X] R] parms] (when-some [v (EVAL! X)] (INVOKE '= (indirect-target v) (EVAL! R))))
-                        (and (equal op '=) (list? (first parms)) (equal (first (first parms)) 'ITEM) (clojure.core/<= 3 (count (first parms))))
+                        (and (equal op '=) (list? (first parms)) (equal (first (first parms)) 'ITEM) (<= 3 (count (first parms))))
                             (let [[_ container-expr & key-exprs] (first parms)]
                                 (when-some [c (EVAL! container-expr)] (when-some [ks (eval-operands key-exprs)] (when-some [v (EVAL! (second parms))] (INVOKE '= (apply list c ks) v)))))
-                        (and (equal op '=) (list? (first parms)) (equal (first (first parms)) 'APPLY) (clojure.core/<= 2 (count (first parms))))
+                        (and (equal op '=) (list? (first parms)) (equal (first (first parms)) 'APPLY) (<= 2 (count (first parms))))
                             (when-some [[f & as] (eval-operands (rest (first parms)))]
-                                (let [fsym (symbol (SNOBOL4clojure.core/name-string f)) df (get @<FUNS> (name fsym))]
+                                (let [fsym (symbol (name-string f)) df (get @<FUNS> (name fsym))]
                                     (if
                                         (and df (not (:data (meta df))))
-                                        (let [r (apply INVOKE fsym as)] (when (instance? SNOBOL4clojure.core.NameResult r) (when-some [v (EVAL! (second parms))] (INVOKE '= (:target r) v))))
+                                        (let [r (apply INVOKE fsym as)] (when (instance? NameResult r) (when-some [v (EVAL! (second parms))] (INVOKE '= (:target r) v))))
                                         (when-some [v (EVAL! (second parms))] (INVOKE '= (apply list fsym as) v)))))
                         (and
                             (equal op '=)
@@ -2040,8 +1989,7 @@
                             (let [
                                   N (first parms)
                                   f (if (clojure.core/= 2 (count N)) (get @<FUNS> (opsyn-key (unused-unary-ops (first N)) 1)) (get @<FUNS> (opsyn-key (unused-binary-ops (first N)) 2)))]
-                                (when-some [args (eval-operands (rest N))]
-                                    (let [r (apply f args)] (when (instance? SNOBOL4clojure.core.NameResult r) (when-some [v (EVAL! (second parms))] (INVOKE '= (:target r) v))))))
+                                (when-some [args (eval-operands (rest N))] (let [r (apply f args)] (when (instance? NameResult r) (when-some [v (EVAL! (second parms))] (INVOKE '= (:target r) v))))))
                         (and (equal op '=) (call-form? (first parms))) (when-some [r (name-of-call (first parms))] (when-some [v (EVAL! (second parms))] (INVOKE '= (:target r) v)))
                         (equal op '=)
                             (let [
@@ -2058,10 +2006,8 @@
                                       c (when (list? N') (if (symbol? (first N')) ($$ (first N')) (first N')))
                                       field? (and (list? N') (symbol? (first N')) (not (:subscript (meta N'))) (:data (meta (get @<FUNS> (name (first N'))))))]
                                     (when
-                                        (and N' (not (and (array? c) (not field?) (not (SNOBOL4clojure.core/array-in-bounds? c (vec (rest N')))))))
-                                        (let [r (EVAL! R)]
-                                            (when (and (some? r) (symbol? N') (SNOBOL4clojure.core/protected-variables N')) (SNOBOL4clojure.core/protected-store! N' r))
-                                            (INVOKE '= N' r)))))
+                                        (and N' (not (and (array? c) (not field?) (not (array-in-bounds? c (vec (rest N')))))))
+                                        (let [r (EVAL! R)] (when (and (some? r) (symbol? N') (protected-variables N')) (protected-store! N' r)) (INVOKE '= N' r)))))
                         (equal op '?=)
                             (let [
                                   [N P R] parms
@@ -2148,16 +2094,16 @@
                         (and
                             (not (clojure.core/= kw "STLIMIT"))
                             (or (contains? keyword-defaults vr) (clojure.core/= vr #'&TRACE))
-                            (or (neg? n) (clojure.core/> n 16777216) (and (clojure.core/= kw "PROFILE") (clojure.core/> n 1))))
+                            (or (neg? n) (> n 16777216) (and (clojure.core/= kw "PROFILE") (> n 1))))
                             (throw (ex-info "keyword value assigned is negative or too large" {:snobol/error 210}))
-                        (and (clojure.core/= kw "MAXLNGTH") (clojure.core/< n 1024)) (throw (ex-info "value assigned to keyword maxlngth is too small" {:snobol/error 287}))
+                        (and (clojure.core/= kw "MAXLNGTH") (< n 1024)) (throw (ex-info "value assigned to keyword maxlngth is too small" {:snobol/error 287}))
                         (and (clojure.core/= kw "FULLSCAN") (zero? n)) (throw (ex-info "value assigned to keyword fullscan is zero" {:snobol/error 274}))
                         (or (contains? keyword-defaults vr) (clojure.core/= vr #'&TRACE)) (do (reset! @vr n) n)
                         :else (throw (ex-info "keyword in assignment is protected" {:snobol/error 209}))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn table-set [t k v] (let [k (table-key k)] (when-let [o (:order (meta t))] (swap! o (fn [m] (if (contains? m k) m (assoc m k (count m)))))) (swap! t assoc k v)) v)
 (def <ETRACES> (atom []))
-(def elements SNOBOL4clojure.core/<ETRACES>)
+(def elements <ETRACES>)
 (defn- emit-line! [text] (when (pos? @&TRACE) (swap! &TRACE dec) (trace-println (star-field) " " text)))
 (def <PRNMV> (atom nil))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -2192,17 +2138,11 @@
     (when-let [e (and (seq @elements) (first (filter #(and (clojure.core/= :value (:kind %)) (identical? c (:c %)) (clojure.core/= (vec ks) (:ks %))) @elements)))]
         (if-let [f (and (pos? @&TRACE) (trace-fn e))]
             (call-trace-fn! f (:text e) e)
-            (emit-line!
-                (str
-                    (apply str (repeat @&FNCLEVEL \i))
-                    " "
-                    (if-let [h (SNOBOL4clojure.core/holder-name c)] (str h (subs (:text e) (.indexOf ^String (:text e) "<"))) (:text e))
-                    " = "
-                    (trace-val new-val))))
+            (emit-line! (str (apply str (repeat @&FNCLEVEL \i)) " " (if-let [h (holder-name c)] (str h (subs (:text e) (.indexOf ^String (:text e) "<"))) (:text e)) " = " (trace-val new-val))))
         (:label e)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn array-set [^SnobolArray arr idx-vec v] (when-let [k (array-check-bounds arr idx-vec)] (swap! (:data arr) assoc k v) v))
-(defn- output-text [v] (if (or (and (or (list? v) (vector? v)) (#{"PATTERN" "EXPRESSION"} (SNOBOL4clojure.core/DATATYPE v))) (textless? v)) (SNOBOL4clojure.core/DATATYPE v) (sstr v)))
+(defn- output-text [v] (if (or (and (or (list? v) (vector? v)) (#{"PATTERN" "EXPRESSION"} (DATATYPE v))) (textless? v)) (DATATYPE v) (sstr v)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn write-to-channel!
     [var-sym val]
@@ -2215,7 +2155,7 @@
         (:label entry)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn ?= ([n s p] (match-replace n s p)))
-(defn- saved-value [sym] (if (SNOBOL4clojure.core/output-associated? sym) (get @SNOBOL4clojure.core/<ASSOC-LAST> sym) (reference sym)))
+(defn- saved-value [sym] (if (output-associated? sym) (get @<ASSOC-LAST> sym) (reference sym)))
 (def ^:dynamic *eval-block* nil)
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- function-line!
@@ -2235,7 +2175,7 @@
     [fname val signal & [caller-stno]]
     (function-line! fname :return #(case signal :freturn (str "FRETURN " fname) :nreturn (str "NRETURN " fname " = " (trace-val val)) (str "RETURN " fname " = " (trace-val val))) caller-stno))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- restore-var! [sym v] (if (nil? v) (do (swap! SNOBOL4clojure.core/<VARS> dissoc sym) (swap! SNOBOL4clojure.core/<ASSOC-LAST> dissoc sym)) (snobol-set! sym v)))
+(defn- restore-var! [sym v] (if (nil? v) (do (swap! <VARS> dissoc sym) (swap! <ASSOC-LAST> dissoc sym)) (snobol-set! sym v)))
 (def <NAMES> (atom #{}))
 (defn note-names! [names] (when (seq names) (swap! <NAMES> into names)))
 (def <FDEFS> (atom {}))
@@ -2266,7 +2206,7 @@
                     (some (fn [^java.lang.reflect.Method m] (clojure.core/= "doInvoke" (.getName m))) ms)
                     (reduce max -1 (keep (fn [^java.lang.reflect.Method m] (when (clojure.core/= "invoke" (.getName m)) (alength (.getParameterTypes m)))) ms)))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- apply-builtin [f args] (let [n (fixed-arity (class f))] (if (and n (clojure.core/>= n 0) (clojure.core/> (count args) n)) (apply f (take n args)) (apply f args))))
+(defn- apply-builtin [f args] (let [n (fixed-arity (class f))] (if (and n (>= n 0) (> (count args) n)) (apply f (take n args)) (apply f args))))
 (defn- dimension [lo hi] (when (> (long lo) (long hi)) (throw (ex-info (error-message 67) {:snobol/error 67}))) [lo hi])
 (defn- array-bound [x err] (let [n (num x)] (cond (integer? n) (long n) (and (double? n) (not (Double/isNaN n))) (long n) :else (throw (ex-info (error-message err) {:snobol/error err})))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -2295,14 +2235,14 @@
         (when (nan? a) (throw (ex-info "remdr first argument is not numeric" {:snobol/error 166})))
         (if
             (and (integer? a) (integer? b))
-            (if (zero? b) (throw (ex-info "remdr caused integer overflow" {:snobol/error 167})) (clojure.core/rem (long a) (long b)))
+            (if (zero? b) (throw (ex-info "remdr caused integer overflow" {:snobol/error 167})) (rem (long a) (long b)))
             (let [
                   a (double a)
                   q (clojure.core// a (double b))
                   _ (when (or (Double/isInfinite q) (Double/isNaN q)) (throw (ex-info "remdr caused real overflow" {:snobol/error 312})))
                   q (finite-or q 312 "remdr caused real overflow")
                   d (finite-or (clojure.core/- (finite-or (clojure.core/* (if (neg? q) (Math/ceil q) (Math/floor q)) (double b)) 312 "") a) 312 "")]
-                (if (neg? a) (if (clojure.core/<= d 0.0) d (clojure.core/- d)) (if (neg? d) (clojure.core/- d) d))))))
+                (if (neg? a) (if (<= d 0.0) d (clojure.core/- d)) (if (neg? d) (clojure.core/- d) d))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn TRACE [] nil)
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -2414,7 +2354,7 @@
                       [p]
                       (if-let [n (:raw ch)]
                           (max 0 (clojure.core/- p n))
-                          (let [^bytes b (java.nio.file.Files/readAllBytes (.toPath ^java.io.File f)) eol? (fn [i] (clojure.core/== 10 (aget b (dec i))))]
+                          (let [^bytes b (java.nio.file.Files/readAllBytes (.toPath ^java.io.File f)) eol? (fn [i] (== 10 (aget b (dec i))))]
                               (loop [i (if (and (pos? p) (eol? p)) (dec p) p)] (if (and (pos? i) (not (eol? i))) (recur (dec i)) i)))))]
             (cond
                 (and (clojure.core/= :input (:type ch)) f)
@@ -2438,7 +2378,7 @@
         (let [prev @<SETEXIT> s (gtstg label 187) s s]
             (when-not (or (clojure.core/= "" s) (goto-system-labels s) (@<STNO> (keyword s))) (throw (ex-info (error-message 187) {:snobol/error 187})))
             (reset! <SETEXIT> (when-not (clojure.core/= "" s) (keyword s)))
-            (if prev (SNOBOL4clojure.core.NAME. (symbol (name prev))) ε))))
+            (if prev (NAME. (symbol (name prev))) ε))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def <HOST0> (atom ""))
 (def <ARGV> (atom []))
@@ -2450,9 +2390,9 @@
         (if
             (or (nil? i) (clojure.core/= "" i))
             (HOST)
-            (let [n (SNOBOL4clojure.core/num i) bad #(throw (ex-info "erroneous argument for host" {:snobol/error 254}))]
+            (let [n (num i) bad #(throw (ex-info "erroneous argument for host" {:snobol/error 254}))]
                 (cond
-                    (and (integer? n) (zero? n)) (str @SNOBOL4clojure.core/<HOST0>)
+                    (and (integer? n) (zero? n)) (str @<HOST0>)
                     (and (integer? n) (clojure.core/= 1 n))
                         (let [cmd (str (or (first more) ""))]
                             (if
@@ -2461,13 +2401,12 @@
                                 (do
                                     (flush)
                                     (let [p (-> (ProcessBuilder. ^java.util.List ["/bin/sh" "-c" cmd]) (.inheritIO) (.start)) code (long (.waitFor p))]
-                                        (if (clojure.core/> code 128) (clojure.core/- code 128) (clojure.core/* code 256))))))
-                    (and (integer? n) (clojure.core/= 2 n))
-                        (let [k (if (or (nil? (first more)) (clojure.core/= "" (first more))) 0 (SNOBOL4clojure.core/num (first more)))] (if (integer? k) (get @SNOBOL4clojure.core/<ARGV> k) (bad)))
-                    (and (integer? n) (clojure.core/= 3 n)) (long @SNOBOL4clojure.core/<ARGI>)
+                                        (if (> code 128) (clojure.core/- code 128) (clojure.core/* code 256))))))
+                    (and (integer? n) (clojure.core/= 2 n)) (let [k (if (or (nil? (first more)) (clojure.core/= "" (first more))) 0 (num (first more)))] (if (integer? k) (get @<ARGV> k) (bad)))
+                    (and (integer? n) (clojure.core/= 3 n)) (long @<ARGI>)
                     (and (integer? n) (clojure.core/= 4 n)) (let [nm (str (or (first more) ""))] (if (clojure.core/= "" nm) (bad) (System/getenv nm)))
                     (and (integer? n) (clojure.core/= -1 n))
-                        (let [k (SNOBOL4clojure.core/num (first more)) frames #(long (count (.getStackTrace (Thread/currentThread))))]
+                        (let [k (num (first more)) frames #(long (count (.getStackTrace (Thread/currentThread))))]
                             (if-not
                                 (integer? k)
                                 (bad)
@@ -2606,29 +2545,18 @@
                 (if (zero? n) (list 'LEN# 0) (apply list 'SEQ (repeat n x)))
                 (let [s (str-arg x 91) m (long @&MAXLNGTH)]
                     (cond
-                        (clojure.core/> n 16777216) nil
-                        (clojure.core/> (clojure.core/* n (count s)) m) (throw (ex-info "string length exceeds value of maxlngth keyword" {:snobol/error 205}))
+                        (> n 16777216) nil
+                        (> (clojure.core/* n (count s)) m) (throw (ex-info "string length exceeds value of maxlngth keyword" {:snobol/error 205}))
                         :else (apply str (repeat n s))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn REVERSE [s] (apply str (clojure.string/reverse (str-arg s 177))))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn ITEM
-    [c & ks]
-    (cond
-        (SNOBOL4clojure.core/table? c) (SNOBOL4clojure.core/table-get c (SNOBOL4clojure.core/table-subscript ks))
-        (SNOBOL4clojure.core/array? c) (SNOBOL4clojure.core/array-get c (vec ks))
-        :else nil))
+(defn ITEM [c & ks] (cond (table? c) (table-get c (table-subscript ks)) (array? c) (array-get c (vec ks)) :else nil))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn array-prototype
     [^SnobolArray arr]
     (let [proto (or (:proto arr) (clojure.string/join "," (map (fn [[lo hi]] (str lo ":" hi)) (:dims arr))))] (if (re-matches #"[+]?[0-9]+" proto) (second (first (:dims arr))) proto)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn PROTOTYPE
-    [x & _]
-    (cond
-        (SNOBOL4clojure.core/table? x) (:size (meta x) 11)
-        (SNOBOL4clojure.core/array? x) (SNOBOL4clojure.core/array-prototype x)
-        :else (throw (ex-info "prototype argument is not valid object" {:snobol/error 164}))))
+(defn PROTOTYPE [x & _] (cond (table? x) (:size (meta x) 11) (array? x) (array-prototype x) :else (throw (ex-info "prototype argument is not valid object" {:snobol/error 164}))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn table->array
     ([t] (table->array t false))
@@ -2647,7 +2575,7 @@
     [x t]
     "CONVERT(x, type) — coerce x to the named SNOBOL4 type.
    Returns nil (failure) if the conversion is not defined."
-    (when-not (or (and (string? t) (seq t)) (number? t) (instance? SNOBOL4clojure.core.NAME t)) (throw (ex-info (error-message 74) {:snobol/error 74})))
+    (when-not (or (and (string? t) (seq t)) (number? t) (instance? NAME t)) (throw (ex-info (error-message 74) {:snobol/error 74})))
     (let [from (clojure.string/upper-case (DATATYPE x)) to (if (zero? (long @&CASE)) (str t) (clojure.string/upper-case (str t)))]
         (cond
             (clojure.core/= from to) x
@@ -2657,15 +2585,15 @@
                     (if (sign-then-blanks? x) 0 (if (re-matches #"[+-]?\d+" t) (try (Long/parseLong t) (catch NumberFormatException _ nil)) (when-some [d (string->real x)] (real->integer d)))))
             (and (clojure.core/= from "STRING") (clojure.core/= to "REAL")) (string->real x)
             (and (clojure.core/= from "STRING") (clojure.core/= to "PATTERN")) (list 'SEQ (list 'LIT$ (str x)))
-            (and (clojure.core/= from "STRING") (clojure.core/= to "NAME")) (SNOBOL4clojure.core.NAME. (symbol (str x)))
+            (and (clojure.core/= from "STRING") (clojure.core/= to "NAME")) (NAME. (symbol (str x)))
             (and (clojure.core/= from "INTEGER") (clojure.core/= to "STRING")) (str x)
             (and (clojure.core/= from "INTEGER") (clojure.core/= to "REAL")) (double x)
             (and (clojure.core/= from "INTEGER") (clojure.core/= to "PATTERN")) (list 'SEQ (list 'LIT$ (str x)))
-            (and (clojure.core/= from "INTEGER") (clojure.core/= to "NAME")) (SNOBOL4clojure.core.NAME. (symbol (str x)))
+            (and (clojure.core/= from "INTEGER") (clojure.core/= to "NAME")) (NAME. (symbol (str x)))
             (and (clojure.core/= from "REAL") (clojure.core/= to "STRING")) (sstr x)
             (and (clojure.core/= from "REAL") (clojure.core/= to "INTEGER")) (real->integer x)
             (and (clojure.core/= from "REAL") (clojure.core/= to "PATTERN")) (list 'SEQ (list 'LIT$ (sstr x)))
-            (and (clojure.core/= from "REAL") (clojure.core/= to "NAME")) (SNOBOL4clojure.core.NAME. (symbol (sstr x)))
+            (and (clojure.core/= from "REAL") (clojure.core/= to "NAME")) (NAME. (symbol (sstr x)))
             (and (clojure.core/= from "ARRAY") (clojure.core/= to "TABLE"))
                 (let [dims (:dims x)]
                     (if
@@ -2676,7 +2604,7 @@
                         nil))
             (and (clojure.core/= from "TABLE") (clojure.core/= to "ARRAY")) (table->array x)
             (and (clojure.core/= from "PATTERN") (clojure.core/= to "PATTERN")) x
-            (and (clojure.core/= from "NAME") (#{"STRING" "INTEGER" "REAL" "PATTERN"} to) (instance? SNOBOL4clojure.core.NAME x) (not (symbol? (.n ^SNOBOL4clojure.core.NAME x)))) nil
+            (and (clojure.core/= from "NAME") (#{"STRING" "INTEGER" "REAL" "PATTERN"} to) (instance? NAME x) (not (symbol? (.n ^NAME x)))) nil
             (and (clojure.core/= from "NAME") (clojure.core/= to "STRING")) (str x)
             (and (clojure.core/= from "NAME") (clojure.core/= to "INTEGER")) (let [v (try (Long/parseLong (str x)) (catch Exception _ nil))] v)
             (and (clojure.core/= from "NAME") (clojure.core/= to "REAL")) (let [v (try (Double/parseDouble (str x)) (catch Exception _ nil))] v)
@@ -2692,15 +2620,10 @@
 (defn COPY
     [x]
     (cond
-        (table? x) (let [t (atom @x :meta {:order (atom (if-let [o (:order (meta x))] @o {})) :size (:size (meta x) 11) :serial (SNOBOL4clojure.core/next-serial!)})] t)
-        (array? x) (assoc (SNOBOL4clojure.core/->SnobolArray (:dims x) (:dflt x) (atom @(:data x))) :proto (:proto x) :serial (SNOBOL4clojure.core/next-serial!))
-        (instance? SNOBOL4clojure.core.DataObj x)
-            (SNOBOL4clojure.core/->DataObj
-                (.type-name ^SNOBOL4clojure.core.DataObj x)
-                (.field-names ^SNOBOL4clojure.core.DataObj x)
-                (aclone ^objects (.fields ^SNOBOL4clojure.core.DataObj x))
-                (SNOBOL4clojure.core/next-serial!))
-        (instance? SNOBOL4clojure.core.CodeBlock x) (SNOBOL4clojure.core/->CodeBlock (.entry ^SNOBOL4clojure.core.CodeBlock x))
+        (table? x) (let [t (atom @x :meta {:order (atom (if-let [o (:order (meta x))] @o {})) :size (:size (meta x) 11) :serial (next-serial!)})] t)
+        (array? x) (assoc (->SnobolArray (:dims x) (:dflt x) (atom @(:data x))) :proto (:proto x) :serial (next-serial!))
+        (instance? DataObj x) (->DataObj (.type-name ^DataObj x) (.field-names ^DataObj x) (aclone ^objects (.fields ^DataObj x)) (next-serial!))
+        (instance? CodeBlock x) (->CodeBlock (.entry ^CodeBlock x))
         (and (seq? x) (#{"PATTERN" "EXPRESSION"} (DATATYPE x))) (with-meta (apply list x) (meta x))
         (and (vector? x) (clojure.core/= "PATTERN" (DATATYPE x))) (with-meta (into [] x) (meta x))
         :else x))
@@ -2713,7 +2636,7 @@
         (when-not fields (throw (ex-info "field first argument is not datatype name" {:snobol/error 108})))
         (when (and (>= (long n) 1) (<= (long n) (count fields))) (nth fields (dec (long n))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- sort-serial [v] (cond (array? v) (:serial v) (table? v) (:serial (meta v)) (instance? SNOBOL4clojure.core.DataObj v) (.serial ^SNOBOL4clojure.core.DataObj v)))
+(defn- sort-serial [v] (cond (array? v) (:serial v) (table? v) (:serial (meta v)) (instance? DataObj v) (.serial ^DataObj v)))
 (def ^:private sort-type-rank {"INTEGER" 0 "NAME" 1 "PATTERN" 2 "REAL" 3 "CODE" 4 "STRING" 5 "EXPRESSION" 6 "TABLE" 7 "ARRAY" 8})
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- sort-key-compare
@@ -2732,12 +2655,12 @@
           lo1 (first (first dims))
           hi1 (second (first dims))
           two-d? (clojure.core/= 2 (count dims))
-          _ (when (clojure.core/< 2 (count dims)) (throw (ex-info (error-message 256) {:snobol/error 256})))
+          _ (when (< 2 (count dims)) (throw (ex-info (error-message 256) {:snobol/error 256})))
           [lo2 hi2] (second dims)
           k
               (when two-d?
                   (let [k (if (or (nil? col) (clojure.core/= "" col)) lo2 (integer-of col))]
-                      (if (and k (clojure.core/<= lo2 k hi2)) (clojure.core/- k lo2) (throw (ex-info (error-message 258) {:snobol/error 258})))))
+                      (if (and k (<= lo2 k hi2)) (clojure.core/- k lo2) (throw (ex-info (error-message 258) {:snobol/error 258})))))
           cols (when two-d? (range lo2 (inc hi2)))
           rows (for [i (range lo1 (inc hi1))] (if two-d? (vec (for [j cols] (array-get arr [i j]))) [(array-get arr [i])]))
           pick (fn [row] (if two-d? (nth row k) (first row)))
@@ -2771,14 +2694,12 @@
 (defn- field-slot
     [f inst]
     (or
-        (when (instance? SNOBOL4clojure.core.DataObj inst) (let [fields (.field-names ^SNOBOL4clojure.core.DataObj inst) i (.indexOf ^java.util.List (vec fields) f)] (when (>= i 0) i)))
+        (when (instance? DataObj inst) (let [fields (.field-names ^DataObj inst) i (.indexOf ^java.util.List (vec fields) f)] (when (>= i 0) i)))
         (throw (ex-info "field function argument is wrong datatype" {:snobol/error 41}))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn field-fn
     [f]
-    (fn
-        ([inst] (let [i (int (field-slot f inst))] (aget ^objects (.fields ^SNOBOL4clojure.core.DataObj inst) i)))
-        ([inst v] (let [i (int (field-slot f inst))] (aset ^objects (.fields ^SNOBOL4clojure.core.DataObj inst) i v) v))))
+    (fn ([inst] (let [i (int (field-slot f inst))] (aget ^objects (.fields ^DataObj inst) i))) ([inst v] (let [i (int (field-slot f inst))] (aset ^objects (.fields ^DataObj inst) i v) v))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn DATA!
     [S]
@@ -2786,27 +2707,22 @@
         (let [tname type-name fnames fields]
             (swap! data-type-registry assoc tname fnames)
             `(do
-                 (swap! SNOBOL4clojure.core/<FUNS> assoc ~tname
-                     (with-meta
-                         (fn [& args#] (SNOBOL4clojure.core/->DataObj ~tname ~fnames (object-array (map-indexed (fn [i# _#] (nth args# i# ε)) ~fnames)) (SNOBOL4clojure.core/next-serial!)))
-                         {:data true}))
-                 ~@(for [f fnames] `(swap! SNOBOL4clojure.core/<FUNS> assoc ~f (with-meta (field-fn ~f) {:data true :field true})))))))
+                 (swap! <FUNS> assoc ~tname (with-meta (fn [& args#] (->DataObj ~tname ~fnames (object-array (map-indexed (fn [i# _#] (nth args# i# ε)) ~fnames)) (next-serial!))) {:data true}))
+                 ~@(for [f fnames] `(swap! <FUNS> assoc ~f (with-meta (field-fn ~f) {:data true :field true})))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn DATA [S] (when-let [form (DATA! S)] (when-let [[t fs] (parse-data-spec S)] (note-names! (cons t fs))) (eval form) ε))
-(defn CHAR [n] (let [n (int-arg n 281)] (if (clojure.core/<= 0 n 255) (str (char n)) (throw (ex-info "char argument not in range" {:snobol/error 282})))))
+(defn CHAR [n] (let [n (int-arg n 281)] (if (<= 0 n 255) (str (char n)) (throw (ex-info "char argument not in range" {:snobol/error 282})))))
 (defn ORD [s] (let [t (sstr s)] (when (seq t) (long (int (first t))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn SUBSTR
     [s i n]
     (let [n (int-arg n 192) i (int-arg i 193) s (str-arg s 194) len (count s)]
-        (when
-            (and (clojure.core/<= 1 i (inc len)) (clojure.core/>= n 0))
-            (if (zero? n) (subs s (dec i)) (when (clojure.core/<= (clojure.core/+ (dec i) n) len) (subs s (dec i) (clojure.core/+ (dec i) n)))))))
+        (when (and (<= 1 i (inc len)) (>= n 0)) (if (zero? n) (subs s (dec i)) (when (<= (clojure.core/+ (dec i) n) len) (subs s (dec i) (clojure.core/+ (dec i) n)))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn DATE
     ([] (DATE 0))
     ([i]
-        (let [n (if (or (nil? i) (clojure.core/= "" i)) 0 (SNOBOL4clojure.core/num i))]
+        (let [n (if (or (nil? i) (clojure.core/= "" i)) 0 (num i))]
             (when-not (integer? n) (throw (ex-info "date argument is not integer" {:snobol/error 330})))
             (.format (java.time.LocalDateTime/now) (java.time.format.DateTimeFormatter/ofPattern (case (long n) 1 "MM/dd/yyyy HH:mm:ss" 2 "yyyy-MM-dd HH:mm:ss" "MM/dd/yy HH:mm:ss"))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -2816,13 +2732,13 @@
     ([s n] (LPAD s n " "))
     ([s n fill]
         (let [f (str-arg fill 144) w (int-arg n 145) s-str (str-arg s 146) pad (clojure.core/- w (count s-str)) fill-c (if (clojure.core/= "" f) " " (subs f 0 1))]
-            (if (clojure.core/<= pad 0) s-str (str (apply str (repeat pad fill-c)) s-str)))))
+            (if (<= pad 0) s-str (str (apply str (repeat pad fill-c)) s-str)))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn RPAD
     ([s n] (RPAD s n " "))
     ([s n fill]
         (let [f (str-arg fill 178) w (int-arg n 179) s-str (str-arg s 180) pad (clojure.core/- w (count s-str)) fill-c (if (clojure.core/= "" f) " " (subs f 0 1))]
-            (if (clojure.core/<= pad 0) s-str (str s-str (apply str (repeat pad fill-c)))))))
+            (if (<= pad 0) s-str (str s-str (apply str (repeat pad fill-c)))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- lexical [x y n1 test] (let [b (gtstg y (inc (long n1))) a (gtstg x n1)] (when (test (compare a b)) ε)))
 (defn LEQ ([] (LEQ ε ε)) ([x] (LEQ x ε)) ([x y & _] (lexical x y 122 zero?)))
@@ -2831,17 +2747,17 @@
 (defn LLT ([] (LLT ε ε)) ([x] (LLT x ε)) ([x y & _] (lexical x y 130 neg?)))
 (defn LGE ([] (LGE ε ε)) ([x] (LGE x ε)) ([x y & _] (lexical x y 124 #(>= % 0))))
 (defn LGT ([] (LGT ε ε)) ([x] (LGT x ε)) ([x y & _] (lexical x y 126 pos?)))
-(defn ARG [fname n] (when-let [meta (get @SNOBOL4clojure.core/<FDEFS> (str fname))] (when-some [p (nth (:params meta) (dec (long n)) nil)] (SNOBOL4clojure.core.NAME. (symbol p)))))
+(defn ARG [fname n] (when-let [meta (get @<FDEFS> (str fname))] (when-some [p (nth (:params meta) (dec (long n)) nil)] (NAME. (symbol p)))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- arg-or-local
     [[fname n] k e1 t1 e2 t2]
     (let [
           meta (get @<FDEFS> (name-string fname))
           _ (when-not meta (throw (ex-info t1 {:snobol/error e1})))
-          i (let [v (SNOBOL4clojure.core/num n)] (if (and (number? v) (not (and (double? v) (Double/isNaN v)))) (long v) (throw (ex-info t2 {:snobol/error e2}))))]
+          i (let [v (num n)] (if (and (number? v) (not (and (double? v) (Double/isNaN v)))) (long v) (throw (ex-info t2 {:snobol/error e2}))))]
         (when-some [p (when (pos? i) (nth (k meta) (dec i) nil))] (NAME. (symbol p)))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn LOCAL [fname n] (when-let [meta (get @SNOBOL4clojure.core/<FDEFS> (str fname))] (when-some [p (nth (:locals meta) (dec (long n)) nil)] (SNOBOL4clojure.core.NAME. (symbol p)))))
+(defn LOCAL [fname n] (when-let [meta (get @<FDEFS> (str fname))] (when-some [p (nth (:locals meta) (dec (long n)) nil)] (NAME. (symbol p)))))
 (defn READ-LINE! [] (let [line (try (.readLine (stdin-reader)) (catch Exception _ nil))] (if (nil? line) ε (input-record line))))
 (defn INPUT [] (READ-LINE!))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -2932,10 +2848,7 @@
                     (swap! <CHANNELS> assoc unit ch)
                     ε))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- channel-variable
-    [name-arg]
-    (cond (symbol? name-arg) name-arg (instance? SNOBOL4clojure.core.NAME name-arg) (symbol (str (.n ^SNOBOL4clojure.core.NAME name-arg))) :else (symbol (str name-arg))))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- channel-variable [name-arg] (cond (symbol? name-arg) name-arg (instance? NAME name-arg) (symbol (str (.n ^NAME name-arg))) :else (symbol (str name-arg))))
 (defn OUTPUT [] ε)
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn open-output-channel!
@@ -2985,7 +2898,7 @@
     ([] (EXIT nil nil))
     ([a] (EXIT a nil))
     ([a b & _]
-        (let [n (when-not (string? a) (SNOBOL4clojure.core/num a))]
+        (let [n (when-not (string? a) (num a))]
             (cond
                 (and (string? a) (seq a))
                     (do
@@ -3111,12 +3024,12 @@
     (let [sb (StringBuilder.)]
         (loop [i 0 q nil]
             (when
-                (clojure.core/< i (count s))
+                (< i (count s))
                 (let [c (.charAt s i)]
                     (cond
                         q (do (.append sb c) (recur (inc i) (if (clojure.core/= c q) nil q)))
                         (or (clojure.core/= c \') (clojure.core/= c \")) (do (.append sb c) (recur (inc i) c))
-                        :else (do (.append sb (if (and (clojure.core/>= (int c) 97) (clojure.core/<= (int c) 122)) (Character/toUpperCase c) c)) (recur (inc i) nil))))))
+                        :else (do (.append sb (if (and (>= (int c) 97) (<= (int c) 122)) (Character/toUpperCase c) c)) (recur (inc i) nil))))))
         (str sb)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- source-names
@@ -3250,7 +3163,7 @@
                                 :else
                                     (let [
                                           stmt (cond-> command fold fold-case)
-                                          _ (SNOBOL4clojure.core/note-names! (source-names stmt))
+                                          _ (note-names! (source-names stmt))
                                           [_ e-kw e-sp e-op] (re-find #"^(END|end)([ \t]+)(\S.*?)[ \t]*$" stmt)
                                           stmt
                                               (if
@@ -3389,8 +3302,8 @@
         (apply pf args)
         (case op
             | (do (when (<= 2 (count args)) (pattern-operands! args)) (apply | args))
-            $ (do (when (and (<= 2 (count args)) (textless? (first args))) (throw (ex-info (SNOBOL4clojure.core/error-message 25) {:snobol/error 25}))) (apply $ args))
-            . (do (when (and (<= 2 (count args)) (textless? (first args))) (throw (ex-info (SNOBOL4clojure.core/error-message 30) {:snobol/error 30}))) (apply . args))
+            $ (do (when (and (<= 2 (count args)) (textless? (first args))) (throw (ex-info (error-message 25) {:snobol/error 25}))) (apply $ args))
+            . (do (when (and (<= 2 (count args)) (textless? (first args))) (throw (ex-info (error-message 30) {:snobol/error 30}))) (apply . args))
             LEN (LEN (first args))
             POS (POS (first args))
             RPOS (RPOS (first args))
@@ -3450,7 +3363,7 @@
                     (when-not
                         (nil? r)
                         (cond
-                            (instance? SNOBOL4clojure.core.ExprVar N) (when-some [t (name-of (.ir ^SNOBOL4clojure.core.ExprVar N))] (INVOKE '= t r))
+                            (instance? ExprVar N) (when-some [t (name-of (.ir ^ExprVar N))] (INVOKE '= t r))
                             (and (list? N) (clojure.core/= (first N) '&)) (do (assign-keyword! (second N) r) r)
                             (and (list? N) (>= (count N) 2))
                                 (let [
@@ -3465,29 +3378,27 @@
                                               :else container-sym)
                                       container (if (instance? NAME raw-container) ($$ (symbol (str (.n raw-container)))) raw-container)]
                                     (cond
-                                        (table? container) (let [v (table-set container (SNOBOL4clojure.core/table-subscript ks) r)] (fire-element! container ks r) v)
+                                        (table? container) (let [v (table-set container (table-subscript ks) r)] (fire-element! container ks r) v)
                                         (array? container) (when-some [v (array-set container (vec ks) r)] (fire-element! container ks r) v)
                                         (fn? container) (when (container (first ks) r) r)
                                         (and (symbol? container-sym) (not (:subscript (meta N)))) (throw (ex-info "undefined function called" {:snobol/error 22}))
                                         :else (throw (ex-info "subscripted operand is not table or array" {:snobol/error 235}))))
-                            (clojure.core/contains? #{'OUTPUT 'TERMINAL 'INPUT} N)
+                            (contains? #{'OUTPUT 'TERMINAL 'INPUT} N)
                                 (let [out-val (concat-value r)]
-                                    (swap! SNOBOL4clojure.core/<ASSOC-LAST> assoc N out-val)
+                                    (swap! <ASSOC-LAST> assoc N out-val)
                                     (when (and (clojure.core/= N 'OUTPUT) (not (zero? (long @&OUTPUT)))) (println (output-text out-val)))
                                     (when (clojure.core/= N 'TERMINAL) (binding [*out* *err*] (println (output-text out-val))))
                                     out-val)
-                            (clojure.core/= :output (:type (get @<CHANNELS> N)))
-                                (let [out-val (concat-value r)] (write-to-channel! N out-val) (swap! SNOBOL4clojure.core/<ASSOC-LAST> assoc N out-val) out-val)
+                            (clojure.core/= :output (:type (get @<CHANNELS> N))) (let [out-val (concat-value r)] (write-to-channel! N out-val) (swap! <ASSOC-LAST> assoc N out-val) out-val)
                             :else (let [v (concat-value r)] (snobol-set! N v) (fire-value! N v) v))))
             ?=
                 (let [
                       [n p R] args
-                      subject
-                          (gtstg (if (list? n) (apply INVOKE (or (:container (meta n)) (first n)) (rest n)) (let [v ($$ n)] (when (pos? (long @SNOBOL4clojure.core/&TRACE)) (fire-access! n v)) v)) 241)
+                      subject (gtstg (if (list? n) (apply INVOKE (or (:container (meta n)) (first n)) (rest n)) (let [v ($$ n)] (when (pos? (long @&TRACE)) (fire-access! n v)) v)) 241)
                       pat (pattern-argument p 240)]
                     (when-let [[start end] (SEARCH subject pat)]
                         (let [repl (sstr (EVAL! R)) result (str (subs subject 0 start) repl (subs subject end))]
-                            (when (clojure.core/> (count result) (long @SNOBOL4clojure.core/&MAXLNGTH)) (throw (ex-info "string length exceeds value of maxlngth keyword" {:snobol/error 205})))
+                            (when (> (count result) (long @&MAXLNGTH)) (throw (ex-info "string length exceeds value of maxlngth keyword" {:snobol/error 205})))
                             (INVOKE '= n result)
                             result)))
             DEFINE
@@ -3519,8 +3430,8 @@
                                    saved (zipmap all-saved (map #(saved-value (symbol %)) all-saved))
                                    f-saved (saved-value f-sym)
                                    stno-saved @&STNO
-                                   file-saved (if-some [[f _] SNOBOL4clojure.core/*eval-block*] f @&FILE)
-                                   line-saved (if-some [[_ l] SNOBOL4clojure.core/*eval-block*] l @&LINE)]
+                                   file-saved (if-some [[f _] *eval-block*] f @&FILE)
+                                   line-saved (if-some [[_ l] *eval-block*] l @&LINE)]
                                  (snobol-set! f-sym ε)
                                  (doseq [i (range (count params))] (snobol-set! (symbol (params i)) (nth call-args i ε)))
                                  (doseq [l locals] (snobol-set! (symbol l) ε))
@@ -3528,10 +3439,10 @@
                                  (fire-keyword! "FNCLEVEL" (swap! &FNCLEVEL inc))
                                  (let [
                                        run-fn (ns-resolve 'SNOBOL4clojure.core 'RUN)
-                                       d (inc (long SNOBOL4clojure.core/*fp*))
+                                       d (inc (long *fp*))
                                        outcome
                                            (try
-                                               (when run-fn (binding [SNOBOL4clojure.core/*fp* d SNOBOL4clojure.core/*flprt* d SNOBOL4clojure.core/*eval-block* nil] ((var-get run-fn) entry)))
+                                               (when run-fn (binding [*fp* d *flprt* d *eval-block* nil] ((var-get run-fn) entry)))
                                                :return
                                                (catch clojure.lang.ExceptionInfo e
                                                    (let [sig (:snobol/signal (ex-data e))]
@@ -3547,26 +3458,26 @@
                                            result ($$ f-sym)]
                                          (doseq [[k v] saved] (restore-var! (symbol k) v))
                                          (restore-var! f-sym f-saved)
-                                         (reset! SNOBOL4clojure.core/&LASTNO @&STNO)
-                                         (reset! SNOBOL4clojure.core/&LASTLINE @&LINE)
-                                         (reset! SNOBOL4clojure.core/&LASTFILE @&FILE)
+                                         (reset! &LASTNO @&STNO)
+                                         (reset! &LASTLINE @&LINE)
+                                         (reset! &LASTFILE @&FILE)
                                          (reset! &STNO stno-saved)
                                          (reset! &FILE file-saved)
                                          (reset! &LINE line-saved)
-                                         (reset! SNOBOL4clojure.core/<STMT-LINE> line-saved)
+                                         (reset! <STMT-LINE> line-saved)
                                          (reset! &RTNTYPE (case outcome :freturn "FRETURN" :nreturn "NRETURN" "RETURN"))
                                          (case outcome
                                              :return result
                                              :freturn nil
                                              :nreturn
                                                  (cond
-                                                     (instance? NAME result) (SNOBOL4clojure.core/->NameResult (.n ^NAME result))
-                                                     (and (string? result) (seq result)) (SNOBOL4clojure.core/->NameResult (symbol result))
-                                                     (number? result) (SNOBOL4clojure.core/->NameResult (symbol (sstr result)))
+                                                     (instance? NAME result) (->NameResult (.n ^NAME result))
+                                                     (and (string? result) (seq result)) (->NameResult (symbol result))
+                                                     (number? result) (->NameResult (symbol (sstr result)))
                                                      :else (throw (ex-info "function result in NRETURN is not name" {:snobol/error 243})))
                                              result)))))]
                         (swap! <FUNS> assoc fname the-fn)
-                        (SNOBOL4clojure.core/note-names! (concat [fname] params locals))
+                        (note-names! (concat [fname] params locals))
                         (swap! <FDEFS> assoc fname {:params params :locals locals})
                         ε))
             OPSYN
@@ -3579,16 +3490,16 @@
                       n
                           (when
                               (and n-arg (not= n-arg ε))
-                              (let [v (SNOBOL4clojure.core/num n-arg)]
+                              (let [v (num n-arg)]
                                   (cond
                                       (or (not (number? v)) (and (double? v) (Double/isNaN v))) (fail! 152 "OPSYN third argument is not integer")
-                                      (or (neg? v) (clojure.core/> v 16777216)) (fail! 153 "OPSYN third argument is negative or too large")
+                                      (or (neg? v) (> v 16777216)) (fail! 153 "OPSYN third argument is negative or too large")
                                       :else (long v))))
                       _
                           (cond
                               (clojure.core/= "" new-name) (fail! 155 "OPSYN first arg is not natural variable name")
                               (clojure.core/= "" old-name) (fail! 154 "OPSYN second arg is not natural variable name")
-                              (or (nil? n) (zero? n)) (when (contains? SNOBOL4clojure.core/system-functions new-name) (fail! 248 "attempted redefinition of system function"))
+                              (or (nil? n) (zero? n)) (when (contains? system-functions new-name) (fail! 248 "attempted redefinition of system function"))
                               :else nil)
                       n (when n (min n 2))
                       old-fn
@@ -3598,28 +3509,25 @@
                     (if (and n (pos? n)) (swap! <FUNS> assoc (opsyn-key (if (and (clojure.core/= 2 n) (#{"^" "!"} new-name)) "**" new-name) n) old-fn) (swap! <FUNS> assoc new-name old-fn))
                     ε)
             LOAD
-                (let [p (sstr (nth args 0 "")) lp (clojure.string/index-of p "(") e #(throw (ex-info (SNOBOL4clojure.core/error-message %) {:snobol/error %}))]
+                (let [p (sstr (nth args 0 "")) lp (clojure.string/index-of p "(") e #(throw (ex-info (error-message %) {:snobol/error %}))]
                     (cond (clojure.core/= "" p) (e 138) (nil? lp) (e 139) (zero? (long lp)) (e 140) (nil? (clojure.string/index-of p ")" lp)) (e 141) :else (e 142)))
             UNLOAD
                 (let [nm (name-string (first args))]
                     (cond
                         (clojure.core/= "" nm) (throw (ex-info "UNLOAD argument is not natural variable name" {:snobol/error 201}))
-                        (contains? SNOBOL4clojure.core/system-functions nm) (throw (ex-info "attempted redefinition of system function" {:snobol/error 248}))
+                        (contains? system-functions nm) (throw (ex-info "attempted redefinition of system function" {:snobol/error 248}))
                         :else (do (swap! <FUNS> dissoc nm) (swap! <FDEFS> dissoc nm) ε)))
             APPLY (apply APPLY (first args) (rest args))
             REPLACE (let [[s1 s2 s3] args] (REPLACE s1 s2 s3))
-            TABLE (apply-builtin SNOBOL4clojure.core/TABLE args)
-            ARRAY (apply-builtin SNOBOL4clojure.core/ARRAY args)
+            TABLE (apply-builtin TABLE args)
+            ARRAY (apply-builtin ARRAY args)
             REMDR (REMDR (first args) (second args))
             TRACE (let [[nm ty lbl f] args] (trace! nm (or ty "VALUE") lbl f) ε)
             STOPTR (let [[nm ty] args] (stoptr! nm (or ty "VALUE")) ε)
             COLLECT
-                (do
-                    (System/gc)
-                    (let [free (clojure.core/- (quot (.maxMemory (Runtime/getRuntime)) 8) (SNOBOL4clojure.core/storage-words)) want (SNOBOL4clojure.core/num (first args))]
-                        (when-not (and (integer? want) (clojure.core/> want free)) free)))
-            CLEAR (SNOBOL4clojure.core/clear-vars! (first args))
-            BACKSPACE (apply-builtin SNOBOL4clojure.core/BACKSPACE args)
+                (do (System/gc) (let [free (clojure.core/- (quot (.maxMemory (Runtime/getRuntime)) 8) (storage-words)) want (num (first args))] (when-not (and (integer? want) (> want free)) free)))
+            CLEAR (clear-vars! (first args))
+            BACKSPACE (apply-builtin BACKSPACE args)
             EJECT
                 (let [u (first args)]
                     (if
@@ -3632,7 +3540,7 @@
                                 :else ε))))
             SETEXIT (apply-builtin SETEXIT args)
             HOST (apply HOST args)
-            DUMP (let [n (num (first args))] (when (and (integer? n) (clojure.core/<= 1 n 3)) (print (dump-text n))) ε)
+            DUMP (let [n (num (first args))] (when (and (integer? n) (<= 1 n 3)) (print (dump-text n))) ε)
             ATAN (ATAN (first args))
             CHOP (CHOP (first args))
             COS (COS (first args))
@@ -3659,7 +3567,7 @@
             SORT (apply-builtin SORT args)
             RSORT (apply-builtin RSORT args)
             DATA (DATA (first args))
-            DATATYPE (SNOBOL4clojure.core/DATATYPE (first args))
+            DATATYPE (DATATYPE (first args))
             CHAR (CHAR (first args))
             ORD (when (seq args) (ORD (first args)))
             SUBSTR (SUBSTR (first args) (second args) (nth args 2 ""))
@@ -3680,14 +3588,12 @@
             ENDFILE
                 (let [u (first args)]
                     (cond
-                        (or (nil? u) (clojure.core/= "" u)) (throw (ex-info (SNOBOL4clojure.core/error-message 97) {:snobol/error 97}))
-                        (nil? (get @<CHANNELS> (channel-key u))) (throw (ex-info (SNOBOL4clojure.core/error-message 98) {:snobol/error 98}))
+                        (or (nil? u) (clojure.core/= "" u)) (throw (ex-info (error-message 97) {:snobol/error 97}))
+                        (nil? (get @<CHANNELS> (channel-key u))) (throw (ex-info (error-message 98) {:snobol/error 98}))
                         :else (close-channel! (channel-key u))))
-            DETACH
-                (let [v (first args) sym (cond (symbol? v) v (instance? SNOBOL4clojure.core.NAME v) (symbol (str (.n ^SNOBOL4clojure.core.NAME v))) :else (symbol (str v)))]
-                    (do (swap! <CHANNELS> dissoc sym) ε))
+            DETACH (let [v (first args) sym (cond (symbol? v) v (instance? NAME v) (symbol (str (.n ^NAME v))) :else (symbol (str v)))] (do (swap! <CHANNELS> dissoc sym) ε))
             REWIND (rewind-channel! (first args))
-            EXIT (apply-builtin SNOBOL4clojure.core/EXIT args)
+            EXIT (apply-builtin EXIT args)
             CODE
                 (let [src (str (first args)) compile-f (ns-resolve 'SNOBOL4clojure.core 'CODE-block)]
                     (when-not compile-f (throw (ex-info "CODE: compiler not loaded" {:snobol/signal :error})))
@@ -3695,13 +3601,13 @@
                         (if
                             (map? entry)
                             (if
-                                (and (pos? (long @SNOBOL4clojure.core/&ERRLIMIT)) @SNOBOL4clojure.core/<SETEXIT>)
-                                (do (compiled! false) (throw (ex-info (SNOBOL4clojure.core/error-message (:error entry)) {:snobol/error (:error entry)})))
-                                (compile-failed! (:error entry) (SNOBOL4clojure.core/error-message (:error entry))))
-                            (when (some? entry) (compiled! true) (SNOBOL4clojure.core/->CodeBlock entry)))))
+                                (and (pos? (long @&ERRLIMIT)) @<SETEXIT>)
+                                (do (compiled! false) (throw (ex-info (error-message (:error entry)) {:snobol/error (:error entry)})))
+                                (compile-failed! (:error entry) (error-message (:error entry))))
+                            (when (some? entry) (compiled! true) (->CodeBlock entry)))))
             (let [raw-f (if (symbol? op) ($$fn op) op) f (if (instance? NAME raw-f) ($$ (symbol (str (.n raw-f)))) raw-f) f (if (fn? f) f (get @<FUNS> (str op) f))]
                 (cond
-                    (table? f) (table-get f (SNOBOL4clojure.core/table-subscript args))
+                    (table? f) (table-get f (table-subscript args))
                     (array? f) (array-get f (vec args))
                     (fn? f) (apply-builtin f args)
                     :else (throw (ex-info "undefined function called" {:snobol/error 22 :function op})))))))
@@ -3710,9 +3616,7 @@
     [entry]
     (when-some [f (:fn entry)]
         (let [n (if (instance? NAME f) (str (.n ^NAME f)) (str f))]
-            (or
-                (get @<FUNS> n)
-                (when (contains? SNOBOL4clojure.core/system-functions n) (let [invoke (ns-resolve (the-ns 'SNOBOL4clojure.core) 'INVOKE)] (fn [& args] (apply @invoke (symbol n) args))))))))
+            (or (get @<FUNS> n) (when (contains? system-functions n) (let [invoke (ns-resolve (the-ns 'SNOBOL4clojure.core) 'INVOKE)] (fn [& args] (apply @invoke (symbol n) args))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn fire-keyword!
     [kw new-val]
@@ -3723,14 +3627,14 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- matching
     [f]
-    (binding [SNOBOL4clojure.core/*matching* true]
+    (binding [*matching* true]
         (try
             (f)
             (catch clojure.lang.ExceptionInfo e
                 (let [{n :snobol/error abort :snobol/abort :as data} (ex-data e)]
                     (if
-                        (and n (not abort) (zero? (long @SNOBOL4clojure.core/&ERRLIMIT)) (not (contains? data :snobol/to)) (not (contains? data :snobol/label)) (not (<= 43 (long n) 58)))
-                        (do (reset! SNOBOL4clojure.core/&ERRTYPE n) (fire-keyword! "ERRTYPE" n) (reset! SNOBOL4clojure.core/&ERRTEXT (ex-message e)) nil)
+                        (and n (not abort) (zero? (long @&ERRLIMIT)) (not (contains? data :snobol/to)) (not (contains? data :snobol/label)) (not (<= 43 (long n) 58)))
+                        (do (reset! &ERRTYPE n) (fire-keyword! "ERRTYPE" n) (reset! &ERRTEXT (ex-message e)) nil)
                         (throw e)))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn MATCH
@@ -3758,11 +3662,10 @@
             (if
                 (ends-in-mark? X)
                 (throw (ex-info "eval argument is not expression" {:snobol/error 103}))
-                (evaluated-or-fail
-                    #(when-some [ir (binding [*raise-compile-errors* true] (compile-or-fail X))] (binding [SNOBOL4clojure.core/*eval-block* @SNOBOL4clojure.core/<CODELINE>] (EVAL! ir)))))
+                (evaluated-or-fail #(when-some [ir (binding [*raise-compile-errors* true] (compile-or-fail X))] (binding [*eval-block* @<CODELINE>] (EVAL! ir)))))
         (number? X) X
         (and (instance? NAME X) (symbol? (.n ^NAME X))) (EVAL (name (.n ^NAME X)))
-        (or (textless? X) (and (list? X) (clojure.core/= "PATTERN" (SNOBOL4clojure.core/DATATYPE X)))) (throw (ex-info "eval argument is not expression" {:snobol/error 103}))
+        (or (textless? X) (and (list? X) (clojure.core/= "PATTERN" (DATATYPE X)))) (throw (ex-info "eval argument is not expression" {:snobol/error 103}))
         true (EVAL! X)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def ^:private ^:const ARETURN (int Opcodes/ARETURN))
@@ -4136,7 +4039,7 @@
               dcl (DynamicClassLoader.)
               cls (.defineClass dcl cls-name bc nil)
               eval-field (.getField cls "EVAL_FN")
-              _ (.set eval-field nil SNOBOL4clojure.core/EVAL!)
+              _ (.set eval-field nil EVAL!)
               inline-fn-vals
                   {
                    "$$_FN" $$_FN
@@ -4158,7 +4061,7 @@
                    "STR_FN" STR_FN}
               _ (doseq [[fld-name fld-val] inline-fn-vals] (.set (.getField cls fld-name) nil fld-val))
               method (.getMethod cls "run" (into-array Class []))
-              run-fn (fn [] (.set eval-field nil SNOBOL4clojure.core/EVAL!) (.invoke method nil (into-array Object [])))]
+              run-fn (fn [] (.set eval-field nil EVAL!) (.invoke method nil (into-array Object [])))]
             (swap! class-cache assoc src run-fn)
             run-fn)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -4192,12 +4095,12 @@
     (alter-var-root #'SUB_FN (constantly subtract))
     (alter-var-root #'MUL_FN (constantly multiply))
     (alter-var-root #'DIV_FN (constantly divide))
-    (alter-var-root #'LT_FN (constantly (fn [a b] (let [na (SNOBOL4clojure.core/num a) nb (SNOBOL4clojure.core/num b)] (when (< na nb) a)))))
-    (alter-var-root #'GT_FN (constantly (fn [a b] (let [na (SNOBOL4clojure.core/num a) nb (SNOBOL4clojure.core/num b)] (when (> na nb) a)))))
-    (alter-var-root #'LE_FN (constantly (fn [a b] (let [na (SNOBOL4clojure.core/num a) nb (SNOBOL4clojure.core/num b)] (when (<= na nb) a)))))
-    (alter-var-root #'GE_FN (constantly (fn [a b] (let [na (SNOBOL4clojure.core/num a) nb (SNOBOL4clojure.core/num b)] (when (>= na nb) a)))))
-    (alter-var-root #'EQ_FN (constantly (fn [a b] (let [na (SNOBOL4clojure.core/num a) nb (SNOBOL4clojure.core/num b)] (when (clojure.core/= na nb) a)))))
-    (alter-var-root #'NEQ_FN (constantly (fn [a b] (let [na (SNOBOL4clojure.core/num a) nb (SNOBOL4clojure.core/num b)] (when (not (clojure.core/= na nb)) a)))))
+    (alter-var-root #'LT_FN (constantly (fn [a b] (let [na (num a) nb (num b)] (when (< na nb) a)))))
+    (alter-var-root #'GT_FN (constantly (fn [a b] (let [na (num a) nb (num b)] (when (> na nb) a)))))
+    (alter-var-root #'LE_FN (constantly (fn [a b] (let [na (num a) nb (num b)] (when (<= na nb) a)))))
+    (alter-var-root #'GE_FN (constantly (fn [a b] (let [na (num a) nb (num b)] (when (>= na nb) a)))))
+    (alter-var-root #'EQ_FN (constantly (fn [a b] (let [na (num a) nb (num b)] (when (clojure.core/= na nb) a)))))
+    (alter-var-root #'NEQ_FN (constantly (fn [a b] (let [na (num a) nb (num b)] (when (not (clojure.core/= na nb)) a)))))
     (alter-var-root #'SIGNAL_FN (constantly (fn [^String sig-name] (throw (ex-info sig-name {:snobol/signal (keyword sig-name)})))))
     (alter-var-root #'CONCAT_FN
         (constantly

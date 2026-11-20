@@ -165,6 +165,7 @@ These come from the README's "Design Laws", plus traps found in the code.
 - **`INVOKE` receives arguments already evaluated.** Never call `EVAL!` on them inside `INVOKE`.
 - **The matcher (`engine` in `core.clj`) stays a single `loop`/`case`.** Do not split the engine.
 - **In `core.clj`, Clojure's comparison is `clojure.core/=`.** A bare `=` (or `+ - * /`) is SNOBOL4's IR builder, so `(= a b)` returns a list, which is always truthy.
+- **No qualification the namespace does not need** (Lon 2026-11-19: "Remove all un-necessary name qualifications which clarify namespace."): a name of `core` is written bare, a class of `core` (`DataObj`, `->DataObj`) too, and `clojure.core/` only for `= + - * / num`. A qualification stays on a quoted symbol another namespace resolves at run time (`'SNOBOL4clojure.core/-main`, the generated code's `'SNOBOL4clojure.core/snobol-ident?`), in a string, and where a local of the same name stands in the form.
 - **`TABLE` and `ARRAY` are mutable through atoms;** everything else is immutable.
 - **A test namespace that refers `SNOBOL4clojure.core` or `operators` must exclude the shadowed operators:** `[SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]`, as `core_test.clj` and every such namespace now does.
   - **Why:** without `:exclude`, `=` is SNOBOL4's IR builder, so `(= a b)` returns the list `(= a b)`. That list is always truthy, so `(is (= 1 2))` reports a pass.
