@@ -80,8 +80,8 @@
       ;; CORRECT:
       (bisect-divergence src 1 100 'I #(clojure.core/= % 5))
   "
-  (:require [clojure.test :refer [is]]
-            [SNOBOL4clojure.core :refer [RUN CODE preprocess-includes]]))
+  (:require [SNOBOL4clojure.repl :refer [preprocess-includes]] [clojure.test :refer [is]]
+            [SNOBOL4clojure.core :refer [RUN CODE]]))
 
 ;; ── Low-level timed executor ───────────────────────────────────────────────────
 
@@ -116,7 +116,7 @@
                                             :steps  (get (ex-data e) :steps)
                                             :thrown (.getMessage e)
                                             ;; 18C.9: auto-snapshot at step-limit stop
-                                            :vars   (SNOBOL4clojure.core/snapshot!)}
+                                            :vars   (SNOBOL4clojure.repl/snapshot!)}
                                {:exit :error :thrown (.getMessage e)}))
                            (catch Exception e
                              {:exit :error :thrown (.getMessage e)})
@@ -238,7 +238,7 @@
     (reset! SNOBOL4clojure.core/&STLIMIT 2147483647)
     (assoc r
            :steps @SNOBOL4clojure.core/&STCOUNT
-           :vars  (SNOBOL4clojure.core/snapshot!))))
+           :vars  (SNOBOL4clojure.repl/snapshot!))))
 
 (defn probe-at
   "Run src to step n and return the value of variable `var-sym` at that point.
@@ -358,4 +358,4 @@
                                          {:exit :error :thrown (.getMessage e)})
                                        (finally
                                          (reset! SNOBOL4clojure.core/&STLIMIT 2147483647)))]
-                       (assoc resume-r :vars (SNOBOL4clojure.core/snapshot!)))))))
+                       (assoc resume-r :vars (SNOBOL4clojure.repl/snapshot!)))))))

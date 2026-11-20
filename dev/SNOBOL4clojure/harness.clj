@@ -1,5 +1,12 @@
 (ns SNOBOL4clojure.harness
-    (:require [clojure.java.shell :as sh] [clojure.string :as str] [SNOBOL4clojure.core :as env] [SNOBOL4clojure.core :as sno] [SNOBOL4clojure.core :as comp] [SNOBOL4clojure.core :as rt])
+    (:require
+        [SNOBOL4clojure.repl :as repl]
+        [clojure.java.shell :as sh]
+        [clojure.string :as str]
+        [SNOBOL4clojure.core :as env]
+        [SNOBOL4clojure.core :as sno]
+        [SNOBOL4clojure.core :as comp]
+        [SNOBOL4clojure.core :as rt])
     (:import [java.io StringWriter]))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def ^:dynamic *spitbol-bin* "/usr/local/bin/spitbol")
@@ -88,8 +95,8 @@
     (reset! env/&STLIMIT n)
     (try
         (let [stdout (with-out-str (try (sno/RUN (sno/CODE src)) (catch clojure.lang.ExceptionInfo e (when-not (#{:end :step-limit} (get (ex-data e) :snobol/signal)) (throw e)))))]
-            {:exit (if (> @env/&STCOUNT n) :step-limit :ok) :steps @env/&STCOUNT :stdout (normalise stdout) :vars (env/snapshot!)})
-        (catch Exception e {:exit :error :thrown (.getMessage e) :vars (env/snapshot!)})
+            {:exit (if (> @env/&STCOUNT n) :step-limit :ok) :steps @env/&STCOUNT :stdout (normalise stdout) :vars (repl/snapshot!)})
+        (catch Exception e {:exit :error :thrown (.getMessage e) :vars (repl/snapshot!)})
         (finally (reset! env/&STLIMIT 2147483647))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def int-vars '[I J K L M N])
@@ -432,7 +439,7 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn run-jvm [src] (rt/run-jvm-captured! src))
 (def ^:private SDIR "bench")
-(defn- include-src [filename] (comp/preprocess-includes (str "-INCLUDE '" filename "'") [SDIR]))
+(defn- include-src [filename] (repl/preprocess-includes (str "-INCLUDE '" filename "'") [SDIR]))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def PROGRAMS
     [{:id "arith-10k" :label "Arithmetic loop (I=0..10000, LT branch)" :src "        I = 0\nLOOP    I = I + 1\n        LT(I,10000)   :S(LOOP)\n        OUTPUT = I\nEND\n" :reps 30}

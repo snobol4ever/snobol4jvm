@@ -1,7 +1,7 @@
 (ns SNOBOL4clojure.test-compiler
   "The compiler from Clojure: IR, compile error numbers, -INCLUDE, and CODE and RUN called directly."
-  (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer [CODE! syntax-error preprocess-includes CODE]]
+  (:require [SNOBOL4clojure.repl :refer [preprocess-includes]] [clojure.test :refer :all]
+            [SNOBOL4clojure.core :refer [CODE! syntax-error CODE]]
             [SNOBOL4clojure.core :refer [GLOBALS $$ snobol-set! DATATYPE table? table-get array? array-prototype]]
             [clojure.test :refer [deftest is testing]]
             [clojure.java.io :as io]

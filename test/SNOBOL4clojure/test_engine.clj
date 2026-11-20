@@ -1,11 +1,9 @@
 (ns SNOBOL4clojure.test-engine
   "The matcher, the pattern constructors and scanners, the operators and the runtime state, tested from Clojure."
   (:refer-clojure :exclude [num])
-  (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.core :refer [SEARCH MATCH FULLMATCH MATCH-REPLACE INVOKE | . COLLECT! tilde]]
-            [SNOBOL4clojure.core :refer [ANY SPAN POS RPOS LEN ABORT ARB ARBNO BAL BREAK FAIL FENCE NOTANY REM RTAB SUCCEED TAB ANY$ BREAK$ FAIL! LEN# LIT$ NOTANY$ POS# REM! RPOS# RTAB# SPAN$
-                                        SUCCEED! TAB# charset GLOBALS ORD CHAR REMDR INTEGER REAL CONVERT ε NSPAN BREAKX BOL EOL snobol-set! $$ CURSOR DEFER &LCASE &UCASE &DIGITS ARRAY
-                                        DATATYPE TABLE empty-set divide equal multiply not-equal num subtract Σ+ η]]
+  (:require [SNOBOL4clojure.repl :refer [CURSOR DEFER MATCH-REPLACE empty-set tilde]] [clojure.test :refer :all]
+            [SNOBOL4clojure.core :refer [SEARCH MATCH FULLMATCH INVOKE | . COLLECT!]]
+            [SNOBOL4clojure.core :refer [ANY SPAN POS RPOS LEN ABORT ARB ARBNO BAL BREAK FAIL FENCE NOTANY REM RTAB SUCCEED TAB ANY$ BREAK$ FAIL! LEN# LIT$ NOTANY$ POS# REM! RPOS# RTAB# SPAN$ SUCCEED! TAB# charset GLOBALS ORD CHAR REMDR INTEGER REAL CONVERT ε NSPAN BREAKX BOL EOL snobol-set! $$ &LCASE &UCASE &DIGITS ARRAY DATATYPE TABLE divide equal multiply not-equal num subtract Σ+ η]]
             [SNOBOL4clojure.core :as m :refer [SEARCH FULLMATCH]]
             [SNOBOL4clojure.core :as ops :refer :all :exclude [= + - * / num]])
   (:import [SNOBOL4clojure.core NAME]))

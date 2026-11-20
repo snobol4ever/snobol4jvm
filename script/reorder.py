@@ -64,10 +64,20 @@ def locals_of(node, out):
                     for c in spec[2][1:]:
                         if c[0] == 'coll' and c[1] == '[': binding_syms(c, out)
                         if c[0] == 'coll' and c[1] == '(' and c[2] and c[2][0][0] == 'coll' and c[2][0][1] == '[': binding_syms(c[2][0], out)
-        elif node[1] == '(' and h in ('fn', 'fn*', 'defn', 'defn-', 'defmacro') or (node[1] == '(' and h and h.startswith('def') and h != 'def'):
-            for c in kids[1:]:
-                if c[0] == 'coll' and c[1] == '[': binding_syms(c, out)
-                if c[0] == 'coll' and c[1] == '(' and c[2] and c[2][0][0] == 'coll' and c[2][0][1] == '[': binding_syms(c[2][0], out)
+        elif node[1] == '(' and h in ('fn', 'fn*', 'defn', 'defn-', 'defmacro', 'defmethod'):
+            rest = kids[3:] if h == 'defmethod' else kids[1:]          # a defmethod's dispatch value is no parameter vector
+            for c in rest:                                              # the parameters are the first vector, or each arity's first
+                if c[0] == 'coll' and c[1] == '[':
+                    binding_syms(c, out); break
+                if c[0] == 'coll' and c[1] == '(':
+                    for arity in rest:
+                        if arity[0] == 'coll' and arity[1] == '(' and arity[2] and arity[2][0][0] == 'coll' and arity[2][0][1] == '[':
+                            binding_syms(arity[2][0], out)
+                    break
+        elif node[1] == '(' and h in ('deftype', 'defrecord') and len(kids) > 2 and kids[2][0] == 'coll' and kids[2][1] == '[':
+            binding_syms(kids[2], out)                                  # the fields; each method's parameters are its own first vector
+            for m in kids[3:]:
+                if m[0] == 'coll' and m[1] == '(' and len(m[2]) > 1 and m[2][1][0] == 'coll' and m[2][1][1] == '[': binding_syms(m[2][1], out)
         if node[1] == '(' and h in BINDERS and len(kids) > 1 and kids[1][0] == 'coll' and kids[1][1] == '[':
             bk = kids[1][2]
             for i in range(0, len(bk), 2): binding_syms(bk[i], out)

@@ -1,6 +1,6 @@
 (ns SNOBOL4clojure.test-runtime
   "The runtime through the public API of SNOBOL4clojure.core: channels, traces, diagnostics, and what -main does."
-  (:require [clojure.test :refer :all]
+  (:require [SNOBOL4clojure.repl :refer [trace-clear! trace-disable-full! trace-enable-full!]] [clojure.test :refer :all]
             [SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]
             [SNOBOL4clojure.test-helpers :refer [prog prog-timeout run-with-timeout prog-infinite prog-steplimit set-steplimit!]]
             [clojure.java.io :as io]))
@@ -441,9 +441,9 @@
   "enable-full-trace! registers the wildcard label, value, call and return traces; &TRACE, the count the program sets, is not touched."
   (trace-enable-full!)
   (is (= 0 @SNOBOL4clojure.core/&TRACE))
-  (is (every? #(SNOBOL4clojure.core/active? "*" %) ["LABEL" "VALUE" "CALL" "RETURN"]))
+  (is (every? #(SNOBOL4clojure.repl/active? "*" %) ["LABEL" "VALUE" "CALL" "RETURN"]))
   (trace-disable-full!)
-  (is (not-any? #(SNOBOL4clojure.core/active? "*" %) ["LABEL" "VALUE" "CALL" "RETURN"])))
+  (is (not-any? #(SNOBOL4clojure.repl/active? "*" %) ["LABEL" "VALUE" "CALL" "RETURN"])))
 
 ;; ── Sprint 18C: snapshot! / run-to-step / probe-test ────────────────────────
 
