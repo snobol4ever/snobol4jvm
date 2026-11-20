@@ -4,24 +4,39 @@
             '[$$ &TRACE fire-access! bare-fence concat-value deref-result <FUNS> opsyn-key op-spelling INVOKE EVAL! gtstg sstr &MAXLNGTH &ANCHOR <POS> <DISPNO> <STMT-LINE> &LASTNO &STNO &LASTFILE
                  &FILE &LASTLINE &LINE &STCOUNT &STLIMIT &FNCLEVEL &PROFILE &ERRTYPE end-statement! dispatch-special! special-targets protected-variables <CODE> <STNO> <LABL> <DIAGNOSTICS> <ERRSERIAL>
                  block-end compile-error capture-target pattern-argument snobol-set! prim-fns BREAKX$ error-message array? table? trap matching overrun fire-keyword! fire-label!
-                 statement-trace-active? stcount-traced? fatal-error STNO]]
+                 statement-trace-active? stcount-traced? fatal-error STNO textless? &ERRLIMIT system-labels]]
     (intern *ns* (with-meta s {:private true}) (var-get (ns-resolve 'SNOBOL4clojure.core s))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def ^:private core-fence (var-get (ns-resolve 'SNOBOL4clojure.core 'FENCE)))
-(deftype Pat [f])
-(deftype Expr [thunk])
+(deftype Pat [f] Object (toString [_] "PATTERN"))
 (defmethod c/DATATYPE "class SNOBOL4clojure.codegen.Pat" [_] "PATTERN")
-(defmethod c/DATATYPE "class SNOBOL4clojure.codegen.Expr" [_] "EXPRESSION")
 (def failure (ex-info "failure" {::failure true}))
 (defn fail [] (throw failure))
 (defn- value [thunk] (try (thunk) (catch clojure.lang.ExceptionInfo x (if (identical? x failure) nil (throw x)))))
 (defn- some! [v] (if (nil? v) (fail) v))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- check-concat!
+    [vs]
+    (let [v (vec (remove #(= "" %) vs)) n (count v)]
+        (when
+            (> n 1)
+            (cond
+                (textless? (v (- n 2))) (throw (ex-info "concatenation left operand is not a string or pattern" {:snobol/error 8}))
+                (textless? (v (dec n))) (throw (ex-info "concatenation right operand is not a string or pattern" {:snobol/error 9}))
+                (some textless? (subvec v 0 (- n 2))) (throw (ex-info "concatenation left operand is not a string or pattern" {:snobol/error 8}))))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn rd [s] (let [v ($$ s)] (when (pos? (long @&TRACE)) (fire-access! s v)) (some! (if (identical? v core-fence) bare-fence v))))
-(defn call [op & args] (let [f (get @<FUNS> (opsyn-key (get op-spelling op (str op)) (count args)))] (some! (deref-result (if f (apply f args) (apply INVOKE op args))))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn call
+    [op & args]
+    (when (and (= op 'EVAL) (instance? Pat (first args))) (throw (ex-info "eval argument is not expression" {:snobol/error 103})))
+    (let [f (get @<FUNS> (opsyn-key (get op-spelling op (str op)) (count args)))] (some! (deref-result (if f (apply f args) (apply INVOKE op args))))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn ev [form] (some! (EVAL! form)))
 (defn assign [n r] (some! (INVOKE '= n r)))
-(defn pattern? [v] (or (instance? Pat v) (instance? Expr v)))
+(defn pattern? [v] (or (instance? Pat v) (seq? v) (vector? v)))
 (defn- store [t v] (if (fn? t) (some? (t v)) (do (snobol-set! t v) true)))
+(def ^:private depth (long-array 1))
 (declare matcher)
 (defn- lit [^String t] (let [n (.length t)] (fn [^String s i caps k] (when (.startsWith s t (int i)) (k (+ (long i) n) caps)))))
 (defn- seq-of [ms] (if (empty? ms) (lit "") (reduce (fn [tail p] (fn [s i caps k] (p s i caps (fn [j caps] (tail s j caps k))))) (peek ms) (reverse (pop ms)))))
@@ -33,9 +48,17 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- defer-of
     [thunk]
-    (fn
-        [s i caps k]
-        (let [p (if (fn? thunk) (value thunk) thunk)] (when (or (array? p) (table? p)) (throw (ex-info (error-message 46) {:snobol/error 46}))) (when (some? p) ((matcher p) s i caps k)))))
+    (let [^longs depth depth]
+        (fn
+            [s i caps k]
+            (let [p (if (fn? thunk) (value thunk) thunk)]
+                (when (or (array? p) (table? p) (instance? SNOBOL4clojure.core.DataObj p)) (throw (ex-info (error-message 46) {:snobol/error 46})))
+                (when
+                    (some? p)
+                    (let [d (aget depth 0)]
+                        (when (> d 200000) (throw (ex-info (error-message 246) {:snobol/error 246 :snobol/abort true})))
+                        (aset depth 0 (inc d))
+                        (let [r ((matcher p) s i caps (fn [j caps] (aset depth 0 d) (let [r (k j caps)] (aset depth 0 (inc d)) r)))] (aset depth 0 d) r)))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def ^:private arb (fn [^String s i caps k] (let [len (.length s)] (loop [j (long i)] (when (<= j len) (or (k j caps) (recur (inc j))))))))
 (def ^:private rem-all (fn [^String s i caps k] (k (.length s) caps)))
@@ -87,14 +110,22 @@
     (cond
         (instance? Pat v) (.f ^Pat v)
         (string? v) (lit v)
-        (instance? Expr v) (defer-of (.thunk ^Expr v))
         (or (seq? v) (vector? v) (symbol? v)) (node v)
         (or (number? v) (instance? SNOBOL4clojure.core.NAME v)) (lit (sstr v))
         :else (let [p (pattern-argument v 240)] (if (identical? p v) (throw (ex-info "a value the compiled matcher does not know" {::unsupported (str (type v))})) (matcher p)))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn SEQ [& vs] (if (not-any? pattern? vs) (some! (concat-value (apply list 'SEQ vs))) (Pat. (seq-of (mapv matcher (remove #(= "" %) vs))))))
-(defn ALT [& vs] (Pat. (alt-of (mapv matcher vs))))
-(defn DEFER [thunk] (Expr. thunk))
+(defn SEQ
+    [& vs]
+    (if (not-any? pattern? vs) (some! (concat-value (apply list 'SEQ vs))) (let [parts (remove #(= "" %) vs)] (check-concat! vs) (if (next parts) (Pat. (seq-of (mapv matcher parts))) (first parts)))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn ALT
+    [& vs]
+    (let [v (vec vs) n (count v)]
+        (when-not (pattern? (v (dec n))) (pattern-argument (v (dec n)) 5))
+        (doseq [i (range (- n 2) -1 -1)] (when-not (pattern? (v i)) (pattern-argument (v i) 6)))
+        (Pat. (alt-of (mapv matcher v)))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn DEFER [x] (if (symbol? x) (with-meta (list 'DEFER! (fn [] (value #(rd x)))) {:defer-var x}) (list 'DEFER! (fn [] (value x)))))
 (defn target [n] (some! (capture-target n)))
 (defn CAPTURE [p t] (Pat. (capture-of (matcher p) t)))
 (defn CAPTURE-NOW [p t] (Pat. (capture-now-of (matcher p) t)))
@@ -107,40 +138,36 @@
 (def ABORT (Pat. (fn [s i caps k] ::abort)))
 (defn FENCE ([] (Pat. bare)) ([p] (Pat. (fence-of (matcher p)))))
 (defn ARBNO [p] (Pat. (arbno-of (matcher p))))
-(defn- late [build thunk] (Pat. (fn [s i caps k] (when-some [v (value thunk)] ((matcher (build v)) s i caps k)))))
-(defn- positional [op f] (fn build [n] (cond (instance? Expr n) (late build (.thunk ^Expr n)) (and (integer? n) (>= (long n) 0)) (Pat. (f (long n))) :else (some! (INVOKE op n)))))
+(defn- runtime-built [op arg] (some! (INVOKE op arg)))
+(defn- positional [op f] (fn [n] (if (and (integer? n) (>= (long n) 0)) (Pat. (f (long n))) (runtime-built op n))))
 (def POS (positional 'POS (fn [n] (fn [s i caps k] (when (== (long i) n) (k i caps))))))
 (def RPOS (positional 'RPOS (fn [n] (fn [^String s i caps k] (when (== (- (.length s) (long i)) n) (k i caps))))))
 (def LEN (positional 'LEN (fn [n] (fn [^String s i caps k] (let [j (+ (long i) n)] (when (<= j (.length s)) (k j caps)))))))
 (def TAB (positional 'TAB (fn [n] (fn [^String s i caps k] (when (and (<= (long i) n) (<= n (.length s))) (k n caps))))))
 (def RTAB (positional 'RTAB (fn [n] (fn [^String s i caps k] (let [j (- (.length s) n)] (when (<= (long i) j) (k j caps)))))))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- char-class
-    [op f]
-    (fn build
-        [cs]
-        (cond
-            (instance? Expr cs) (late build (.thunk ^Expr cs))
-            (and (string? cs) (pos? (count cs))) (Pat. (f (fn [^String s j] (>= (.indexOf ^String cs (int (.charAt s (int j)))) 0))))
-            :else (some! (INVOKE op cs)))))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- char-class [op f] (fn [cs] (if (and (string? cs) (pos? (count cs))) (Pat. (f (fn [^String s j] (>= (.indexOf ^String cs (int (.charAt s (int j)))) 0)))) (runtime-built op cs))))
 (def ANY (char-class 'ANY (fn [in?] (fn [^String s i caps k] (when (and (< (long i) (.length s)) (in? s i)) (k (inc (long i)) caps))))))
 (def NOTANY (char-class 'NOTANY (fn [in?] (fn [^String s i caps k] (when (and (< (long i) (.length s)) (not (in? s i))) (k (inc (long i)) caps))))))
 (def SPAN (char-class 'SPAN (fn [in?] (fn [^String s i caps k] (let [len (.length s) j (loop [j (long i)] (if (and (< j len) (in? s j)) (recur (inc j)) j))] (when (> j (long i)) (k j caps)))))))
 (def BREAK (char-class 'BREAK (fn [in?] (fn [^String s i caps k] (let [len (.length s) j (loop [j (long i)] (if (and (< j len) (not (in? s j))) (recur (inc j)) j))] (when (< j len) (k j caps)))))))
-(def BREAKX (fn build [cs] (if (instance? Expr cs) (late build (.thunk ^Expr cs)) (some! (INVOKE 'BREAKX cs)))))
+(defn BREAKX [cs] (runtime-built 'BREAKX cs))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- find-match
     [^String s p]
-    (matching
-        (fn
-            []
-            (let [m (matcher p) len (.length s) n (if (zero? (long @&ANCHOR)) len 0)]
-                (loop [st 0]
-                    (when
-                        (<= st n)
-                        (let [r (m s st [] (fn [j caps] [j caps]))]
-                            (cond (identical? r ::abort) nil r (when (every? (fn [[t a b]] (store t (subs s a b))) (r 1)) [st (r 0)]) :else (recur (inc st))))))))))
+    (let [^longs depth depth d0 (aget depth 0)]
+        (aset depth 0 0)
+        (try
+            (matching
+                (fn
+                    []
+                    (let [m (matcher p) len (.length s) n (if (zero? (long @&ANCHOR)) len 0)]
+                        (loop [st 0]
+                            (when
+                                (<= st n)
+                                (let [r (m s st [] (fn [j caps] [j caps]))]
+                                    (cond (identical? r ::abort) nil r (when (every? (fn [[t a b]] (store t (subs s a b))) (r 1)) [st (r 0)]) :else (recur (inc st)))))))))
+            (catch StackOverflowError _ (throw (ex-info (error-message 246) {:snobol/error 246 :snobol/abort true})))
+            (finally (aset depth 0 d0)))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn MATCH [sv p] (let [s (gtstg sv 241) r (find-match s p)] (if r (subs s (r 0) (r 1)) (fail))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -172,49 +199,80 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- goto-of [n] (let [[x y] (@<CODE> (or (@<LABL> n) n))] (if (map? x) x y)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- pc-of
+    [at]
+    (cond
+        (vector? at) (first at)
+        (integer? at) at
+        (keyword? at) (@<STNO> at)
+        (symbol? at) (@<STNO> (keyword (name at)))
+        (string? at) (or (@<STNO> (keyword at)) (when (re-matches #"[0-9]+" at) (Long/parseLong at)))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- current-error? [err] (and err (= (:snobol/serial (ex-data (:ex err))) @<ERRSERIAL>)))
+(defn goto [label pc] (when (pos? (long @&TRACE)) (fire-label! label)) pc)
+(defn- land [pc err] (ex-info "jump" {::land [pc err]}))
+(defn- end-pc [] (or (@<STNO> :END) (@<STNO> :end) (inc (long @STNO))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- exit
+    [tgt err]
+    (let [nm (when (keyword? tgt) (name tgt))]
+        (cond
+            (integer? tgt) [tgt err]
+            (= nm "CONTINUE")
+                (if
+                    (current-error? err)
+                    (let [g (:goto err) f (when (map? g) (or (:G g) (:F g)))]
+                        (cond
+                            (and (:in-goto err) f (not (keyword? f))) (throw (let [e (fatal-error 332)] (ex-info (ex-message e) (assoc (ex-data e) :SNOBOL4clojure.core/continued err))))
+                            (nil? f) [(inc (long (pc-of (:at err)))) nil]
+                            :else (do (when (special-targets f) (dispatch-special! f)) [(or (pc-of f) (throw (ex-info "goto undefined label" {:snobol/error 38}))) nil])))
+                    (throw (fatal-error 37)))
+            (= nm "ABORT")
+                (if err
+                    (let [e ^clojure.lang.ExceptionInfo (:ex err)]
+                        (throw (ex-info (ex-message e) (-> (ex-data e) (dissoc :snobol/label :snobol/serial :snobol/fp :snobol/resume) (assoc :snobol/abort true)))))
+                    (let [k (long @&ERRTYPE)] (throw (if (zero? k) (ex-info (error-message 36) {:snobol/error 36}) (ex-info (error-message k) {:snobol/error k :snobol/abort true})))))
+            (= nm "SCONTINUE") (throw (fatal-error (if (and err (or (and (:resume err) (= (:resume err) @<ERRSERIAL>)) (current-error? err))) 331 321)))
+            (#{"END" "end"} nm) [(end-pc) err]
+            (special-targets tgt) (dispatch-special! tgt)
+            :else (let [pc (or (pc-of tgt) (throw (ex-info "goto undefined label" {:snobol/error 38})))] [(goto tgt pc) err]))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(declare follow)
+(defn- enter [label err n] (if (system-labels (name label)) (let [t (keyword (name label))] (follow n true err t t)) [(pc-of label) err]))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- follow
+    [n ok err s f]
+    (loop [ok ok]
+        (let [r
+                  (try
+                      (exit (if ok s f) err)
+                      (catch clojure.lang.ExceptionInfo e
+                          (let [t (trap e)]
+                              (cond
+                                  (false? t) ::fail
+                                  (instance? SNOBOL4clojure.core.Transfer t) [(pc-of (:at t)) (:err t)]
+                                  :else
+                                      (enter
+                                          (:label t)
+                                          (if-let [e0 (:SNOBOL4clojure.core/continued (ex-data (:ex t)))] (assoc e0 :ex (:ex t)) {:at n :goto (goto-of n) :ex (:ex t) :in-goto true})
+                                          n)))))]
+            (if (identical? ::fail r) (recur false) r))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn leave ([n ok err t] (leave n ok err t t)) ([n ok err s f] (let [[pc e] (follow n ok err s f)] (if (and pc (identical? e err)) pc (throw (land pc e))))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn trapped
     [n x]
     (let [t (trap x)]
         (cond
             (false? t) false
-            (instance? SNOBOL4clojure.core.Transfer t) (throw (ex-info "jump" {::jump [(:at t) (:err t)]}))
-            :else (throw (ex-info "jump" {::jump [(:label t) {:at n :goto (goto-of n) :ex (:ex t)}]})))))
+            (instance? SNOBOL4clojure.core.Transfer t) (throw (land (pc-of (:at t)) (:err t)))
+            :else (let [[pc e] (enter (:label t) {:at n :goto (goto-of n) :ex (:ex t)} n)] (throw (land pc e))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defmacro stmt ([n] `(stmt ~n true)) ([n e] `(if-some [over# (step! ~n)] (trapped ~n over#) (try ~e true (catch clojure.lang.ExceptionInfo x# (if (identical? x# failure) false (trapped ~n x#)))))))
-(defn- pc-of [at] (cond (vector? at) (first at) (integer? at) at (keyword? at) (@<STNO> at) (string? at) (or (@<STNO> (keyword at)) (when (re-matches #"[0-9]+" at) (Long/parseLong at)))))
-(defn- current-error? [err] (and err (= (:snobol/serial (ex-data (:ex err))) @<ERRSERIAL>)))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn system!
-    [nm err]
-    (case nm
-        "CONTINUE"
-            (if
-                (current-error? err)
-                (let [g (:goto err) f (when (map? g) (or (:G g) (:F g)))]
-                    (cond (nil? f) (inc (long (pc-of (:at err)))) (special-targets f) (dispatch-special! f) :else (or (pc-of f) (throw (ex-info "goto undefined label" {:snobol/error 38})))))
-                (throw (fatal-error 37)))
-        "ABORT"
-            (if err
-                (let [e ^clojure.lang.ExceptionInfo (:ex err)]
-                    (throw (ex-info (ex-message e) (-> (ex-data e) (dissoc :snobol/label :snobol/serial :snobol/fp :snobol/resume) (assoc :snobol/abort true)))))
-                (let [k (long @&ERRTYPE)] (throw (if (zero? k) (ex-info (error-message 36) {:snobol/error 36}) (ex-info (error-message k) {:snobol/error k :snobol/abort true})))))
-        "SCONTINUE" (throw (fatal-error (if (current-error? err) 331 321)))))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn landing
-    [^clojure.lang.ExceptionInfo x]
-    (if-some [[tgt err] (::jump (ex-data x))]
-        (let [nm (when (or (keyword? tgt) (string? tgt)) (name tgt))]
-            (cond
-                (#{"CONTINUE" "ABORT" "SCONTINUE"} nm) [(system! nm err) err]
-                (and nm (special-targets tgt)) (dispatch-special! tgt)
-                :else [(or (pc-of tgt) (throw (ex-info "goto undefined label" {:snobol/error 38}))) err]))
-        (throw x)))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn goto [label pc] (when (pos? (long @&TRACE)) (fire-label! label)) pc)
+(defn landing [^clojure.lang.ExceptionInfo x] (if-some [l (::land (ex-data x))] (when (first l) l) (throw x)))
 (defn start! [] (when (zero? (long @&FNCLEVEL)) (reset! &STCOUNT 0)))
 (defn end! [] (if (pos? (long @&FNCLEVEL)) (dispatch-special! :END) (do (end-statement!) nil)))
 (defn closing! [] (throw (ex-info "END" {:snobol/signal :end :snobol/closing true})))
-(defn special! [t] (dispatch-special! t))
 (def ^:private ^:dynamic *st* nil)
 (defn- refuse [why] (throw (ex-info why {::refused why})))
 (defn- lit? [x] (or (string? x) (integer? x) (float? x)))
@@ -233,7 +291,7 @@
             (let [[op & args] e n (count args)]
                 (cond
                     (and (= op '|) (>= n 2)) (cons 'ALT (map gen args))
-                    (and (= op '*) (= n 1)) (list 'DEFER (list 'fn [] (gen (first args))))
+                    (and (= op '*) (= n 1)) (list 'DEFER (if (symbol? (first args)) (list 'quote (first args)) (list 'fn [] (gen (first args)))))
                     (and (= op '.) (= n 2)) (list 'CAPTURE (gen (first args)) (list 'target (list 'quote (second args))))
                     (and (= op '$) (= n 2)) (list 'CAPTURE-NOW (gen (first args)) (list 'target (list 'quote (second args))))
                     (and (= op 'at-op) (= n 1)) (list 'CURSOR (list 'target (list 'quote (first args))))
@@ -258,21 +316,16 @@
 (defn- generate
     []
     (let [
-          end (or (@<STNO> :END) (@<STNO> :end) (inc (long @STNO)))
+          end (end-pc)
           stmts (vec (for [n (range 1 end)] (or (@<CODE> (or (@<LABL> n) n)) (refuse (str "statement " n " is not in the store")))))
           atoms (set (filter #(or (symbol? %) (string? %)) (mapcat #(tree-seq coll? seq %) (remove #(or (identical? % block-end) (identical? % compile-error)) stmts))))
           _ (when-some [u (some unsupported atoms)] (refuse (str "uses " u)))
           _ (when (some #(and (string? %) (re-find #"^\s*(POS|RPOS|LEN|TAB|RTAB|ANY|NOTANY|SPAN|BREAK|BREAKX|ARBNO|FENCE)\s*\(" %)) atoms) (refuse "defines a pattern function's name"))
-          jump
-              (fn
-                  [t n]
-                  (cond
-                      (nil? t) (list 'recur (inc n))
-                      (#{:END :end} t) (list 'recur end)
-                      (and (keyword? t) (#{"CONTINUE" "ABORT" "SCONTINUE"} (name t))) (list 'recur (list 'system! (name t) 'err))
-                      (special-targets t) (list 'special! t)
-                      (and (keyword? t) (@<STNO> t)) (list 'recur (list 'goto t (@<STNO> t)))
-                      :else (refuse (str "statement " n " has a goto the compiler does not handle: " (pr-str t)))))
+          ending? #{:END :end}
+          system? (fn [t] (and (keyword? t) (not (ending? t)) (or (special-targets t) (#{"CONTINUE" "ABORT" "SCONTINUE"} (name t)))))
+          known (fn [t n] (when-not (or (nil? t) (ending? t) (system? t) (and (keyword? t) (@<STNO> t))) (refuse (str "statement " n " has a goto the compiler does not handle: " (pr-str t)))))
+          jump (fn [t n] (cond (nil? t) (list 'recur (inc n)) (ending? t) (list 'recur end) :else (list 'recur (list 'goto t (@<STNO> t)))))
+          exit-of (fn [t n] (cond (nil? t) (inc n) (ending? t) end :else t))
           clauses
               (doall
                   (mapcat
@@ -289,11 +342,18 @@
                                         g (when (map? goto) goto)
                                         before @(:fallbacks *st*)
                                         code (when (some? body) (gen-body body))
-                                        s (jump (or (:G g) (:S g)) n)
-                                        f (jump (or (:G g) (:F g)) n)
+                                        s (or (:G g) (:S g))
+                                        f (or (:G g) (:F g))
                                         head (if (nil? code) (list 'stmt n) (list 'stmt n code))]
+                                      (known s n)
+                                      (known f n)
                                       (swap! (:stmts *st*) conj (if (= before @(:fallbacks *st*)) :native :fallback))
-                                      [n (if (= s f) (list 'do head s) (list 'if head s f))])))
+                                      [n
+                                          (cond
+                                              (and (or (system? s) (system? f)) (= s f)) (list 'recur (list 'leave n head 'err (exit-of s n)))
+                                              (or (system? s) (system? f)) (list 'recur (list 'leave n head 'err (exit-of s n) (exit-of f n)))
+                                              (= s f) (list 'do head (jump s n))
+                                              :else (list 'if head (jump s n) (jump f n)))])))
                       (range 1 end)
                       stmts))
           body (list 'loop '[pc pc] (concat (list 'case '(int pc)) clauses (list end '(end!) nil)))]
@@ -321,7 +381,7 @@
                  :native (:native fq 0)
                  :fallback (:fallback fq 0)})
             (catch clojure.lang.ExceptionInfo e (if-some [why (::refused (ex-data e))] {:refused why} (throw e)))
-            (catch clojure.lang.Compiler$CompilerException e {:refused (str "generated code did not compile: " (.getMessage (or (.getCause e) e)))}))))
+            (catch clojure.lang.Compiler$CompilerException e {:refused (str "generated code did not compile: " (let [^Throwable t (or (.getCause e) e)] (.getMessage t)))}))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn run-compiled
     [{:keys [f entry pcs last]}]
