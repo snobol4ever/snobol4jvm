@@ -4,7 +4,8 @@
             '[$$ &TRACE fire-access! bare-fence concat-value deref-result <FUNS> opsyn-key op-spelling INVOKE EVAL! gtstg sstr &MAXLNGTH &ANCHOR <POS> <DISPNO> <STMT-LINE> &LASTNO &STNO &LASTFILE
                  &FILE &LASTLINE &LINE &STCOUNT &STLIMIT &FNCLEVEL &PROFILE &ERRTYPE end-statement! dispatch-special! special-targets protected-variables <CODE> <STNO> <LABL> <DIAGNOSTICS> <ERRSERIAL>
                  block-end compile-error capture-target pattern-argument snobol-set! prim-fns BREAKX$ error-message array? table? trap matching overrun fire-keyword! fire-label!
-                 statement-trace-active? stcount-traced? fatal-error STNO textless? &ERRLIMIT system-labels]]
+                 statement-trace-active? stcount-traced? fatal-error STNO textless? &ERRLIMIT system-labels failure-point table-get table-subscript array-get array-in-bounds? call-form? reference
+                 indirect-target call-by-name name-string unused-unary-ops unused-binary-ops protected-store! pattern-keywords]]
     (intern *ns* (with-meta s {:private true}) (var-get (ns-resolve 'SNOBOL4clojure.core s))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def ^:private core-fence (var-get (ns-resolve 'SNOBOL4clojure.core 'FENCE)))
@@ -34,6 +35,63 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn ev [form] (some! (EVAL! form)))
 (defn assign [n r] (some! (INVOKE '= n r)))
+(defn protected [n r] (protected-store! n r))
+(defn held [s] ($$ s))
+(defn invoke [c & args] (some! (apply INVOKE c args)))
+(defn operator! [k] (when (nil? (get @<FUNS> k)) (throw (ex-info "undefined operator referenced" {:snobol/error 29}))))
+(defn INTERROGATE [v] (if-some [f (get @<FUNS> "?/1")] (some! (deref-result (f v))) ""))
+(defn NOT [thunk] (let [v (failure-point (fn [] (value thunk))) f (get @<FUNS> "~/1")] (some! (deref-result (if f (f v) (INVOKE 'tilde-op v))))))
+(defn CHOICE [& thunks] (loop [[t & more] thunks] (if more (if-some [v (failure-point (fn [] (value t)))] v (recur more)) (t))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn keyword-value
+    [n]
+    (some!
+        (if-some [p (pattern-keywords n)]
+            (p)
+            (let [
+                  vr (when (seq n) (ns-resolve (the-ns 'SNOBOL4clojure.core) (symbol (str "&" n))))
+                  v (if vr (var-get vr) (throw (ex-info "keyword operand is not name of defined keyword" {:snobol/error 251})))]
+                (if (instance? clojure.lang.IDeref v) @v v)))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn item
+    [c & ks]
+    (let [c (if (instance? SNOBOL4clojure.core.NAME c) ($$ (symbol (str (.n ^SNOBOL4clojure.core.NAME c)))) c)]
+        (some! (cond (table? c) (table-get c (table-subscript ks)) (array? c) (array-get c (vec ks)) :else (throw (ex-info "subscripted operand is not table or array" {:snobol/error 235}))))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn indirect [v] (indirect-target v))
+(defn INDIRECT [v] (let [t (indirect-target v)] (if (symbol? t) (rd t) (ev t))))
+(defn- by-name [r] (if (instance? SNOBOL4clojure.core.NameResult r) (:target r) (fail)))
+(defn element [c & ks] (apply list c ks))
+(defn element-of [h m & ks] (with-meta (apply list h ks) m))
+(defn applied [f & as] (let [fsym (symbol (name-string f)) df (get @<FUNS> (name fsym))] (if (and df (not (:data (meta df)))) (by-name (apply INVOKE fsym as)) (apply list fsym as))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn place
+    [c m & ks]
+    (let [opf (when (symbol? c) (case (count ks) 1 (when-some [s (unused-unary-ops c)] (get @<FUNS> (opsyn-key s 1))) 2 (when-some [s (unused-binary-ops c)] (get @<FUNS> (opsyn-key s 2))) nil))]
+        (cond
+            opf (by-name (apply opf ks))
+            (and (symbol? c) (call-form? (with-meta (list c) m))) (by-name (apply INVOKE c ks))
+            :else
+                (let [v (if (symbol? c) ($$ c) c) field? (and (symbol? c) (not (:subscript m)) (:data (meta (get @<FUNS> (name c)))))]
+                    (if (and (array? v) (not field?) (not (array-in-bounds? v (vec ks)))) (fail) (with-meta (apply list c ks) m))))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn named [x] (SNOBOL4clojure.core.NAME. x))
+(defn expression [ir] (SNOBOL4clojure.core.ExprVar. ir))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn name-of
+    [x & ks]
+    (cond
+        (call-form? x)
+            (let [r (apply INVOKE (first x) ks)]
+                (cond (instance? SNOBOL4clojure.core.NameResult r) (named (:target r)) (nil? r) (fail) :else (throw (ex-info "function called by name returned a value" {:snobol/error 21}))))
+        (seq ks)
+            (let [h (first x) v (when (symbol? h) (reference h))]
+                (if
+                    (or (table? v) (array? v) (:subscript (meta x)) (not (symbol? h)))
+                    (named (cond-> (apply list h ks) (or (table? v) (array? v)) (with-meta {:container v})))
+                    (named (some! (call-by-name h ks)))))
+        :else (named x)))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn pattern? [v] (or (instance? Pat v) (seq? v) (vector? v)))
 (defn- store [t v] (if (fn? t) (some? (t v)) (do (snobol-set! t v) true)))
 (def ^:private depth (long-array 1))
@@ -173,7 +231,7 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn REPLACE
     [n p replacement]
-    (let [s (gtstg (rd n) 241) r (find-match s p)]
+    (let [s (gtstg (if (list? n) (apply INVOKE (or (:container (meta n)) (first n)) (rest n)) (rd n)) 241) r (find-match s p)]
         (if r
             (let [result (str (subs s 0 (r 0)) (sstr (value replacement)) (subs s (r 1)))]
                 (when (> (count result) (long @&MAXLNGTH)) (throw (ex-info "string length exceeds value of maxlngth keyword" {:snobol/error 205})))
@@ -278,38 +336,66 @@
 (defn- lit? [x] (or (string? x) (integer? x) (float? x)))
 (def ^:private pattern-functions '#{POS RPOS LEN TAB RTAB ANY NOTANY SPAN BREAK BREAKX ARBNO FENCE})
 (def ^:private pattern-constants '{ARB ARB REM REM BAL BAL FAIL FAIL SUCCEED SUCCEED ABORT ABORT FENCE (FENCE)})
-(defn- plain-op? [[op & args]] (let [n (count args)] (cond ('#{+ -} op) (<= 1 n 2) ('#{* /} op) (= n 2) :else (boolean (and (re-matches #"[A-Z][A-Z0-9]*" (name op)) (not= op 'SEQ))))))
+(def ^:private special-heads '#{. $ = ?= & SEQ pattern-constant})
 (defn- fallback [e] (swap! (:fallbacks *st*) inc) (list 'ev (list 'quote e)))
+(defn- q [x] (list 'quote x))
+(defn- pair? [x op] (and (list? x) (= op (first x)) (= 2 (count x))))
+(defn- unused? [op n] (or (and (= n 1) (unused-unary-ops op)) (and (= n 2) (unused-binary-ops op))))
+(declare gen)
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- gen-place
+    [t]
+    (cond
+        (not (list? t)) (q t)
+        (pair? t '$) (list 'indirect (gen (second t)))
+        (and (= 'ITEM (first t)) (<= 3 (count t))) (cons 'element (map gen (rest t)))
+        (and (= 'APPLY (first t)) (<= 2 (count t))) (cons 'applied (map gen (rest t)))
+        (pair? t '&) (q t)
+        :else (list* 'place (if (symbol? (first t)) (q (first t)) (gen (first t))) (meta t) (map gen (rest t)))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- gen-subject [t] (cond (pair? t '$) (list 'indirect (gen (second t))) (and (list? t) (not= '& (first t))) (list* 'element-of (q (first t)) (meta t) (map gen (rest t))) :else (q t)))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- gen-name
+    [x]
+    (cond
+        (pair? x '&) (list 'named (q x))
+        (pair? x '$) (list 'named (list 'indirect (gen (second x))))
+        (pair? x '*) (list 'named (if (symbol? (second x)) (q (second x)) (list 'expression (q (second x)))))
+        (list? x) (list* 'name-of (q x) (map gen (rest x)))
+        :else (list 'named (q x))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- gen
     [e]
     (cond
         (lit? e) e
-        (symbol? e) (list 'rd (list 'quote e))
-        (and (vector? e) (not= :comma (first e))) (cons 'SEQ (map gen e))
-        (and (list? e) (symbol? (first e)) (not (:subscript (meta e))))
+        (symbol? e) (list 'rd (q e))
+        (and (vector? e) (= :comma (first e))) (cons 'CHOICE (map (fn [a] (list 'fn [] (gen a))) (rest e)))
+        (vector? e) (cons 'SEQ (map gen e))
+        (and (list? e) (= 'pattern-constant (first e)) (= 2 (count e)) (pattern-constants (second e))) (pattern-constants (second e))
+        (and (list? e) (:subscript (meta e))) (list* 'item (if (symbol? (first e)) (list 'held (q (first e))) (gen (first e))) (map gen (rest e)))
+        (and (list? e) (symbol? (first e)))
             (let [[op & args] e n (count args)]
                 (cond
+                    (unused? op n) (list 'do (list 'operator! (opsyn-key (unused? op n) n)) (list* 'call (q op) (map gen args)))
+                    (and (= op '?) (= n 1)) (list 'INTERROGATE (gen (first args)))
+                    (and (= op '.) (= n 1)) (gen-name (first args))
+                    (and (= op '.) (= n 2)) (list 'CAPTURE (gen (first args)) (list 'target (q (second args))))
+                    (and (= op 'at-op) (= n 1)) (list 'CURSOR (list 'target (q (first args))))
+                    (and (= op '$) (= n 1)) (list 'INDIRECT (gen (first args)))
+                    (and (= op '$) (= n 2)) (list 'CAPTURE-NOW (gen (first args)) (list 'target (q (second args))))
+                    (and (= op '=) (= n 2) (symbol? (first args)) (protected-variables (first args))) (list 'protected (q (first args)) (gen (second args)))
+                    (and (= op '=) (= n 2)) (list 'assign (gen-place (first args)) (gen (second args)))
+                    (and (= op '?=) (= n 3)) (let [[t p r] args] (list 'REPLACE (gen-subject t) (gen p) (list 'fn [] (if (some? r) (gen r) ""))))
+                    (and (= op '&) (= n 1)) (list 'keyword-value (str (first args)))
+                    (and (= op '*) (= n 1)) (list 'DEFER (if (symbol? (first args)) (q (first args)) (list 'fn [] (gen (first args)))))
+                    (and (= op 'tilde-op) (= n 1)) (list 'NOT (list 'fn [] (gen (first args))))
                     (and (= op '|) (>= n 2)) (cons 'ALT (map gen args))
-                    (and (= op '*) (= n 1)) (list 'DEFER (if (symbol? (first args)) (list 'quote (first args)) (list 'fn [] (gen (first args)))))
-                    (and (= op '.) (= n 2)) (list 'CAPTURE (gen (first args)) (list 'target (list 'quote (second args))))
-                    (and (= op '$) (= n 2)) (list 'CAPTURE-NOW (gen (first args)) (list 'target (list 'quote (second args))))
-                    (and (= op 'at-op) (= n 1)) (list 'CURSOR (list 'target (list 'quote (first args))))
-                    (and (= op 'pattern-constant) (= n 1) (pattern-constants (first args))) (pattern-constants (first args))
                     (and (pattern-functions op) (= n 1)) (list op (gen (first args)))
                     (and (= op '?) (= n 2)) (list 'MATCH (gen (first args)) (gen (second args)))
-                    (plain-op? e) (list* 'call (list 'quote op) (map gen args))
-                    :else (fallback e)))
+                    (special-heads op) (fallback e)
+                    :else (list* 'call (q op) (map gen args))))
+        (and (list? e) (list? (first e))) (list* 'invoke (gen (first e)) (map gen (rest e)))
         :else (fallback e)))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- target? [n] (and (symbol? n) (not (protected-variables n))))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- gen-body
-    [b]
-    (cond
-        (and (list? b) (= '= (first b)) (= 3 (count b)) (target? (second b))) (list 'assign (list 'quote (second b)) (gen (nth b 2)))
-        (and (list? b) (= '?= (first b)) (= 4 (count b)) (target? (second b))) (let [[_ n p r] b] (list 'REPLACE (list 'quote n) (gen p) (list 'fn [] (if (some? r) (gen r) ""))))
-        :else (gen b)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def ^:private unsupported '#{OPSYN})
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -341,7 +427,7 @@
                                         goto (if (map? x) x y)
                                         g (when (map? goto) goto)
                                         before @(:fallbacks *st*)
-                                        code (when (some? body) (gen-body body))
+                                        code (when (some? body) (gen body))
                                         s (or (:G g) (:S g))
                                         f (or (:G g) (:F g))
                                         head (if (nil? code) (list 'stmt n) (list 'stmt n code))]
