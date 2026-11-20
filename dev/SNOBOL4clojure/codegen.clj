@@ -4,8 +4,8 @@
             '[$$ &TRACE fire-access! bare-fence concat-value deref-result <FUNS> opsyn-key op-spelling INVOKE EVAL! gtstg sstr &MAXLNGTH &ANCHOR <POS> <DISPNO> <STMT-LINE> &LASTNO &STNO &LASTFILE
                  &FILE &LASTLINE &LINE &STCOUNT &STLIMIT &FNCLEVEL &PROFILE &ERRTYPE end-statement! dispatch-special! special-targets protected-variables <CODE> <STNO> <LABL> <DIAGNOSTICS> <ERRSERIAL>
                  block-end compile-error capture-target pattern-argument snobol-set! prim-fns BREAKX$ error-message array? table? trap matching overrun fire-keyword! fire-label!
-                 statement-trace-active? stcount-traced? fatal-error STNO textless? &ERRLIMIT system-labels failure-point table-get table-subscript array-get array-in-bounds? call-form? reference
-                 indirect-target call-by-name name-string unused-unary-ops unused-binary-ops protected-store! pattern-keywords]]
+                 statement-trace-active? stcount-traced? program-fn fatal-error STNO textless? &ERRLIMIT system-labels failure-point table-get table-subscript array-get array-in-bounds? call-form?
+                 reference indirect-target call-by-name name-string unused-unary-ops unused-binary-ops protected-store! pattern-keywords]]
     (intern *ns* (with-meta s {:private true}) (var-get (ns-resolve 'SNOBOL4clojure.core s))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def ^:private core-fence (var-get (ns-resolve 'SNOBOL4clojure.core 'FENCE)))
@@ -30,8 +30,13 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn call
     [op & args]
-    (when (and (= op 'EVAL) (instance? Pat (first args))) (throw (ex-info "eval argument is not expression" {:snobol/error 103})))
-    (let [f (get @<FUNS> (opsyn-key (get op-spelling op (str op)) (count args)))] (some! (deref-result (if f (apply f args) (apply INVOKE op args))))))
+    (let [p (first args)]
+        (if
+            (and (instance? Pat p) (= op 'COPY) (nil? (next args)))
+            (Pat. (.f ^Pat p))
+            (do
+                (when (and (= op 'EVAL) (instance? Pat p)) (throw (ex-info "eval argument is not expression" {:snobol/error 103})))
+                (let [f (get @<FUNS> (opsyn-key (get op-spelling op (str op)) (count args)))] (some! (deref-result (if f (apply f args) (apply INVOKE op args)))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn ev [form] (some! (EVAL! form)))
 (defn assign [n r] (some! (INVOKE '= n r)))
@@ -39,6 +44,7 @@
 (defn held [s] ($$ s))
 (defn invoke [c & args] (some! (apply INVOKE c args)))
 (defn operator! [k] (when (nil? (get @<FUNS> k)) (throw (ex-info "undefined operator referenced" {:snobol/error 29}))))
+(defn TEXT [& thunks] (if (program-fn 'SEQ) (apply call 'SEQ (map (fn [t] (t)) thunks)) (apply str (map (fn [t] (sstr (value t))) thunks))))
 (defn INTERROGATE [v] (if-some [f (get @<FUNS> "?/1")] (some! (deref-result (f v))) ""))
 (defn NOT [thunk] (let [v (failure-point (fn [] (value thunk))) f (get @<FUNS> "~/1")] (some! (deref-result (if f (f v) (INVOKE 'tilde-op v))))))
 (defn CHOICE [& thunks] (loop [[t & more] thunks] (if more (if-some [v (failure-point (fn [] (value t)))] v (recur more)) (t))))
@@ -92,6 +98,7 @@
                     (named (some! (call-by-name h ks)))))
         :else (named x)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- pair? [x op] (and (list? x) (= op (first x)) (= 2 (count x))))
 (defn pattern? [v] (or (instance? Pat v) (seq? v) (vector? v)))
 (defn- store [t v] (if (fn? t) (some? (t v)) (do (snobol-set! t v) true)))
 (def ^:private depth (long-array 1))
@@ -179,14 +186,22 @@
 (defn ALT
     [& vs]
     (let [v (vec vs) n (count v)]
-        (when-not (pattern? (v (dec n))) (pattern-argument (v (dec n)) 5))
-        (doseq [i (range (- n 2) -1 -1)] (when-not (pattern? (v i)) (pattern-argument (v i) 6)))
-        (Pat. (alt-of (mapv matcher v)))))
+        (if-some [f (when (= n 2) (get @<FUNS> "|/2"))]
+            (some! (deref-result (apply f v)))
+            (do
+                (when-not (pattern? (v (dec n))) (pattern-argument (v (dec n)) 5))
+                (doseq [i (range (- n 2) -1 -1)] (when-not (pattern? (v i)) (pattern-argument (v i) 6)))
+                (Pat. (alt-of (mapv matcher v)))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn DEFER [x] (if (symbol? x) (with-meta (list 'DEFER! (fn [] (value #(rd x)))) {:defer-var x}) (list 'DEFER! (fn [] (value x)))))
+(defn DEFER
+    [x]
+    (if-some [f (get @<FUNS> "*/1")]
+        (some! (deref-result (f (if (symbol? x) (rd x) (x)))))
+        (if (symbol? x) (with-meta (list 'DEFER! (fn [] (value #(rd x)))) {:defer-var x}) (list 'DEFER! (fn [] (value x))))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn target [n] (some! (capture-target n)))
-(defn CAPTURE [p t] (Pat. (capture-of (matcher p) t)))
-(defn CAPTURE-NOW [p t] (Pat. (capture-now-of (matcher p) t)))
+(defn CAPTURE [p n] (if-some [f (get @<FUNS> "./2")] (some! (deref-result (f p (ev n)))) (Pat. (capture-of (matcher p) (target n)))))
+(defn CAPTURE-NOW [p n] (if-some [f (get @<FUNS> "$/2")] (some! (deref-result (f p (ev n)))) (Pat. (capture-now-of (matcher p) (target n)))))
 (defn CURSOR [t] (Pat. (fn [s i caps k] (when (store t i) (k i caps)))))
 (def ARB (Pat. arb))
 (def REM (Pat. rem-all))
@@ -194,21 +209,26 @@
 (def FAIL (Pat. (fn [s i caps k] nil)))
 (def SUCCEED (Pat. succeed))
 (def ABORT (Pat. (fn [s i caps k] ::abort)))
-(defn FENCE ([] (Pat. bare)) ([p] (Pat. (fence-of (matcher p)))))
-(defn ARBNO [p] (Pat. (arbno-of (matcher p))))
+(defn- redefinable [op f] (let [k (str op "/1")] (fn [x] (if (or (get @<FUNS> k) (program-fn op)) (call op x) (f x)))))
+(def FENCE (let [f (redefinable 'FENCE (fn [p] (Pat. (fence-of (matcher p)))))] (fn ([] (Pat. bare)) ([p] (f p)))))
+(def ARBNO (redefinable 'ARBNO (fn [p] (Pat. (arbno-of (matcher p))))))
 (defn- runtime-built [op arg] (some! (INVOKE op arg)))
-(defn- positional [op f] (fn [n] (if (and (integer? n) (>= (long n) 0)) (Pat. (f (long n))) (runtime-built op n))))
+(defn- positional [op f] (redefinable op (fn [n] (if (and (integer? n) (<= 0 (long n) 16777216)) (Pat. (f (long n))) (runtime-built op n)))))
 (def POS (positional 'POS (fn [n] (fn [s i caps k] (when (== (long i) n) (k i caps))))))
 (def RPOS (positional 'RPOS (fn [n] (fn [^String s i caps k] (when (== (- (.length s) (long i)) n) (k i caps))))))
 (def LEN (positional 'LEN (fn [n] (fn [^String s i caps k] (let [j (+ (long i) n)] (when (<= j (.length s)) (k j caps)))))))
 (def TAB (positional 'TAB (fn [n] (fn [^String s i caps k] (when (and (<= (long i) n) (<= n (.length s))) (k n caps))))))
 (def RTAB (positional 'RTAB (fn [n] (fn [^String s i caps k] (let [j (- (.length s) n)] (when (<= (long i) j) (k j caps)))))))
-(defn- char-class [op f] (fn [cs] (if (and (string? cs) (pos? (count cs))) (Pat. (f (fn [^String s j] (>= (.indexOf ^String cs (int (.charAt s (int j)))) 0)))) (runtime-built op cs))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- char-class
+    [op f]
+    (redefinable op (fn [cs] (if (and (string? cs) (pos? (count cs))) (Pat. (f (fn [^String s j] (>= (.indexOf ^String cs (int (.charAt s (int j)))) 0)))) (runtime-built op cs)))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def ANY (char-class 'ANY (fn [in?] (fn [^String s i caps k] (when (and (< (long i) (.length s)) (in? s i)) (k (inc (long i)) caps))))))
 (def NOTANY (char-class 'NOTANY (fn [in?] (fn [^String s i caps k] (when (and (< (long i) (.length s)) (not (in? s i))) (k (inc (long i)) caps))))))
 (def SPAN (char-class 'SPAN (fn [in?] (fn [^String s i caps k] (let [len (.length s) j (loop [j (long i)] (if (and (< j len) (in? s j)) (recur (inc j)) j))] (when (> j (long i)) (k j caps)))))))
 (def BREAK (char-class 'BREAK (fn [in?] (fn [^String s i caps k] (let [len (.length s) j (loop [j (long i)] (if (and (< j len) (not (in? s j))) (recur (inc j)) j))] (when (< j len) (k j caps)))))))
-(defn BREAKX [cs] (runtime-built 'BREAKX cs))
+(def BREAKX (redefinable 'BREAKX (fn [cs] (runtime-built 'BREAKX cs))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- find-match
     [^String s p]
@@ -227,7 +247,7 @@
             (catch StackOverflowError _ (throw (ex-info (error-message 246) {:snobol/error 246 :snobol/abort true})))
             (finally (aset depth 0 d0)))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn MATCH [sv p] (let [s (gtstg sv 241) r (find-match s p)] (if r (subs s (r 0) (r 1)) (fail))))
+(defn MATCH [sv p] (if-some [f (get @<FUNS> "?/2")] (some! (deref-result (f sv p))) (let [s (gtstg sv 241) r (find-match s p)] (if r (subs s (r 0) (r 1)) (fail)))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn REPLACE
     [n p replacement]
@@ -267,23 +287,48 @@
         (string? at) (or (@<STNO> (keyword at)) (when (re-matches #"[0-9]+" at) (Long/parseLong at)))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- current-error? [err] (and err (= (:snobol/serial (ex-data (:ex err))) @<ERRSERIAL>)))
-(defn goto [label pc] (when (pos? (long @&TRACE)) (fire-label! label)) pc)
+(defn goto ([label] (goto label (@<STNO> label))) ([label pc] (when (pos? (long @&TRACE)) (fire-label! label)) pc))
 (defn- land [pc err] (ex-info "jump" {::land [pc err]}))
 (defn- end-pc [] (or (@<STNO> :END) (@<STNO> :end) (inc (long @STNO))))
+(defn computed [v] (if (integer? v) v (keyword (str v))))
+(defn direct [v] (if (instance? SNOBOL4clojure.core.CodeBlock v) (.entry ^SNOBOL4clojure.core.CodeBlock v) (throw (ex-info "goto operand in direct goto is not code" {:snobol/error 24}))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- reached
+    [r]
+    (cond
+        (instance? SNOBOL4clojure.core.NameResult r) (let [t (:target r)] (if (symbol? t) (keyword (name t)) t))
+        (nil? r) (throw (ex-info "goto evaluation failure" {:snobol/error 20}))
+        :else (throw (ex-info "function called by name returned a value" {:snobol/error 21}))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- reached-by [f args] (when (some nil? args) (throw (ex-info "goto evaluation failure" {:snobol/error 20}))) (reached (apply INVOKE f args)))
+(defn called [f & thunks] (reached-by f (mapv value thunks)))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- computed-target
+    [t]
+    (cond
+        (pair? t '$) (when-some [v (EVAL! (second t))] (computed v))
+        (and (list? t) (= 'DIRECT (first t))) (when-some [v (EVAL! (second t))] (direct v))
+        (and (list? t) (symbol? (first t)) (not (:subscript (meta t)))) (reached-by (first t) (mapv EVAL! (rest t)))
+        :else t))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- exit
-    [tgt err]
-    (let [nm (when (keyword? tgt) (name tgt))]
+    [n tgt err]
+    (let [thunk? (fn? tgt) tgt (if thunk? (value tgt) tgt) nm (when (or (keyword? tgt) (string? tgt) (symbol? tgt)) (name tgt))]
         (cond
+            (and thunk? (nil? tgt)) [(inc (long n)) err]
+            (and thunk? (integer? tgt)) [(goto (or (@<LABL> tgt) tgt) tgt) err]
             (integer? tgt) [tgt err]
             (= nm "CONTINUE")
                 (if
                     (current-error? err)
                     (let [g (:goto err) f (when (map? g) (or (:G g) (:F g)))]
-                        (cond
-                            (and (:in-goto err) f (not (keyword? f))) (throw (let [e (fatal-error 332)] (ex-info (ex-message e) (assoc (ex-data e) :SNOBOL4clojure.core/continued err))))
-                            (nil? f) [(inc (long (pc-of (:at err)))) nil]
-                            :else (do (when (special-targets f) (dispatch-special! f)) [(or (pc-of f) (throw (ex-info "goto undefined label" {:snobol/error 38}))) nil])))
+                        (if
+                            (and (:in-goto err) f (not (keyword? f)))
+                            (throw (let [e (fatal-error 332)] (ex-info (ex-message e) (assoc (ex-data e) :SNOBOL4clojure.core/continued err))))
+                            (let [t (computed-target f)]
+                                (if t
+                                    (do (when (special-targets t) (dispatch-special! t)) [(or (pc-of t) (throw (ex-info "goto undefined label" {:snobol/error 38}))) nil])
+                                    [(inc (long (pc-of (:at err)))) nil]))))
                     (throw (fatal-error 37)))
             (= nm "ABORT")
                 (if err
@@ -303,7 +348,7 @@
     (loop [ok ok]
         (let [r
                   (try
-                      (exit (if ok s f) err)
+                      (exit n (if ok s f) err)
                       (catch clojure.lang.ExceptionInfo e
                           (let [t (trap e)]
                               (cond
@@ -328,18 +373,19 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defmacro stmt ([n] `(stmt ~n true)) ([n e] `(if-some [over# (step! ~n)] (trapped ~n over#) (try ~e true (catch clojure.lang.ExceptionInfo x# (if (identical? x# failure) false (trapped ~n x#)))))))
 (defn landing [^clojure.lang.ExceptionInfo x] (if-some [l (::land (ex-data x))] (when (first l) l) (throw x)))
-(defn start! [] (when (zero? (long @&FNCLEVEL)) (reset! &STCOUNT 0)))
+(defn- start! [] (when (zero? (long @&FNCLEVEL)) (reset! &STCOUNT 0)))
 (defn end! [] (if (pos? (long @&FNCLEVEL)) (dispatch-special! :END) (do (end-statement!) nil)))
 (defn closing! [] (throw (ex-info "END" {:snobol/signal :end :snobol/closing true})))
-(def ^:private ^:dynamic *st* nil)
-(defn- refuse [why] (throw (ex-info why {::refused why})))
+(def ^:private fallbacks (atom 0))
+(def ^:private fns (atom []))
+(def ^:private tally (atom {:statements 0 :native 0 :code []}))
+(def ^:private chunk-size 50)
 (defn- lit? [x] (or (string? x) (integer? x) (float? x)))
 (def ^:private pattern-functions '#{POS RPOS LEN TAB RTAB ANY NOTANY SPAN BREAK BREAKX ARBNO FENCE})
 (def ^:private pattern-constants '{ARB ARB REM REM BAL BAL FAIL FAIL SUCCEED SUCCEED ABORT ABORT FENCE (FENCE)})
 (def ^:private special-heads '#{. $ = ?= & SEQ pattern-constant})
-(defn- fallback [e] (swap! (:fallbacks *st*) inc) (list 'ev (list 'quote e)))
+(defn- fallback [e] (swap! fallbacks inc) (list 'ev (list 'quote e)))
 (defn- q [x] (list 'quote x))
-(defn- pair? [x op] (and (list? x) (= op (first x)) (= 2 (count x))))
 (defn- unused? [op n] (or (and (= n 1) (unused-unary-ops op)) (and (= n 2) (unused-binary-ops op))))
 (declare gen)
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -379,10 +425,10 @@
                     (unused? op n) (list 'do (list 'operator! (opsyn-key (unused? op n) n)) (list* 'call (q op) (map gen args)))
                     (and (= op '?) (= n 1)) (list 'INTERROGATE (gen (first args)))
                     (and (= op '.) (= n 1)) (gen-name (first args))
-                    (and (= op '.) (= n 2)) (list 'CAPTURE (gen (first args)) (list 'target (q (second args))))
+                    (and (= op '.) (= n 2)) (list 'CAPTURE (gen (first args)) (q (second args)))
                     (and (= op 'at-op) (= n 1)) (list 'CURSOR (list 'target (q (first args))))
                     (and (= op '$) (= n 1)) (list 'INDIRECT (gen (first args)))
-                    (and (= op '$) (= n 2)) (list 'CAPTURE-NOW (gen (first args)) (list 'target (q (second args))))
+                    (and (= op '$) (= n 2)) (list 'CAPTURE-NOW (gen (first args)) (q (second args)))
                     (and (= op '=) (= n 2) (symbol? (first args)) (protected-variables (first args))) (list 'protected (q (first args)) (gen (second args)))
                     (and (= op '=) (= n 2)) (list 'assign (gen-place (first args)) (gen (second args)))
                     (and (= op '?=) (= n 3)) (let [[t p r] args] (list 'REPLACE (gen-subject t) (gen p) (list 'fn [] (if (some? r) (gen r) ""))))
@@ -392,93 +438,126 @@
                     (and (= op '|) (>= n 2)) (cons 'ALT (map gen args))
                     (and (pattern-functions op) (= n 1)) (list op (gen (first args)))
                     (and (= op '?) (= n 2)) (list 'MATCH (gen (first args)) (gen (second args)))
+                    (= op 'SEQ) (cons 'TEXT (map (fn [a] (list 'fn [] (gen a))) args))
                     (special-heads op) (fallback e)
                     :else (list* 'call (q op) (map gen args))))
         (and (list? e) (list? (first e))) (list* 'invoke (gen (first e)) (map gen (rest e)))
         :else (fallback e)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(def ^:private unsupported '#{OPSYN})
+(defn- gen-goto
+    [t]
+    (cond
+        (pair? t '$) (list 'fn [] (list 'computed (gen (second t))))
+        (and (list? t) (= 'DIRECT (first t))) (list 'fn [] (list 'direct (gen (second t))))
+        (and (list? t) (symbol? (first t)) (not (:subscript (meta t)))) (list 'fn [] (list* 'called (q (first t)) (map (fn [a] (list 'fn [] (gen a))) (rest t))))
+        :else (q t)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- generate
-    []
+    [a b plain?]
     (let [
           end (end-pc)
-          stmts (vec (for [n (range 1 end)] (or (@<CODE> (or (@<LABL> n) n)) (refuse (str "statement " n " is not in the store")))))
-          atoms (set (filter #(or (symbol? %) (string? %)) (mapcat #(tree-seq coll? seq %) (remove #(or (identical? % block-end) (identical? % compile-error)) stmts))))
-          _ (when-some [u (some unsupported atoms)] (refuse (str "uses " u)))
-          _ (when (some #(and (string? %) (re-find #"^\s*(POS|RPOS|LEN|TAB|RTAB|ANY|NOTANY|SPAN|BREAK|BREAKX|ARBNO|FENCE)\s*\(" %)) atoms) (refuse "defines a pattern function's name"))
           ending? #{:END :end}
-          system? (fn [t] (and (keyword? t) (not (ending? t)) (or (special-targets t) (#{"CONTINUE" "ABORT" "SCONTINUE"} (name t)))))
-          known (fn [t n] (when-not (or (nil? t) (ending? t) (system? t) (and (keyword? t) (@<STNO> t))) (refuse (str "statement " n " has a goto the compiler does not handle: " (pr-str t)))))
-          jump (fn [t n] (cond (nil? t) (list 'recur (inc n)) (ending? t) (list 'recur end) :else (list 'recur (list 'goto t (@<STNO> t)))))
-          exit-of (fn [t n] (cond (nil? t) (inc n) (ending? t) end :else t))
+          system? (fn [t] (and (keyword? t) (or (special-targets t) (#{"CONTINUE" "ABORT" "SCONTINUE"} (name t)))))
+          static? (fn [t] (or (nil? t) (ending? t) (and (keyword? t) (not (system? t)) (some? (@<STNO> t)))))
+          jump (fn [t n] (cond (nil? t) (list 'recur (inc n)) (ending? t) (list 'recur end) :else (list 'recur (list 'goto t))))
+          exit-of (fn [t n] (cond (nil? t) (inc n) (ending? t) end (keyword? t) t :else (gen-goto t)))
+          native (atom [0 0])
           clauses
               (doall
                   (mapcat
                       (fn
-                          [n stmt]
-                          (cond
-                              (identical? stmt block-end) [n (list 'do (list 'step! n) '(closing!))]
-                              (identical? stmt compile-error) [n (list 'do (list 'stmt n (list 'throw (list 'ex-info (error-message 7) {:snobol/error 7}))) (list 'recur (inc n)))]
-                              :else
-                                  (let [
-                                        [x y] stmt
-                                        body (if (map? x) y x)
-                                        goto (if (map? x) x y)
-                                        g (when (map? goto) goto)
-                                        before @(:fallbacks *st*)
-                                        code (when (some? body) (gen body))
-                                        s (or (:G g) (:S g))
-                                        f (or (:G g) (:F g))
-                                        head (if (nil? code) (list 'stmt n) (list 'stmt n code))]
-                                      (known s n)
-                                      (known f n)
-                                      (swap! (:stmts *st*) conj (if (= before @(:fallbacks *st*)) :native :fallback))
-                                      [n
-                                          (cond
-                                              (and (or (system? s) (system? f)) (= s f)) (list 'recur (list 'leave n head 'err (exit-of s n)))
-                                              (or (system? s) (system? f)) (list 'recur (list 'leave n head 'err (exit-of s n) (exit-of f n)))
-                                              (= s f) (list 'do head (jump s n))
-                                              :else (list 'if head (jump s n) (jump f n)))])))
-                      (range 1 end)
-                      stmts))
-          body (list 'loop '[pc pc] (concat (list 'case '(int pc)) clauses (list end '(end!) nil)))]
-        (list 'fn '[entry] '(start!) (list 'loop '[pc entry err nil] (list 'when-some ['[pc err] (list 'try body '(catch clojure.lang.ExceptionInfo x (landing x)))] '(recur pc err))))))
+                          [n]
+                          (let [stmt (@<CODE> (or (@<LABL> n) n))]
+                              (cond
+                                  (= n end) [n '(end!)]
+                                  (nil? stmt) [n nil]
+                                  (identical? stmt block-end) [n (list 'do (list 'step! n) '(closing!))]
+                                  (identical? stmt compile-error) [n (list 'do (list 'stmt n (list 'throw (list 'ex-info (error-message 7) {:snobol/error 7}))) (list 'recur (inc n)))]
+                                  :else
+                                      (let [
+                                            [x y] stmt
+                                            body (if (map? x) y x)
+                                            goto (if (map? x) x y)
+                                            g (when (map? goto) goto)
+                                            before @fallbacks
+                                            code (when (some? body) (if plain? (fallback body) (gen body)))
+                                            s (or (:G g) (:S g))
+                                            f (or (:G g) (:F g))
+                                            head (if (nil? code) (list 'stmt n) (list 'stmt n code))
+                                            arm
+                                                (cond
+                                                    (and (static? s) (static? f)) (if (= s f) (list 'do head (jump s n)) (list 'if head (jump s n) (jump f n)))
+                                                    (= s f) (list 'recur (list 'leave n head 'err (exit-of s n)))
+                                                    :else (list 'recur (list 'leave n head 'err (exit-of s n) (exit-of f n))))]
+                                          (swap! native (fn [[k m]] [(if (= before @fallbacks) (inc (long k)) k) (inc (long m))]))
+                                          [n arm]))))
+                      (range a (inc b))))]
+        (with-meta
+            (list 'fn '[pc err] (list 'try (list 'loop '[pc pc] (concat (list 'case '(int pc)) clauses ['[pc err]])) '(catch clojure.lang.ExceptionInfo x (landing x))))
+            {:native (@native 0) :statements (@native 1)})))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn compile-source
-    [src]
-    (c/GLOBALS)
-    (binding [*st* {:fallbacks (atom 0) :stmts (atom [])}]
-        (try
-            (let [
-                  entry (c/CODE src)
-                  _ (when (seq @<DIAGNOSTICS>) (refuse "compile errors"))
-                  code (generate)
-                  f (binding [*ns* (the-ns 'SNOBOL4clojure.codegen)] (eval code))
-                  fq (frequencies @(:stmts *st*))
-                  pcs @<STNO>]
-                {
-                 :code code
-                 :f f
-                 :entry (if (keyword? entry) (or (pcs entry) (refuse "entry label")) (or entry 1))
-                 :pcs pcs
-                 :last (long @STNO)
-                 :statements (count @(:stmts *st*))
-                 :native (:native fq 0)
-                 :fallback (:fallback fq 0)})
-            (catch clojure.lang.ExceptionInfo e (if-some [why (::refused (ex-data e))] {:refused why} (throw e)))
-            (catch clojure.lang.Compiler$CompilerException e {:refused (str "generated code did not compile: " (let [^Throwable t (or (.getCause e) e)] (.getMessage t)))}))))
+(defn- install!
+    [a b]
+    (let [made
+              (fn
+                  [plain?]
+                  (try
+                      (let [code (generate a b plain?)] [code (binding [*ns* (the-ns 'SNOBOL4clojure.codegen)] (eval code))])
+                      (catch clojure.lang.Compiler$CompilerException e (when plain? (throw e)))))]
+        (if-some [[code f] (or (made false) (when (= a b) (made true)))]
+            (do
+                (swap! fns (fn [v] (reduce (fn [v n] (assoc v n f)) (into v (repeat (max 0 (- (inc (long b)) (count v))) nil)) (range a (inc (long b))))))
+                (swap! tally (fn [t] (-> t (update :statements + (:statements (meta code))) (update :native + (:native (meta code))) (update :code conj code)))))
+            (let [m (quot (+ (long a) (long b)) 2)] (install! a m) (install! (inc m) b)))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn run-compiled
-    [{:keys [f entry pcs last]}]
+(defn- top [] (max (long @STNO) (long (end-pc))))
+(defn- phantom [pc err] (try (stmt pc (throw (ex-info (error-message 7) {:snobol/error 7}))) [(inc (long pc)) err] (catch clojure.lang.ExceptionInfo x (landing x))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- code-at
+    [pc]
+    (when
+        (integer? pc)
+        (or
+            (get @fns pc)
+            (cond
+                (<= 1 (long pc) (top))
+                    (let [a0 (inc (* (long chunk-size) (quot (dec (long pc)) (long chunk-size))))]
+                        (install! (first (remove #(get @fns %) (range a0 (inc (long pc))))) (min (top) (+ a0 (dec (long chunk-size)))))
+                        (get @fns pc))
+                (identical? compile-error (@<CODE> pc)) phantom))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- drive [pc] (start!) (loop [pc pc err nil] (when-some [f (code-at pc)] (when-some [[pc err] (f pc err)] (recur pc err)))))
+(defn- fresh! [] (reset! fallbacks 0) (reset! fns []) (reset! tally {:statements 0 :native 0 :code []}))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- run-from
+    [entry]
     (let [interpret c/RUN]
-        (with-redefs [c/RUN (fn [at] (let [pc (cond (keyword? at) (pcs at) (and (integer? at) (<= 1 at (long last))) at)] (if pc (f pc) (interpret at))))]
+        (with-redefs [c/RUN (fn [at] (if-some [pc (pc-of at)] (drive pc) (interpret at)))]
             (try
-                (f entry)
+                (drive (or (pc-of entry) 1))
                 (catch clojure.lang.ExceptionInfo e
                     (if
                         (= :end (:snobol/signal (ex-data e)))
                         (do (when-some [l (:fnclevel (ex-data e))] (reset! &FNCLEVEL l)) (when-not (:snobol/closing (ex-data e)) (end-statement!)) nil)
                         (throw e)))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn show [code] (binding [pp/*print-right-margin* 150 pp/*print-miser-width* 60] (pp/with-pprint-dispatch pp/code-dispatch (pp/pprint code))))
+(defn run-loaded [entry] (fresh!) (run-from entry))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn compile-source
+    [src]
+    (c/GLOBALS)
+    (fresh!)
+    (let [entry (c/CODE src)]
+        (if
+            (seq @<DIAGNOSTICS>)
+            {:refused "compile errors"}
+            (do
+                (doseq [a (range 1 (inc (top)) chunk-size)] (install! a (min (top) (+ (long a) (dec (long chunk-size))))))
+                (let [t @tally] {:entry entry :code (:code t) :statements (:statements t) :native (:native t) :fallback (- (long (:statements t)) (long (:native t)))})))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn run-compiled [{:keys [entry]}] (run-from entry))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn show
+    [code]
+    (doseq [code (if (and (seq? code) (= 'fn (first code))) [code] code)]
+        (binding [pp/*print-right-margin* 150 pp/*print-miser-width* 60] (pp/with-pprint-dispatch pp/code-dispatch (pp/pprint code)))))
