@@ -5,7 +5,7 @@
                  &FILE &LASTLINE &LINE &STCOUNT &STLIMIT &FNCLEVEL &PROFILE &ERRTYPE end-statement! dispatch-special! special-targets protected-variables <CODE> <STNO> <LABL> <DIAGNOSTICS> <ERRSERIAL>
                  block-end compile-error capture-target pattern-argument snobol-set! prim-fns BREAKX$ error-message array? table? trap matching overrun fire-keyword! fire-label!
                  statement-trace-active? stcount-traced? program-fn fatal-error STNO textless? &ERRLIMIT system-labels failure-point table-get table-subscript array-get array-in-bounds? call-form?
-                 reference indirect-target call-by-name name-string unused-unary-ops unused-binary-ops protected-store! pattern-keywords]]
+                 reference indirect-target call-by-name name-string unused-unary-ops unused-binary-ops protected-store! pattern-keywords primitive-pattern]]
     (intern *ns* (with-meta s {:private true}) (var-get (ns-resolve 'SNOBOL4clojure.core s))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def ^:private core-fence (var-get (ns-resolve 'SNOBOL4clojure.core 'FENCE)))
@@ -26,6 +26,7 @@
                 (textless? (v (dec n))) (throw (ex-info "concatenation right operand is not a string or pattern" {:snobol/error 9}))
                 (some textless? (subvec v 0 (- n 2))) (throw (ex-info "concatenation left operand is not a string or pattern" {:snobol/error 8}))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn constant [n] (let [v (primitive-pattern n)] (if (identical? v core-fence) bare-fence v)))
 (defn rd [s] (let [v ($$ s)] (when (pos? (long @&TRACE)) (fire-access! s v)) (some! (if (identical? v core-fence) bare-fence v))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn call
@@ -36,6 +37,8 @@
             (Pat. (.f ^Pat p))
             (do
                 (when (and (= op 'EVAL) (instance? Pat p)) (throw (ex-info "eval argument is not expression" {:snobol/error 103})))
+                (when (and (= op 'INPUT) (instance? Pat (nth args 2 nil))) (throw (ex-info "inappropriate file specification for input" {:snobol/error 116})))
+                (when (and (= op 'OUTPUT) (instance? Pat (nth args 2 nil))) (throw (ex-info "inappropriate file specification for output" {:snobol/error 160})))
                 (let [f (get @<FUNS> (opsyn-key (get op-spelling op (str op)) (count args)))] (some! (deref-result (if f (apply f args) (apply INVOKE op args)))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn ev [form] (some! (EVAL! form)))
@@ -176,7 +179,7 @@
         (instance? Pat v) (.f ^Pat v)
         (string? v) (lit v)
         (or (seq? v) (vector? v) (symbol? v)) (node v)
-        (or (number? v) (instance? SNOBOL4clojure.core.NAME v)) (lit (sstr v))
+        (or (number? v) (and (instance? SNOBOL4clojure.core.NAME v) (not (textless? v)))) (lit (sstr v))
         :else (let [p (pattern-argument v 240)] (if (identical? p v) (throw (ex-info "a value the compiled matcher does not know" {::unsupported (str (type v))})) (matcher p)))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn SEQ
@@ -200,18 +203,12 @@
         (if (symbol? x) (with-meta (list 'DEFER! (fn [] (value #(rd x)))) {:defer-var x}) (list 'DEFER! (fn [] (value x))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn target [n] (some! (capture-target n)))
-(defn CAPTURE [p n] (if-some [f (get @<FUNS> "./2")] (some! (deref-result (f p (ev n)))) (Pat. (capture-of (matcher p) (target n)))))
-(defn CAPTURE-NOW [p n] (if-some [f (get @<FUNS> "$/2")] (some! (deref-result (f p (ev n)))) (Pat. (capture-now-of (matcher p) (target n)))))
+(defn CAPTURE [p n] (if-some [f (get @<FUNS> "./2")] (some! (deref-result (f p (ev n)))) (Pat. (capture-of (matcher (pattern-argument p 30)) (target n)))))
+(defn CAPTURE-NOW [p n] (if-some [f (get @<FUNS> "$/2")] (some! (deref-result (f p (ev n)))) (Pat. (capture-now-of (matcher (pattern-argument p 25)) (target n)))))
 (defn CURSOR [t] (Pat. (fn [s i caps k] (when (store t i) (k i caps)))))
-(def ARB (Pat. arb))
-(def REM (Pat. rem-all))
-(def BAL (Pat. bal))
-(def FAIL (Pat. (fn [s i caps k] nil)))
-(def SUCCEED (Pat. succeed))
-(def ABORT (Pat. (fn [s i caps k] ::abort)))
 (defn- redefinable [op f] (let [k (str op "/1")] (fn [x] (if (or (get @<FUNS> k) (program-fn op)) (call op x) (f x)))))
-(def FENCE (let [f (redefinable 'FENCE (fn [p] (Pat. (fence-of (matcher p)))))] (fn ([] (Pat. bare)) ([p] (f p)))))
-(def ARBNO (redefinable 'ARBNO (fn [p] (Pat. (arbno-of (matcher p))))))
+(def FENCE (redefinable 'FENCE (fn [p] (Pat. (fence-of (matcher (pattern-argument p 259)))))))
+(def ARBNO (redefinable 'ARBNO (fn [p] (Pat. (arbno-of (matcher (pattern-argument p 61)))))))
 (defn- runtime-built [op arg] (some! (INVOKE op arg)))
 (defn- positional [op f] (redefinable op (fn [n] (if (and (integer? n) (<= 0 (long n) 16777216)) (Pat. (f (long n))) (runtime-built op n)))))
 (def POS (positional 'POS (fn [n] (fn [s i caps k] (when (== (long i) n) (k i caps))))))
@@ -382,7 +379,6 @@
 (def ^:private chunk-size 50)
 (defn- lit? [x] (or (string? x) (integer? x) (float? x)))
 (def ^:private pattern-functions '#{POS RPOS LEN TAB RTAB ANY NOTANY SPAN BREAK BREAKX ARBNO FENCE})
-(def ^:private pattern-constants '{ARB ARB REM REM BAL BAL FAIL FAIL SUCCEED SUCCEED ABORT ABORT FENCE (FENCE)})
 (def ^:private special-heads '#{. $ = ?= & SEQ pattern-constant})
 (defn- fallback [e] (swap! fallbacks inc) (list 'ev (list 'quote e)))
 (defn- q [x] (list 'quote x))
@@ -417,7 +413,7 @@
         (symbol? e) (list 'rd (q e))
         (and (vector? e) (= :comma (first e))) (cons 'CHOICE (map (fn [a] (list 'fn [] (gen a))) (rest e)))
         (vector? e) (cons 'SEQ (map gen e))
-        (and (list? e) (= 'pattern-constant (first e)) (= 2 (count e)) (pattern-constants (second e))) (pattern-constants (second e))
+        (pair? e 'pattern-constant) (list 'constant (q (second e)))
         (and (list? e) (:subscript (meta e))) (list* 'item (if (symbol? (first e)) (list 'held (q (first e))) (gen (first e))) (map gen (rest e)))
         (and (list? e) (symbol? (first e)))
             (let [[op & args] e n (count args)]
