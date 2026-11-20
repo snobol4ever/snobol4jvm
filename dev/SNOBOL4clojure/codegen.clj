@@ -3,7 +3,7 @@
 (doseq [s
             '[$$ &TRACE fire-access! bare-fence concat-value deref-result <FUNS> opsyn-key op-spelling INVOKE EVAL! gtstg sstr &MAXLNGTH &ANCHOR <POS> <DISPNO> <STMT-LINE> &LASTNO &STNO &LASTFILE
                  &FILE &LASTLINE &LINE &STCOUNT &STLIMIT &FNCLEVEL end-statement! dispatch-special! special-targets protected-variables <CODE> <STNO> <LABL> <DIAGNOSTICS> block-end compile-error
-                 capture-target pattern-argument SEARCH snobol-set!]]
+                 capture-target pattern-argument snobol-set! prim-fns BREAKX$ error-message array? table?]]
     (intern *ns* (with-meta s {:private true}) (var-get (ns-resolve 'SNOBOL4clojure.core s))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def ^:private core-fence (var-get (ns-resolve 'SNOBOL4clojure.core 'FENCE)))
@@ -21,43 +21,92 @@
 (defn ev [form] (some! (EVAL! form)))
 (defn assign [n r] (some! (INVOKE '= n r)))
 (defn pattern? [v] (or (instance? Pat v) (instance? Expr v)))
+(defn- store [t v] (if (fn? t) (some? (t v)) (do (snobol-set! t v) true)))
+(declare matcher)
 (defn- lit [^String t] (let [n (.length t)] (fn [^String s i caps k] (when (.startsWith s t (int i)) (k (+ (long i) n) caps)))))
+(defn- seq-of [ms] (if (empty? ms) (lit "") (reduce (fn [tail p] (fn [s i caps k] (p s i caps (fn [j caps] (tail s j caps k))))) (peek ms) (reverse (pop ms)))))
+(defn- alt-of [ms] (fn [s i caps k] (loop [ms (seq ms)] (when ms (or ((first ms) s i caps k) (recur (next ms)))))))
+(defn- fence-of [m] (fn [s i caps k] (let [r (m s i caps (fn [j caps] [j caps]))] (cond (nil? r) nil (identical? r ::abort) ::abort :else (k (r 0) (r 1))))))
+(defn- arbno-of [m] (fn arbno [s i caps k] (or (k i caps) (m s i caps (fn [j caps] (if (> (long j) (long i)) (arbno s j caps k) (k j caps)))))))
+(defn- capture-of [m t] (fn [s i caps k] (m s i caps (fn [j caps] (k j (conj caps [t i j]))))))
+(defn- capture-now-of [m t] (fn [^String s i caps k] (m s i caps (fn [j caps] (when (store t (subs s i j)) (k j caps))))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- defer-of
+    [thunk]
+    (fn
+        [s i caps k]
+        (let [p (if (fn? thunk) (value thunk) thunk)] (when (or (array? p) (table? p)) (throw (ex-info (error-message 46) {:snobol/error 46}))) (when (some? p) ((matcher p) s i caps k)))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(def ^:private arb (fn [^String s i caps k] (let [len (.length s)] (loop [j (long i)] (when (<= j len) (or (k j caps) (recur (inc j))))))))
+(def ^:private rem-all (fn [^String s i caps k] (k (.length s) caps)))
+(def ^:private succeed (fn [s i caps k] (loop [] (or (k i caps) (recur)))))
+(def ^:private bare (fn [s i caps k] (or (k i caps) ::abort)))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(def ^:private bal
+    (fn
+        [^String s i caps k]
+        (let [len (.length s)]
+            (loop [p (long i) n 0]
+                (when
+                    (< p len)
+                    (let [ch (.charAt s (int p)) n2 (long (case ch \( (inc n) \) (dec n) n))] (cond (neg? n2) nil (zero? n2) (or (k (inc p) caps) (recur (inc p) 0)) :else (recur (inc p) n2))))))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- breakx-of
+    [cs]
+    (fn
+        [^String s i caps k]
+        (let [len (.length s)] (loop [from (long i)] (when (<= from len) (let [[_ d] (BREAKX$ (seq (subs s from)) from cs)] (when (>= (long d) 0) (or (k d caps) (recur (inc (long d)))))))))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- node
+    [p]
+    (let [head (cond (vector? p) 'SEQ (seq? p) (first p) :else p) args (cond (vector? p) (seq p) (seq? p) (rest p))]
+        (case head
+            SEQ (seq-of (mapv matcher args))
+            ALT (alt-of (mapv matcher args))
+            LIT$ (lit (let [x (first args)] (if (string? x) x (sstr x))))
+            (ANY$ NOTANY$ SPAN$ NSPAN$ BREAK$ BREAKX$ POS# RPOS# LEN# TAB# RTAB# BOL# EOL#)
+                (let [f (prim-fns head) a (first args)] (fn [^String s i caps k] (let [[_ d] (f (seq (subs s i)) i a)] (when (>= (long d) 0) (k d caps)))))
+            SUCCEED! succeed
+            FAIL! (fn [s i caps k] nil)
+            ABORT! (fn [s i caps k] ::abort)
+            REM! rem-all
+            ARB! arb
+            BAL! bal
+            FENCE! (if (some? (first args)) (fence-of (matcher (first args))) bare)
+            ARBNO! (arbno-of (matcher (first args)))
+            BREAKX# (breakx-of (first args))
+            CAPTURE-COND (capture-of (matcher (first args)) (second args))
+            (CAPTURE-IMM CAPTURE) (capture-now-of (matcher (first args)) (second args))
+            CURSOR-IMM! (let [t (first args)] (fn [s i caps k] (when (store t i) (k i caps))))
+            DEFER! (defer-of (first args))
+            X (fn [s i caps k] ((matcher ($$ 'X)) s i caps k))
+            (throw (ex-info "a pattern node the compiled matcher does not know" {::unsupported (str head)})))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- matcher
     [v]
     (cond
         (instance? Pat v) (.f ^Pat v)
         (string? v) (lit v)
-        (instance? Expr v) (let [thunk (.thunk ^Expr v)] (fn [s i caps k] (when-some [x (value thunk)] ((matcher x) s i caps k))))
-        (number? v) (lit (sstr v))
-        :else (throw (ex-info "a pattern value the prototype cannot match beside its own" {::unsupported (str (type v))}))))
+        (instance? Expr v) (defer-of (.thunk ^Expr v))
+        (or (seq? v) (vector? v) (symbol? v)) (node v)
+        (or (number? v) (instance? SNOBOL4clojure.core.NAME v)) (lit (sstr v))
+        :else (let [p (pattern-argument v 240)] (if (identical? p v) (throw (ex-info "a value the compiled matcher does not know" {::unsupported (str (type v))})) (matcher p)))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- data? [vs] (and (some list? vs) (not-any? pattern? vs)))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn SEQ
-    [& vs]
-    (if
-        (or (not-any? pattern? vs) (data? vs))
-        (some! (concat-value (apply list 'SEQ vs)))
-        (let [ms (mapv matcher (remove #(= "" %) vs))] (Pat. (reduce (fn [tail p] (fn [s i caps k] (p s i caps (fn [j caps] (tail s j caps k))))) (peek ms) (reverse (pop ms)))))))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn ALT [& vs] (if (data? vs) (some! (apply INVOKE '| vs)) (let [ms (mapv matcher vs)] (Pat. (fn [s i caps k] (loop [ms (seq ms)] (when ms (or ((first ms) s i caps k) (recur (next ms))))))))))
+(defn SEQ [& vs] (if (not-any? pattern? vs) (some! (concat-value (apply list 'SEQ vs))) (Pat. (seq-of (mapv matcher (remove #(= "" %) vs))))))
+(defn ALT [& vs] (Pat. (alt-of (mapv matcher vs))))
 (defn DEFER [thunk] (Expr. thunk))
-(defn- store [t text] (if (fn? t) (some? (t text)) (do (snobol-set! t text) true)))
 (defn target [n] (some! (capture-target n)))
-(defn CAPTURE [p t] (let [m (matcher p)] (Pat. (fn [s i caps k] (m s i caps (fn [j caps] (k j (conj caps [t i j]))))))))
-(defn CAPTURE-NOW [p t] (let [m (matcher p)] (Pat. (fn [^String s i caps k] (m s i caps (fn [j caps] (store t (subs s i j)) (k j caps)))))))
-(def ARB (Pat. (fn [^String s i caps k] (let [len (.length s)] (loop [j (long i)] (when (<= j len) (or (k j caps) (recur (inc j)))))))))
-(def REM (Pat. (fn [^String s i caps k] (k (.length s) caps))))
+(defn CAPTURE [p t] (Pat. (capture-of (matcher p) t)))
+(defn CAPTURE-NOW [p t] (Pat. (capture-now-of (matcher p) t)))
+(defn CURSOR [t] (Pat. (fn [s i caps k] (when (store t i) (k i caps)))))
+(def ARB (Pat. arb))
+(def REM (Pat. rem-all))
+(def BAL (Pat. bal))
 (def FAIL (Pat. (fn [s i caps k] nil)))
-(def SUCCEED (Pat. (fn [s i caps k] (loop [] (or (k i caps) (recur))))))
+(def SUCCEED (Pat. succeed))
 (def ABORT (Pat. (fn [s i caps k] ::abort)))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn FENCE
-    ([] (Pat. (fn [s i caps k] (or (k i caps) ::abort))))
-    ([p] (let [m (matcher p)] (Pat. (fn [s i caps k] (let [r (m s i caps (fn [j caps] [j caps]))] (cond (nil? r) nil (identical? r ::abort) ::abort :else (k (r 0) (r 1)))))))))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn ARBNO [p] (let [m (matcher p)] (Pat. (fn arbno [s i caps k] (or (k i caps) (m s i caps (fn [j caps] (when (> (long j) (long i)) (arbno s j caps k)))))))))
+(defn FENCE ([] (Pat. bare)) ([p] (Pat. (fence-of (matcher p)))))
+(defn ARBNO [p] (Pat. (arbno-of (matcher p))))
 (defn- late [build thunk] (Pat. (fn [s i caps k] (when-some [v (value thunk)] ((matcher (build v)) s i caps k)))))
 (defn- positional [op f] (fn build [n] (cond (instance? Expr n) (late build (.thunk ^Expr n)) (and (integer? n) (>= (long n) 0)) (Pat. (f (long n))) :else (some! (INVOKE op n)))))
 (def POS (positional 'POS (fn [n] (fn [s i caps k] (when (== (long i) n) (k i caps))))))
@@ -79,17 +128,15 @@
 (def NOTANY (char-class 'NOTANY (fn [in?] (fn [^String s i caps k] (when (and (< (long i) (.length s)) (not (in? s i))) (k (inc (long i)) caps))))))
 (def SPAN (char-class 'SPAN (fn [in?] (fn [^String s i caps k] (let [len (.length s) j (loop [j (long i)] (if (and (< j len) (in? s j)) (recur (inc j)) j))] (when (> j (long i)) (k j caps)))))))
 (def BREAK (char-class 'BREAK (fn [in?] (fn [^String s i caps k] (let [len (.length s) j (loop [j (long i)] (if (and (< j len) (not (in? s j))) (recur (inc j)) j))] (when (< j len) (k j caps)))))))
+(def BREAKX (fn build [cs] (if (instance? Expr cs) (late build (.thunk ^Expr cs)) (some! (INVOKE 'BREAKX cs)))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- find-match
     [^String s p]
-    (if
-        (or (pattern? p) (string? p) (number? p))
-        (let [m (matcher p) len (.length s) n (if (zero? (long @&ANCHOR)) len 0)]
-            (loop [st 0]
-                (when
-                    (<= st n)
-                    (let [r (m s st [] (fn [j caps] [j caps]))] (cond (identical? r ::abort) nil r (when (every? (fn [[t a b]] (store t (subs s a b))) (r 1)) [st (r 0)]) :else (recur (inc st)))))))
-        (SEARCH s (pattern-argument p 240))))
+    (let [m (matcher p) len (.length s) n (if (zero? (long @&ANCHOR)) len 0)]
+        (loop [st 0]
+            (when
+                (<= st n)
+                (let [r (m s st [] (fn [j caps] [j caps]))] (cond (identical? r ::abort) nil r (when (every? (fn [[t a b]] (store t (subs s a b))) (r 1)) [st (r 0)]) :else (recur (inc st))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn MATCH [sv p] (let [s (gtstg sv 241) r (find-match s p)] (if r (subs s (r 0) (r 1)) (fail))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -118,8 +165,8 @@
 (def ^:private ^:dynamic *st* nil)
 (defn- refuse [why] (throw (ex-info why {::refused why})))
 (defn- lit? [x] (or (string? x) (integer? x) (float? x)))
-(def ^:private pattern-functions '#{POS RPOS LEN TAB RTAB ANY NOTANY SPAN BREAK ARBNO FENCE})
-(def ^:private pattern-constants '{ARB ARB REM REM FAIL FAIL SUCCEED SUCCEED ABORT ABORT FENCE (FENCE)})
+(def ^:private pattern-functions '#{POS RPOS LEN TAB RTAB ANY NOTANY SPAN BREAK BREAKX ARBNO FENCE})
+(def ^:private pattern-constants '{ARB ARB REM REM BAL BAL FAIL FAIL SUCCEED SUCCEED ABORT ABORT FENCE (FENCE)})
 (defn- plain-op? [[op & args]] (let [n (count args)] (cond ('#{+ -} op) (<= 1 n 2) ('#{* /} op) (= n 2) :else (boolean (and (re-matches #"[A-Z][A-Z0-9]*" (name op)) (not= op 'SEQ))))))
 (defn- fallback [e] (swap! (:fallbacks *st*) inc) (list 'ev (list 'quote e)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -136,6 +183,7 @@
                     (and (= op '*) (= n 1)) (list 'DEFER (list 'fn [] (gen (first args))))
                     (and (= op '.) (= n 2)) (list 'CAPTURE (gen (first args)) (list 'target (list 'quote (second args))))
                     (and (= op '$) (= n 2)) (list 'CAPTURE-NOW (gen (first args)) (list 'target (list 'quote (second args))))
+                    (and (= op 'at-op) (= n 1)) (list 'CURSOR (list 'target (list 'quote (first args))))
                     (and (= op 'pattern-constant) (= n 1) (pattern-constants (first args))) (pattern-constants (first args))
                     (and (pattern-functions op) (= n 1)) (list op (gen (first args)))
                     (and (= op '?) (= n 2)) (list 'MATCH (gen (first args)) (gen (second args)))
@@ -165,7 +213,7 @@
                           (if (or (nil? stmt) (identical? stmt block-end) (identical? stmt compile-error)) (refuse (str "statement " n " is no plain statement")) stmt))))
           atoms (set (filter #(or (symbol? %) (string? %)) (mapcat #(tree-seq coll? seq %) stmts)))
           _ (when-some [u (some unsupported atoms)] (refuse (str "uses " u)))
-          _ (when (some #(and (string? %) (re-find #"^\s*(POS|RPOS|LEN|TAB|RTAB|ANY|NOTANY|SPAN|BREAK|ARBNO|FENCE)\s*\(" %)) atoms) (refuse "defines a pattern function's name"))
+          _ (when (some #(and (string? %) (re-find #"^\s*(POS|RPOS|LEN|TAB|RTAB|ANY|NOTANY|SPAN|BREAK|BREAKX|ARBNO|FENCE)\s*\(" %)) atoms) (refuse "defines a pattern function's name"))
           jump
               (fn
                   [t n]
