@@ -72,7 +72,7 @@ The product is ONE file and one namespace (Lon 2026-11-19: "put the product in O
 
 | File | Holds |
 |------|-------|
-| `src/SNOBOL4clojure/core.clj` | `SNOBOL4clojure.core`, the whole engine, in load order: the runtime (state, built-ins, patterns and scanners, traces, the listing, an error's report, the `&DUMP` dump; once `env.clj`), the front end (grammar, compile error numbers, emitter, compiler), the matcher and the evaluator (`EVAL!`, `INVOKE`; once `operators.clj`), the interpreter and the JVM bytecode engine (once `runtime.clj`), the public API and `-main`, and the jar's entry `jar-main` (once `main.clj`). |
+| `src/SNOBOL4clojure/core.clj` | `SNOBOL4clojure.core`, the whole engine, in dependency order (below): the runtime (state, built-ins, patterns and scanners, traces, the listing, an error's report, the `&DUMP` dump; once `env.clj`), the front end (grammar, compile error numbers, emitter, compiler), the matcher and the evaluator (`EVAL!`, `INVOKE`; once `operators.clj`), the interpreter and the JVM bytecode engine (once `runtime.clj`), the public API and `-main`, and the jar's entry `jar-main` (once `main.clj`). |
 | `dev/SNOBOL4clojure/harness.clj` | Development tools: the differential harness, the worm generator and the benchmark grid. |
 | `dev/SNOBOL4clojure/snocone.clj` | The Snocone front end. |
 
@@ -80,7 +80,8 @@ The product is ONE file and one namespace (Lon 2026-11-19: "put the product in O
 - **The one namespace excludes `= + - * /` and `num` from `clojure.core`.** `= + - * /` are SNOBOL4's IR builders of the public API, so a bare `(= a b)` builds IR, which is always truthy; `num` is the runtime's. Code in `core.clj` writes `clojure.core/=` (and `+ - * / num`) for Clojure's.
 - **Six names were renamed when the files became one,** since two of the old namespaces each had one: `APPLY-by-name` (the runtime's call of a function by its name; `APPLY` is the evaluator's), `deferred-arg?`, `goto-system-labels`, `char-at`, `parse-operand` and `compile-system-labels`.
 - **The built-ins a program reaches by name are `builtin-names`,** the 74 uppercase names `core` exported before it held everything, so a helper of the engine never answers as a SNOBOL4 function.
-- The section names below (`grammar`, `trace`, `match` and so on) are the files the code came from.
+- **Definitions stand in dependency order** (Lon 2026-11-19: "place every definition in proper order where things used are defined preceding as close as possible. So main is at the bottom and read up from the bottom."): what a form uses is defined above it, as near as it can be; `jar-main` is the last form, `-main` and its helpers above it, so the file reads up from the bottom. A defmulti's defmethods follow it, a name's several definitions keep their order, and a forward reference a cycle needs is a `(declare ...)` directly above the form that needs it. `script/reorder.py src/SNOBOL4clojure/core.clj` orders the file so (it is idempotent); `--check` reads rc 0 before a commit, after `reflow200.py`.
+- The section names below (`grammar`, `trace`, `match` and so on) are the files the code came from; the parts are interleaved by the order.
 
 ### Front end (source to IR)
 
@@ -218,7 +219,7 @@ Each commit cures one defect and names the witness that proves it: the corpus en
   - one that does not opens with its head and the atoms that lead it, and each list among its children goes on its own line four columns deeper, by the same rule; atoms pack onto a line, and the closing brackets end the last line;
   - pairs stay together (Lon: "The cond's became un-readable when you broken them on seperate lines."): a clause of `cond`, `case`, `condp`, `cond->` and `cond->>`, a binding of `let`, `loop`, `binding`, `doseq`, `for`, `if-let` and their kin, and a map entry is one line when it fits, else its value goes on the next line four columns deeper; a binding vector stands on its form's line and its pairs, like a map's, line up under the first;
   - one separator, `;` and 199 dashes, stands between every run of one-line top-level forms and around every multi-line one.
-  - `script/reflow200.py` lays a file out so: run `python3 script/reflow200.py src/SNOBOL4clojure/*.clj` after an edit, and `--check` reads rc 0 before a commit. Strings, regexes and character literals are never touched.
+  - `script/reflow200.py` lays a file out so: after an edit run `python3 script/reorder.py src/SNOBOL4clojure/core.clj`, then `python3 script/reflow200.py src/SNOBOL4clojure/*.clj dev/SNOBOL4clojure/*.clj`; both `--check` read rc 0 before a commit. Strings, regexes and character literals are never touched.
 
 ## Repo notes
 
