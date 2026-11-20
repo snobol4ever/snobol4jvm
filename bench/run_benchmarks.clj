@@ -13,9 +13,9 @@
 
 (ns bench.run-benchmarks
   (:require [SNOBOL4clojure.harness    :as h]
-            [SNOBOL4clojure.compiler   :as comp]
-            [SNOBOL4clojure.runtime    :as rt]
-            [SNOBOL4clojure.env        :as env]
+            [SNOBOL4clojure.core   :as comp]
+            [SNOBOL4clojure.core    :as rt]
+            [SNOBOL4clojure.core        :as env]
             [clojure.string            :as str]
             [clojure.java.shell        :as sh]))
 

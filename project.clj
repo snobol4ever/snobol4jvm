@@ -16,8 +16,9 @@
   :test-paths ["test"]
   :main ^:skip-aot SNOBOL4clojure.core
   :target-path "target/%s"
-  :profiles {:uberjar {:main SNOBOL4clojure.main
-                       :aot [SNOBOL4clojure.main SNOBOL4clojure.core]
+  :profiles {:dev {:source-paths ["dev"]}
+             :uberjar {:main SNOBOL4clojure.core
+                       :aot [SNOBOL4clojure.core]
                        ;; core and every namespace it requires are AOT-compiled, so a
                        ;; run starts in about 1.4 s instead of 4-9 s compiling .clj
                        ;; source. Its classes carry no two names that differ

@@ -97,9 +97,9 @@
              ;; Each program starts with its keywords at their defaults, except
              ;; &STLIMIT, which prog-steplimit sets before the run; whatever the
              ;; program assigns to it is undone when the run ends.
-             (let [stlimit  @SNOBOL4clojure.env/&STLIMIT
-                   _        (SNOBOL4clojure.env/reset-keywords!)
-                   _        (reset! SNOBOL4clojure.env/&STLIMIT stlimit)
+             (let [stlimit  @SNOBOL4clojure.core/&STLIMIT
+                   _        (SNOBOL4clojure.core/reset-keywords!)
+                   _        (reset! SNOBOL4clojure.core/&STLIMIT stlimit)
                    result-p (promise)
                    f (future
                        (deliver result-p
@@ -116,12 +116,12 @@
                                             :steps  (get (ex-data e) :steps)
                                             :thrown (.getMessage e)
                                             ;; 18C.9: auto-snapshot at step-limit stop
-                                            :vars   (SNOBOL4clojure.env/snapshot!)}
+                                            :vars   (SNOBOL4clojure.core/snapshot!)}
                                {:exit :error :thrown (.getMessage e)}))
                            (catch Exception e
                              {:exit :error :thrown (.getMessage e)})
                            (finally
-                             (reset! SNOBOL4clojure.env/&STLIMIT stlimit)))))]
+                             (reset! SNOBOL4clojure.core/&STLIMIT stlimit)))))]
                (or (deref result-p budget-ms nil)
                    (do (future-cancel f) {:exit :timeout :stdout nil :stderr nil}))))]
      ;; Retry once on timeout
@@ -195,7 +195,7 @@
    Smaller n = faster failure detection for genuinely infinite programs.
    Reset to 2147483647 to restore default (unlimited)."
   [n]
-  (reset! SNOBOL4clojure.env/&STLIMIT n))
+  (reset! SNOBOL4clojure.core/&STLIMIT n))
 
 (defmacro prog-steplimit
   "Run program with both a wall-clock budget AND an in-engine step limit.
@@ -203,9 +203,9 @@
    Use for loop tests where you know an upper bound on iterations."
   [budget-ms max-steps & lines]
   `(do
-     (reset! SNOBOL4clojure.env/&STLIMIT ~max-steps)
+     (reset! SNOBOL4clojure.core/&STLIMIT ~max-steps)
      (let [r# (prog-timeout ~budget-ms ~@lines)]
-       (reset! SNOBOL4clojure.env/&STLIMIT 2147483647)
+       (reset! SNOBOL4clojure.core/&STLIMIT 2147483647)
        r#)))
 
 ;; ── Step-probe / bisection debugger (Sprint 18C) ─────────────────────────────
@@ -229,16 +229,16 @@
   ;; Reset compiler state so each call starts from a clean slate.
   ;; Without this, accumulated CODE entries from prior calls shift statement
   ;; numbers and leave stale variable state that corrupts bisect-divergence.
-  (reset! SNOBOL4clojure.env/STNO  0)
-  (reset! SNOBOL4clojure.env/<STNO> {})
-  (reset! SNOBOL4clojure.env/<LABL> {})
-  (reset! SNOBOL4clojure.env/<CODE> {})
-  (reset! SNOBOL4clojure.env/&STLIMIT n)
+  (reset! SNOBOL4clojure.core/STNO  0)
+  (reset! SNOBOL4clojure.core/<STNO> {})
+  (reset! SNOBOL4clojure.core/<LABL> {})
+  (reset! SNOBOL4clojure.core/<CODE> {})
+  (reset! SNOBOL4clojure.core/&STLIMIT n)
   (let [r (run-with-timeout src 5000)]
-    (reset! SNOBOL4clojure.env/&STLIMIT 2147483647)
+    (reset! SNOBOL4clojure.core/&STLIMIT 2147483647)
     (assoc r
-           :steps @SNOBOL4clojure.env/&STCOUNT
-           :vars  (SNOBOL4clojure.env/snapshot!))))
+           :steps @SNOBOL4clojure.core/&STCOUNT
+           :vars  (SNOBOL4clojure.core/snapshot!))))
 
 (defn probe-at
   "Run src to step n and return the value of variable `var-sym` at that point.
@@ -339,15 +339,15 @@
     (assoc r
            :resume (fn [n2]
                      ;; Don't re-CODE — use current statement pointer
-                     (reset! SNOBOL4clojure.env/&STLIMIT n2)
-                     (reset! SNOBOL4clojure.env/&STCOUNT 0)
-                     (let [next-stmt @SNOBOL4clojure.env/<STNO>
+                     (reset! SNOBOL4clojure.core/&STLIMIT n2)
+                     (reset! SNOBOL4clojure.core/&STCOUNT 0)
+                     (let [next-stmt @SNOBOL4clojure.core/<STNO>
                            resume-r  (try
                                        {:exit   :ok
                                         :stdout (with-out-str
-                                                  (SNOBOL4clojure.runtime/RUN
+                                                  (SNOBOL4clojure.core/RUN
                                                     ;; Resume from statement after stop
-                                                    (inc @SNOBOL4clojure.env/STNO)))}
+                                                    (inc @SNOBOL4clojure.core/STNO)))}
                                        (catch clojure.lang.ExceptionInfo e
                                          (case (get (ex-data e) :snobol/signal)
                                            :end        {:exit :ok  :stdout ""}
@@ -357,5 +357,5 @@
                                        (catch Exception e
                                          {:exit :error :thrown (.getMessage e)})
                                        (finally
-                                         (reset! SNOBOL4clojure.env/&STLIMIT 2147483647)))]
-                       (assoc resume-r :vars (SNOBOL4clojure.env/snapshot!)))))))
+                                         (reset! SNOBOL4clojure.core/&STLIMIT 2147483647)))]
+                       (assoc resume-r :vars (SNOBOL4clojure.core/snapshot!)))))))

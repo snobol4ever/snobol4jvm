@@ -1,13 +1,13 @@
 (ns SNOBOL4clojure.test-compiler
   "The compiler from Clojure: IR, compile error numbers, -INCLUDE, and CODE and RUN called directly."
   (:require [clojure.test :refer :all]
-            [SNOBOL4clojure.compiler :refer [CODE! syntax-error preprocess-includes CODE]]
-            [SNOBOL4clojure.env :refer [GLOBALS $$ snobol-set! DATATYPE table? table-get array? array-prototype]]
+            [SNOBOL4clojure.core :refer [CODE! syntax-error preprocess-includes CODE]]
+            [SNOBOL4clojure.core :refer [GLOBALS $$ snobol-set! DATATYPE table? table-get array? array-prototype]]
             [clojure.test :refer [deftest is testing]]
             [clojure.java.io :as io]
             [SNOBOL4clojure.test-helpers :refer [prog prog-include]]
-            [SNOBOL4clojure.operators :refer [INVOKE EVAL!]]
-            [SNOBOL4clojure.runtime :refer [RUN]]))
+            [SNOBOL4clojure.core :refer [INVOKE EVAL!]]
+            [SNOBOL4clojure.core :refer [RUN]]))
 
 
 ;; ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -407,4 +407,4 @@
 ;; ── Multi-dimensional ────────────────────────────────────────────────────────
 
 
-(use-fixtures :each (fn [t] (SNOBOL4clojure.env/GLOBALS) (t)))
+(use-fixtures :each (fn [t] (SNOBOL4clojure.core/GLOBALS) (t)))

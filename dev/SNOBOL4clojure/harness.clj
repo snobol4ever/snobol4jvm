@@ -1,5 +1,5 @@
 (ns SNOBOL4clojure.harness
-    (:require [clojure.java.shell :as sh] [clojure.string :as str] [SNOBOL4clojure.env :as env] [SNOBOL4clojure.core :as sno] [SNOBOL4clojure.compiler :as comp] [SNOBOL4clojure.runtime :as rt])
+    (:require [clojure.java.shell :as sh] [clojure.string :as str] [SNOBOL4clojure.core :as env] [SNOBOL4clojure.core :as sno] [SNOBOL4clojure.core :as comp] [SNOBOL4clojure.core :as rt])
     (:import [java.io StringWriter]))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def ^:dynamic *spitbol-bin* "/usr/local/bin/spitbol")

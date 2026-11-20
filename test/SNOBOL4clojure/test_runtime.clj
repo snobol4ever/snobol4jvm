@@ -150,10 +150,10 @@
 ;; A program, its input and its output are bytes. A character above 127 in the source, in INPUT or from CHAR is one byte that goes through unchanged, whatever the
 ;; locale: CHAR(233) is the single byte E9, SIZE('café') is 5 because the source holds UTF-8, and a line read is written back exactly as it came. The launcher read
 ;; and wrote UTF-8 in the locale's charset, so under LC_ALL=C every byte above 127 became a question mark (Budne's 8bit and alph print &ALPHABET). The oracle,
-;; sbl -bf, wrote exactly these bytes. The test starts the launcher, SNOBOL4clojure.main, as a process, because the bytes are decided at the process's edge.
+;; sbl -bf, wrote exactly these bytes. The test starts the launcher, SNOBOL4clojure.core/jar-main, as a process, because the bytes are decided at the process's edge.
 (deftest the-launcher-passes-bytes-above-127-through-unchanged
   (let [f  (java.io.File/createTempFile "bytes" ".sno")
-        pb (doto (ProcessBuilder. ["java" "-cp" (System/getProperty "java.class.path") "clojure.main" "-m" "SNOBOL4clojure.main" (.getPath f)])
+        pb (doto (ProcessBuilder. ["java" "-cp" (System/getProperty "java.class.path") "clojure.main" "-e" (str "(require 'SNOBOL4clojure.core) (SNOBOL4clojure.core/jar-main " (pr-str (.getPath f)) ")")])
              (.redirectErrorStream true))]
     (try
       (spit f (str "        OUTPUT = CHAR(233) CHAR(255) CHAR(128) CHAR(10)\n        OUTPUT = 'café üñ'\n        OUTPUT = SIZE('café')\n"
@@ -169,7 +169,7 @@
 
 ;; HOST() is "a 'host-information' string describing the system on which SPITBOL is executing", computer type:operating system:version (SPITBOL manual ch. 19, HOST).
 (deftest host-describes-the-system
-  (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.env/HOST)))))
+  (is (re-matches #"jvm:[^:]+:SNOBOL4clojure .*" (str (SNOBOL4clojure.core/HOST)))))
 
 ;; "With the first type of execution error, SPITBOL will send a message to the screen, much as it does with compilation errors ... program.spt(3) : Error 038 --
 ;; Goto undefined label" (manual ch. 13, Execution errors). sbl -bf writes its report on standard output, part of it on standard error too, and exits 0. The time,
@@ -177,16 +177,16 @@
 (defn- fatal-figures [s]
   (clojure.string/replace s #"(?m)^(execution time msec|REGENERATIONS|memory used \(bytes\)|memory left \(bytes\))( +)\d+$" "$1$2-"))
 
-;; The grammar's EBNF text is parsed when SNOBOL4clojure.compiler is compiled, and the combinator map it gives is a constant of the namespace (grammar/rules) from which both
+;; The grammar's EBNF text is parsed when SNOBOL4clojure.core is compiled, and the combinator map it gives is a constant of the namespace (grammar/rules) from which both
 ;; parsers start, so a run no longer parses the text: building the two parsers from the text cost 380 ms and about 7 G user instructions of every start (perf stat -e
 ;; instructions:u, an empty program 16.6 G before and 10.9 G after). The parsers must answer as the text-built ones do: the same tree, or the same failure, for each line.
 (deftest the-grammar-is-compiled-into-the-namespace-and-parses-as-its-text-does
-  (require 'instaparse.core 'SNOBOL4clojure.compiler)
+  (require 'instaparse.core 'SNOBOL4clojure.core)
   (let [parser (resolve 'instaparse.core/parser) parse (resolve 'instaparse.core/parse)
-        text (var-get (resolve 'SNOBOL4clojure.compiler/grammar))
+        text (var-get (resolve 'SNOBOL4clojure.core/grammar))
         from-text-stmt (parser text :start :stmt :total true)
         from-text-expr (parser text :start :expr)
-        rules (resolve 'SNOBOL4clojure.compiler/rules)
+        rules (resolve 'SNOBOL4clojure.core/rules)
         lines ["L       X = Y + 1                :(END)" "        OUTPUT = 'hello'" "* a comment" "-INCLUDE 'x.inc'" "END" "        :(L)"
                "        X<I> = Y[J]" "        P = LEN(3) $ X . Y | 'z' @C" "A       B ? C . D = E            :S(X)F(Y)" "        DEFINE('F(X,Y)Z')  :(FEND)"
                "        X = 1.5E3 + .5 * (2 ** 3)" "        &STLIMIT = 100" "L2      Z = F(A, , B)            :F<$S>" "        S ? ARBNO(BREAK(' ') . W SPAN(' ')) :F(D)"
@@ -195,8 +195,8 @@
     (when rules
       (is (= (set (keys @rules)) (set (keys (:grammar (parser text)))))))
     (doseq [l lines]
-      (is (= (pr-str (parse from-text-stmt l)) (pr-str (SNOBOL4clojure.compiler/parse-statement l))) l)
-      (is (= (pr-str (parse from-text-expr l)) (pr-str (SNOBOL4clojure.compiler/parse-expression l))) l))))
+      (is (= (pr-str (parse from-text-stmt l)) (pr-str (SNOBOL4clojure.core/parse-statement l))) l)
+      (is (= (pr-str (parse from-text-expr l)) (pr-str (SNOBOL4clojure.core/parse-expression l))) l))))
 
 ;; A SNOBOL4 call is several nested evaluator calls, so a function that called itself died at depth 90 on the JVM's default thread stack with an uncaught
 ;; StackOverflowError, where sbl -bf runs 57,000 deep at its default -s4m and ends a runaway recursion with "ERROR 246 -- stack overflow", the report every execution
@@ -204,8 +204,8 @@
 ;; the declared kilobytes; the launcher passes -s as snobol4jvm.stack.kb), the declared stack being the hard cap (CEO-1353); a run that outgrows it, or a StackOverflowError
 ;; that escapes, ends in error 246 (core.clj). Expected output is sbl -bf's.
 (deftest a-recursion-runs-on-the-stack-it-declares-and-outgrowing-it-is-error-246
-  (require 'SNOBOL4clojure.main)
-  (let [on-a-stack (resolve 'SNOBOL4clojure.main/on-a-stack)
+  (require 'SNOBOL4clojure.core)
+  (let [on-a-stack (resolve 'SNOBOL4clojure.core/on-a-stack)
         f    (java.io.File/createTempFile "deep" ".sno") p (.getPath f)
         deep (fn [n] (str "        DEFINE('DEEP(N)')               :(DEEPE)\n"
                           "DEEP    DEEP = EQ(N, 0) 0               :S(RETURN)\n"
@@ -235,8 +235,8 @@
 ;; 1.3 s); what a catch reads, ex-data, is unchanged.
 (deftest the-return-signals-are-constants-carrying-the-same-data
   (let [thrown (fn [f] (try (f) nil (catch clojure.lang.ExceptionInfo e e)))]
-    (doseq [[f sig msg] [[SNOBOL4clojure.env/snobol-return! :return "RETURN"] [SNOBOL4clojure.env/snobol-freturn! :freturn "FRETURN"]
-                         [SNOBOL4clojure.env/snobol-nreturn! :nreturn "NRETURN"] [SNOBOL4clojure.env/snobol-end! :end "END"]]]
+    (doseq [[f sig msg] [[SNOBOL4clojure.core/snobol-return! :return "RETURN"] [SNOBOL4clojure.core/snobol-freturn! :freturn "FRETURN"]
+                         [SNOBOL4clojure.core/snobol-nreturn! :nreturn "NRETURN"] [SNOBOL4clojure.core/snobol-end! :end "END"]]]
       (let [a (thrown f) b (thrown f)]
         (is (= {:snobol/signal sig} (ex-data a)))
         (is (= msg (ex-message a)))
@@ -393,17 +393,17 @@
 (GLOBALS *ns*)
 
 (deftest diag-arbno-ir
-  (let [ast (SNOBOL4clojure.compiler/parse-statement "        S ARBNO('ab') . R 'XY'")
-        ir  (SNOBOL4clojure.compiler/emitter ast)]
+  (let [ast (SNOBOL4clojure.core/parse-statement "        S ARBNO('ab') . R 'XY'")
+        ir  (SNOBOL4clojure.core/emitter ast)]
     (println "ARBNO IR:" ir))
   (is true))
 
 (deftest diag-arbno-trace
   ;; Direct API call to see if CAPTURE-COND + ARBNO works at the Clojure level
-  (let [result (SNOBOL4clojure.operators/SEARCH
+  (let [result (SNOBOL4clojure.core/SEARCH
                  "ababXY"
                  (list 'CAPTURE-COND
-                       (SNOBOL4clojure.env/ARBNO "ab")
+                       (SNOBOL4clojure.core/ARBNO "ab")
                        'CAPTURED2))]
     (println "Direct SEARCH result:" result)
     (println "CAPTURED2 after SEARCH:" ($$ 'CAPTURED2))
@@ -440,10 +440,10 @@
 (deftest enable-full-trace-registers-the-wildcard-traces
   "enable-full-trace! registers the wildcard label, value, call and return traces; &TRACE, the count the program sets, is not touched."
   (trace-enable-full!)
-  (is (= 0 @SNOBOL4clojure.env/&TRACE))
-  (is (every? #(SNOBOL4clojure.env/active? "*" %) ["LABEL" "VALUE" "CALL" "RETURN"]))
+  (is (= 0 @SNOBOL4clojure.core/&TRACE))
+  (is (every? #(SNOBOL4clojure.core/active? "*" %) ["LABEL" "VALUE" "CALL" "RETURN"]))
   (trace-disable-full!)
-  (is (not-any? #(SNOBOL4clojure.env/active? "*" %) ["LABEL" "VALUE" "CALL" "RETURN"])))
+  (is (not-any? #(SNOBOL4clojure.core/active? "*" %) ["LABEL" "VALUE" "CALL" "RETURN"])))
 
 ;; ── Sprint 18C: snapshot! / run-to-step / probe-test ────────────────────────
 

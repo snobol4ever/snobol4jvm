@@ -52,11 +52,11 @@ sugar. This is a full backtracking engine.
 ## Architecture: Two Engines over One IR
 
 snobol4jvm compiles SNOBOL4 source to an IR of plain Clojure data and runs it with one of two engines, both in
-`runtime.clj`. The transpiler, the stack VM and the IR caches of earlier sprints were deleted on 2026-11-19.
+`core.clj`, the one file of the product. The transpiler, the stack VM and the IR caches of earlier sprints were deleted on 2026-11-19.
 
 ```
 SNOBOL4 source
-      │  compiler.clj: statements, -INCLUDE, grammar, constant folding, emitter
+      │  the front end: statements, -INCLUDE, grammar, constant folding, emitter
       ▼
 IR  {1 [(= OUTPUT "Hello world!") nil], :END [nil nil]}  plus the label tables
       │
@@ -73,7 +73,7 @@ IR  {1 [(= OUTPUT "Hello world!") nil], :END [nil nil]}  plus the label tables
 └──────────────────────────────┘   └──────────────────────────────────────────────┘
 ```
 
-### The Pattern Engine: operators.clj
+### The Pattern Engine
 
 The pattern match engine is the core of the system. It is a single file and a single
 `loop/case` — a design law that has never been violated. The state is a 7-element frame
@@ -100,7 +100,7 @@ and Prolog unification. In snobol4jvm the interpreter runs it explicitly.
 
 ### JVM Bytecode
 
-`runtime.clj`'s jvm_codegen section compiles SNOBOL4 IR to `.class` bytecode using the ASM library directly.
+`core.clj`'s JVM bytecode part compiles SNOBOL4 IR to `.class` bytecode using the ASM library directly.
 Each program becomes one Java class with a static `run()` method. `DynamicClassLoader`
 loads it at runtime — the JVM JIT then applies full native compilation including inlining,
 loop unrolling, and register allocation.
@@ -412,16 +412,11 @@ lein test
 ### Project Structure
 
 ```
-src/SNOBOL4clojure/        one namespace a file, in load order
-  env.clj        Runtime state, error texts, built-in functions, pattern constructors and scanners,
-                 TRACE, and the listing, error report and &DUMP sbl -bf writes
-  compiler.clj   Grammar (instaparse), compile error numbers, emitter (parse tree → IR), compiler
-  operators.clj  The pattern engine (one loop/case) and EVAL / EVAL! / INVOKE, the central dispatch
-  runtime.clj    The two engines: the interpreter and ASM .class bytecode
-  core.clj       Public facade and -main
-  main.clj       Uberjar entry point
-  snocone.clj    Snocone front end: lexer, expression grammar, emitter of SNOBOL4 source
-  harness.clj    Differential harness, worm generator (rand-* probabilistic, gen-* exhaustive), benchmarks
+src/SNOBOL4clojure/core.clj    the product, one namespace: the runtime (state, built-ins, patterns, traces, reports), the front end
+                               (grammar, emitter, compiler), the pattern engine and EVAL!/INVOKE, the interpreter, JVM bytecode,
+                               the public API, -main and the jar's entry jar-main
+dev/SNOBOL4clojure/harness.clj development tools: the differential harness, the worm generator, the benchmark grid
+dev/SNOBOL4clojure/snocone.clj the Snocone front end
 ```
 
 ---
@@ -431,12 +426,12 @@ src/SNOBOL4clojure/        one namespace a file, in load order
 Ten invariants that have governed the implementation from the first commit:
 
 1. **ALL UPPERCASE keywords.** `ANY`, `SPAN`, `ARBNO` — not `any`, `span`, `arbno`.
-2. **Single-form engine.** The matcher (`engine` in `operators.clj`) is one `loop/case`. It cannot be split.
+2. **Single-form engine.** The matcher (`engine` in `core.clj`) is one `loop/case`. It cannot be split.
 3. **Immutable-by-default, mutable-by-atom.** `TABLE` and `ARRAY` use `atom`.
 4. **Label/body whitespace contract.** Labels flush-left, bodies indented.
 5. **INVOKE is the single dispatch point.** Both lowercase and uppercase entries.
 6. **`nil` means failure; epsilon means empty string.** No ambiguity between them.
-7. **`clojure.core/=` inside `operators.clj`.** Bare `=` builds IR lists.
+7. **`clojure.core/=` inside `core.clj`.** Bare `=` builds IR lists.
 8. **INVOKE args are pre-evaluated.** Never call `EVAL!` on args inside INVOKE.
 9. **Two-tier generator discipline.** `rand-*` probabilistic. `gen-*` exhaustive lazy.
 10. **Two-strategy debugging:** (a) run a probe; (b) read CSNOBOL4/SPITBOL source. Never speculate.

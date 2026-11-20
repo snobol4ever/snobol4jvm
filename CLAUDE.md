@@ -40,7 +40,7 @@ timeout -k 2 30 /home/resources/x64/bin/sbl -bf prog.sno < input.txt > sbl.out; 
 
 - **`lein test` output holds control bytes** from the CSNOBOL4 suite, so `grep` treats it as binary and prints nothing. Read it with `grep -a`. In a shell where `grep` is a wrapper that adds `-I`, use `command grep -a`.
 - **Compare whole outputs with `cmp`.** A check that counts only the engine's extra lines (`diff | grep '^>'`) reads 0 for a program that crashed with empty output.
-- **Compare against the oracle through the jar, not `lein run`.** `lein run` calls `core/-main` directly, without `main.clj`'s ISO-8859-1 streams, so bytes above 127 come out differently.
+- **Compare against the oracle through the jar, not `lein run`.** `lein run` calls `core/-main` directly, without `jar-main`'s ISO-8859-1 streams, so bytes above 127 come out differently.
 - **The machine is shared with the SCRIP fleet:**
   - start every engine run under `timeout -k 2 <secs>`;
   - run it in the foreground, one JVM at a time;
@@ -51,13 +51,7 @@ timeout -k 2 30 /home/resources/x64/bin/sbl -bf prog.sno < input.txt > sbl.out; 
   - `-INCLUDE` resolves against the program's own directory, then `$SNO_LIB`, then the current directory.
   - A program with a compile error is not run, and `-main` returns 231, as `sbl -bf` exits.
   - Output the program did not write itself (the listing, a compile error's page, an execution error's report, the `&DUMP` dump) goes to the file `$SCRIP_SNO_LIST_SINK` names, if it is set. This is how the harness names a port's listing file. Standard error gets its share either way.
-- **`main.clj` is the uberjar's entry point.** It reads and writes the streams as ISO-8859-1 (a program is bytes), `require`s `core` at run time and exits with `-main`'s code.
-  - The `:uberjar` profile AOT-compiles `main` and `core`, and with them every namespace `core` requires. A run then starts in about 1.4 s, or about 1.0 s with the archive `build_snobol4jvm.sh` records.
-
-## Running the harness boards
-
-This seat runs its own boards (CEO-1912). The engine arm is `../harness/scripts/run_snobol4jvm.sh`.
-
+- **`jar-main` in `core.clj` is the uberjar's entry point** (`gen-class :main true :prefix "jar-"`). It reads and writes the streams as ISO-8859-1 (a program is bytes), runs `-main` on a thread of the declared stack and exits with `-main`'s code. `-main` itself is the run function tests and `lein run` call.
 - **A board refuses a stale jar.** It refuses a jar older than any `src/**/*.clj` or `project.clj`, so rebuild with `build_snobol4jvm.sh` first.
 - **A board refuses a moved or dirty tree.** It pins `/home/claude_jvm/snobol4jvm`'s tree at the start and writes nothing ("THE GROUND MOVED UNDER THIS RUN") if HEAD moves or the tree goes dirty before the end.
   - While a board runs, do not edit, commit or pull in the root clone.
@@ -74,24 +68,23 @@ This seat runs its own boards (CEO-1912). The engine arm is `../harness/scripts/
 
 ### Source layout
 
-`src/SNOBOL4clojure/` holds eight files, one namespace each. In load order, each requires only the files above it:
+The product is ONE file and one namespace (Lon 2026-11-19: "put the product in ONE file, and extra stuff like harness elsewhere."):
 
 | File | Holds |
 |------|-------|
-| `env.clj` | The runtime: its state (variables, keywords, channels, `ARRAY`, `TABLE`, `DATATYPE`, `GLOBALS`), the error texts, the built-in functions, the pattern constructors and scanners, `TRACE`, and what `sbl -bf` writes besides the program's output (the listing, an error's report, the `&DUMP` dump). |
-| `compiler.clj` | The front end: the grammar, the compile error numbers, the emitter and the compiler. |
-| `operators.clj` | The matcher (`engine`) and the evaluator (`EVAL!`, `INVOKE` and the operators). |
-| `runtime.clj` | The two execution engines: the interpreter and JVM bytecode. |
-| `core.clj` | The public facade, which re-exports the API, and `-main`. |
-| `main.clj` | The uberjar's entry point. |
-| `snocone.clj` | The Snocone front end. |
-| `harness.clj` | Development tools: the differential harness, the worm generator and the benchmark grid. |
+| `src/SNOBOL4clojure/core.clj` | `SNOBOL4clojure.core`, the whole engine, in load order: the runtime (state, built-ins, patterns and scanners, traces, the listing, an error's report, the `&DUMP` dump; once `env.clj`), the front end (grammar, compile error numbers, emitter, compiler), the matcher and the evaluator (`EVAL!`, `INVOKE`; once `operators.clj`), the interpreter and the JVM bytecode engine (once `runtime.clj`), the public API and `-main`, and the jar's entry `jar-main` (once `main.clj`). |
+| `dev/SNOBOL4clojure/harness.clj` | Development tools: the differential harness, the worm generator and the benchmark grid. |
+| `dev/SNOBOL4clojure/snocone.clj` | The Snocone front end. |
 
-**The source holds no comments, no docstrings and no blank lines** (Lon 2026-11-19: "Remove every single comment and every single blank line." / "Next remove every docstring."), and is laid out by the 200-column rule below; its one comment is the separator. Within each file the code stands in the order of the files it was merged from, and the section names below (`grammar`, `trace`, `match` and so on) are those files. `git show 4205ae2:src/SNOBOL4clojure/<file>` has the section banners, every comment and every docstring, with the manual quotes and `sbl -bf` measurements they carried.
+- `dev/` is on the path through the `:dev` profile (`lein test`, `lein run`), never in the uberjar, which holds `core` alone.
+- **The one namespace excludes `= + - * /` and `num` from `clojure.core`.** `= + - * /` are SNOBOL4's IR builders of the public API, so a bare `(= a b)` builds IR, which is always truthy; `num` is the runtime's. Code in `core.clj` writes `clojure.core/=` (and `+ - * / num`) for Clojure's.
+- **Six names were renamed when the files became one,** since two of the old namespaces each had one: `APPLY-by-name` (the runtime's call of a function by its name; `APPLY` is the evaluator's), `deferred-arg?`, `goto-system-labels`, `char-at`, `parse-operand` and `compile-system-labels`.
+- **The built-ins a program reaches by name are `builtin-names`,** the 74 uppercase names `core` exported before it held everything, so a helper of the engine never answers as a SNOBOL4 function.
+- The section names below (`grammar`, `trace`, `match` and so on) are the files the code came from.
 
 ### Front end (source to IR)
 
-`compiler/CODE!` does the following, in order:
+`CODE!` does the following, in order:
 
 1. Splits the source into statements:
    - `;` separates statements;
@@ -99,16 +92,16 @@ This seat runs its own boards (CEO-1912). The engine arm is `../harness/scripts/
    - `*` lines are comments;
    - control cards (`-LIST`, `-CASE` and the rest) are handled here.
 2. Expands `-INCLUDE` (`preprocess-includes`).
-3. Parses each statement with the instaparse grammar (`compiler.clj`, section grammar).
-4. Turns the parse tree into IR (section emitter). Compilation stops at `END`, so data kept after it is never compiled.
+3. Parses each statement with the instaparse grammar (`core.clj`, part grammar).
+4. Turns the parse tree into IR (part emitter). Compilation stops at `END`, so data kept after it is never compiled.
 
 **Compile errors are collected, not thrown.** They accumulate in `env/<DIAGNOSTICS>` as `[line error column]`, and a statement that does not compile becomes an error node.
 
-- **The error number:** when the parser rejects a statement, `compiler.clj`'s section syntax rescans it the way SPITBOL's scanner does and names the error `sbl -bf` would report (212 to 234). If the scan finds none, the error is 220.
+- **The error number:** when the parser rejects a statement, `core.clj`'s part syntax rescans it the way SPITBOL's scanner does and names the error `sbl -bf` would report (212 to 234). If the scan finds none, the error is 220.
 - **Constant folding:** `CODE!` evaluates the constant parts of each statement as SPITBOL's compiler does (`fold`), so `X = 1 / 0` is a compile error.
 - **Who reads `<DIAGNOSTICS>`:** `-main` refuses to run the program, and runtime `CODE()` and `EVAL` fail with `&ERRTYPE` set.
 
-The IR is plain homoiconic Clojure data: prefix lists such as `(= I (+ I 1))`, together with a goto map `{:S label :F label :G label}`. `compiler/CODE` loads that IR into **global atoms** in `env.clj`:
+The IR is plain homoiconic Clojure data: prefix lists such as `(= I (+ I 1))`, together with a goto map `{:S label :F label :G label}`. `CODE` loads that IR into **global atoms** of the runtime part of `core.clj`:
 
 - `<CODE>`: label or statement number to statement;
 - `<STNO>`: label to number;
@@ -119,43 +112,43 @@ The IR is plain homoiconic Clojure data: prefix lists such as `(= I (+ I 1))`, t
 
 ### Two execution engines
 
-Both engines read the same IR and evaluate statement bodies with `operators/EVAL!`; both live in `runtime.clj`. The transpiler (IR to Clojure source) and the VM engine (a loop over an instruction vector) were deleted on 2026-11-19 (Lon: "delete the memoizer, EDN cache, VM and transpiler"); the VM's flattener stays as the bytecode's first part.
+Both engines read the same IR and evaluate statement bodies with `EVAL!`; both are parts of `core.clj`. The transpiler (IR to Clojure source) and the VM engine (a loop over an instruction vector) were deleted on 2026-11-19 (Lon: "delete the memoizer, EDN cache, VM and transpiler"); the VM's flattener stays as the bytecode's first part.
 
 | Engine | Section | Mechanism |
 |-------|-----------|-----------|
 | interpreter | The interpreter (`RUN`) | Interpreter. A `loop` over the statement store resolves gotos (labels, strings, numbers, and variables that hold labels) and counts `&STCOUNT` against `&STLIMIT`. Every feature is proven here first. |
 | JVM bytecode | part 1, the instruction list; part 2, the class | Part 1 flattens the IR to a vector with 7 opcodes (`HALT`, `EXEC`, `EXEC-S`, `EXEC-F`, `EXEC-SF`, `JUMP`, `SIGNAL`), every label resolved to its index. Part 2 writes a real `.class` file with `clojure.asm` (Clojure's bundled ASM, not an external dependency) and loads it with `DynamicClassLoader`. Generated code calls back through a static `IFn` field (`EVAL_FN`), so its constant pool never names `operators`. It has none of the interpreter's error trapping, traces or `-main` endings yet. |
 
-Control flow (`RETURN`, `FRETURN`, `NRETURN`, `END`, the step limit) travels as `ExceptionInfo` whose `ex-data` carries `:snobol/signal`. The `snobol-*!` helpers in `env.clj` throw these signals. Every engine and every test helper catches them by that key.
+Control flow (`RETURN`, `FRETURN`, `NRETURN`, `END`, the step limit) travels as `ExceptionInfo` whose `ex-data` carries `:snobol/signal`. The `snobol-*!` helpers of the runtime part throw these signals. Every engine and every test helper catches them by that key.
 
 Errors travel the same way, as `ex-info` with `{:snobol/error N}`.
 
 - `N` is SPITBOL's own error number (`22` undefined function, `29` undefined operator, `238` non-integer array subscript, and so on), so a divergence from the oracle's `ERROR nnn` is fixed by raising the same number. `core_test.clj` asserts on it.
-- The texts come from `env.clj`'s section errors through `env/error-message`.
-- An error that ends the program is reported by `env.clj`'s section fatal in `sbl -bf`'s layout, and exits 0, as `sbl` does. Error 0 is reported as 036.
+- The texts come from `core.clj`'s part errors through `env/error-message`.
+- An error that ends the program is reported by `core.clj`'s part fatal in `sbl -bf`'s layout, and exits 0, as `sbl` does. Error 0 is reported as 036.
 - At `&ERRLIMIT` 0, an error inside `EVAL` fails `EVAL`, and an error during a pattern match fails the match.
 - Above 0, every error is trapped, as `sbl -bf` traps it. The trap spends one of `&ERRLIMIT`, then takes the `SETEXIT` label if one is armed and otherwise fails the statement.
 
 ### Evaluator and pattern engine
 
-- **`operators.clj`, section operators, is the evaluator.** `EVAL!` walks the IR, and `INVOKE` is the single dispatch point from operator or function name to its implementation (both cases are registered).
+- **`core.clj`, part operators, is the evaluator.** `EVAL!` walks the IR, and `INVOKE` is the single dispatch point from operator or function name to its implementation (both cases are registered).
   - It defines the operators `= + - * /` (shadowing `clojure.core`) and `? | $ . % !`, so inside this file, comparison must be written `clojure.core/=`.
-- **`env.clj`, section functions,** holds the built-ins (`SIZE`, `REPLACE`, `DATA`, `CONVERT`, `SORT` and others).
-- **`env.clj`, section env,** holds the runtime state: variables, keywords (`&ANCHOR`, `&TRIM` and the rest), I/O channels, `DATATYPE`, `TABLE`/`ARRAY` and `GLOBALS`, which resets all runtime state. `env.clj` requires no other file of the project.
+- **`core.clj`, part functions,** holds the built-ins (`SIZE`, `REPLACE`, `DATA`, `CONVERT`, `SORT` and others).
+- **`core.clj`, part env,** holds the runtime state: variables, keywords (`&ANCHOR`, `&TRIM` and the rest), I/O channels, `DATATYPE`, `TABLE`/`ARRAY` and `GLOBALS`, which resets all runtime state. It comes first in the file and uses nothing after it.
 - **Patterns are data.** Section patterns builds them as lists and symbols (`ANY`, `ARBNO`, `FENCE`, `BAL` and others). Section primitives holds the pure scanners: each takes `[Σ Δ Π]` and returns `[σ δ]`, where a negative position means failure.
-- **`operators.clj`, section match (`engine`), is the backtracking matcher.** It is one `loop`/`case` over a 7-element frame `[Σ Δ σ δ Π φ Ψ]` and the actions `:proceed`, `:recede`, `:succeed` and `:fail` (the Byrd-box model).
+- **`core.clj`, part match (`engine`), is the backtracking matcher.** It is one `loop`/`case` over a 7-element frame `[Σ Δ σ δ Π φ Ψ]` and the actions `:proceed`, `:recede`, `:succeed` and `:fail` (the Byrd-box model).
   - The frame accessors (`ζΣ`, `ζδ` and the rest) are defined there too.
   - `MATCH`, `SEARCH`, `FULLMATCH` and `MATCH-REPLACE` are defined there as well. `MATCH-REPLACE` is the Clojure API's match-and-replace; SPITBOL's `REPLACE` is the built-in.
-- **`env.clj`, section trace,** implements `TRACE`, `STOPTR`, `&TRACE` and `&FTRACE`. Label traces fire from the interpreter; pattern traces fire from the matcher through a dynamic var.
-- **What `sbl -bf` writes besides the program's output,** each section of `env.clj` reproducing it line for line:
+- **`core.clj`, part trace,** implements `TRACE`, `STOPTR`, `&TRACE` and `&FTRACE`. Label traces fire from the interpreter; pattern traces fire from the matcher through a dynamic var.
+- **What `sbl -bf` writes besides the program's output,** each part of `core.clj` reproducing it line for line:
   - listing: the `-LIST` listing and a compile error's page;
   - fatal: an execution error's report;
   - dump: the `&DUMP` dump, and the value text traces show.
 
 ### Other namespaces
 
-- **`snocone.clj`, the Snocone front end:** its sections snocone (lexer), snocone_grammar (expression grammar) and snocone_emitter (emits SNOBOL4 source text, not IR). Only `test_snocone` and `test_snocone_parser` use it; `-main` runs SNOBOL4 source only.
-- **`harness.clj`, section harness,** shells out to SPITBOL and CSNOBOL4 and diffs their output against this engine's.
+- **`dev/SNOBOL4clojure/snocone.clj`, the Snocone front end:** its sections snocone (lexer), snocone_grammar (expression grammar) and snocone_emitter (emits SNOBOL4 source text, not IR). Only `test_snocone` and `test_snocone_parser` use it; `-main` runs SNOBOL4 source only.
+- **`dev/SNOBOL4clojure/harness.clj`, part harness,** shells out to SPITBOL and CSNOBOL4 and diffs their output against this engine's.
   - The binaries are set by the `^:dynamic` vars `*spitbol-bin*` and `*csnobol4-bin*`, which default to `/usr/local/bin/spitbol` and `/usr/local/bin/snobol4`.
   - On the fleet machines `/usr/local/bin/snobol4` is absent and `/usr/local/bin/spitbol` is not the graded oracle, so rebind both.
 - **Section generator** is the "worm" program generator. Its `rand-*` functions are probabilistic and its `gen-*` functions are exhaustive lazy sequences.
@@ -168,8 +161,8 @@ These come from the README's "Design Laws", plus traps found in the code.
 - **SNOBOL4 names are UPPERCASE everywhere,** for functions, keywords and pattern primitives alike.
 - **`nil` means failure and `ε` (the empty string) means success with an empty value.** Never conflate the two.
 - **`INVOKE` receives arguments already evaluated.** Never call `EVAL!` on them inside `INVOKE`.
-- **The matcher (`engine` in `operators.clj`) stays a single `loop`/`case`.** Do not split the engine.
-- **No code that uses `clojure.core`'s `=` joins `operators.clj`.** It is the one namespace that defines `= + - * /`, so a bare `(= a b)` there builds IR, which is always truthy. Every other namespace excludes only what it defines itself (`env.clj` excludes `num`).
+- **The matcher (`engine` in `core.clj`) stays a single `loop`/`case`.** Do not split the engine.
+- **In `core.clj`, Clojure's comparison is `clojure.core/=`.** A bare `=` (or `+ - * /`) is SNOBOL4's IR builder, so `(= a b)` returns a list, which is always truthy.
 - **`TABLE` and `ARRAY` are mutable through atoms;** everything else is immutable.
 - **A test namespace that refers `SNOBOL4clojure.core` or `operators` must exclude the shadowed operators:** `[SNOBOL4clojure.core :refer :all :exclude [= + - * / num]]`, as `core_test.clj` and every such namespace now does.
   - **Why:** without `:exclude`, `=` is SNOBOL4's IR builder, so `(= a b)` returns the list `(= a b)`. That list is always truthy, so `(is (= 1 2))` reports a pass.
