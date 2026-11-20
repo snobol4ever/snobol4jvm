@@ -223,6 +223,7 @@ Each commit cures one defect and names the witness that proves it: the corpus en
 - **Layout, the 200-column rule** (Lon 2026-11-19: "place all complete lists on a line by itself. The max line length is 200 characters. Place a 200-char line-break comment between all sequences of one-liners, and between all multi-liners." / "I'm thinking 4 character indent."; the rule of SCRIP's C, skill `scrip-c-code`):
   - a form that fits in 200 characters is one line;
   - one that does not opens with its head and the atoms that lead it, and each list among its children goes on its own line four columns deeper, by the same rule; atoms pack onto a line, and the closing brackets end the last line;
+  - pairs stay together (Lon: "The cond's became un-readable when you broken them on seperate lines."): a clause of `cond`, `case`, `condp`, `cond->` and `cond->>`, a binding of `let`, `loop`, `binding`, `doseq`, `for`, `if-let` and their kin, and a map entry is one line when it fits, else its value goes on the next line four columns deeper; a binding vector stands on its form's line and its pairs, like a map's, line up under the first;
   - one separator, `;` and 199 dashes, stands between every run of one-line top-level forms and around every multi-line one.
   - `script/reflow200.py` lays a file out so: run `python3 script/reflow200.py src/SNOBOL4clojure/*.clj` after an edit, and `--check` reads rc 0 before a commit. Strings, regexes and character literals are never touched.
 

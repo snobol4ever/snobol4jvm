@@ -11,16 +11,14 @@
 (defn run-spitbol
     [src]
     (try
-        (let
-            [result (sh/sh *spitbol-bin* "-b" "-" :in src :env {"PATH" "/usr/local/bin:/usr/bin:/bin"})]
+        (let [result (sh/sh *spitbol-bin* "-b" "-" :in src :env {"PATH" "/usr/local/bin:/usr/bin:/bin"})]
             (if (zero? (:exit result)) {:stdout (normalise (:out result)) :stderr (normalise (:err result)) :exit 0} {:stdout "" :stderr (normalise (:out result)) :exit (:exit result)}))
         (catch Exception e {:stdout "" :stderr (.getMessage e) :exit :crashed})))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn run-csnobol4
     [src]
     (try
-        (let
-            [result (sh/sh *csnobol4-bin* "-" :in src :env {"PATH" "/usr/local/bin:/usr/bin:/bin"})]
+        (let [result (sh/sh *csnobol4-bin* "-" :in src :env {"PATH" "/usr/local/bin:/usr/bin:/bin"})]
             (if
                 (zero? (:exit result))
                 {:stdout (normalise (:out result)) :stderr (normalise (:err result)) :exit 0}
@@ -33,68 +31,52 @@
     [src]
     (try
         (reset-runtime!)
-        (let
-            [stdout-p
-                (promise)
-                f
-                (future (deliver stdout-p (with-out-str (try (sno/RUN (sno/CODE src)) (catch clojure.lang.ExceptionInfo e (when-not (= (get (ex-data e) :snobol/signal) :end) (throw e)))))))]
+        (let [
+              stdout-p (promise)
+              f (future (deliver stdout-p (with-out-str (try (sno/RUN (sno/CODE src)) (catch clojure.lang.ExceptionInfo e (when-not (= (get (ex-data e) :snobol/signal) :end) (throw e)))))))]
             (if-let [stdout (deref stdout-p *timeout-ms* nil)] {:stdout (normalise stdout) :stderr "" :exit :ok} (do (future-cancel f) {:stdout "" :stderr "timeout" :exit :timeout})))
         (catch clojure.lang.ExceptionInfo e {:stdout "" :stderr (.getMessage e) :exit :error :thrown (str (class e) ": " (.getMessage e))})
         (catch Exception e {:stdout "" :stderr (.getMessage e) :exit :error :thrown (str (class e) ": " (.getMessage e))})))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- oracle-stdout
     [sp cs]
-    (let
-        [sp-ok (zero? (:exit sp)) cs-ok (zero? (:exit cs))]
+    (let [sp-ok (zero? (:exit sp)) cs-ok (zero? (:exit cs))]
         (cond
-            (and sp-ok cs-ok (= (:stdout sp) (:stdout cs)))
-            {:stdout (:stdout sp) :oracle :both}
-            (and sp-ok cs-ok (not= (:stdout sp) (:stdout cs)))
-            {:stdout (:stdout sp) :oracle :disagree}
-            sp-ok
-            {:stdout (:stdout sp) :oracle :spitbol}
-            cs-ok
-            {:stdout (:stdout cs) :oracle :csnobol4}
-            :else
-            {:stdout "" :oracle :both-error})))
+            (and sp-ok cs-ok (= (:stdout sp) (:stdout cs))) {:stdout (:stdout sp) :oracle :both}
+            (and sp-ok cs-ok (not= (:stdout sp) (:stdout cs))) {:stdout (:stdout sp) :oracle :disagree}
+            sp-ok {:stdout (:stdout sp) :oracle :spitbol}
+            cs-ok {:stdout (:stdout cs) :oracle :csnobol4}
+            :else {:stdout "" :oracle :both-error})))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- classify
     [oracle-out cl]
     (cond
-        (#{:timeout :step-limit} (:exit cl))
-        :timeout
-        (= :both-error (:oracle oracle-out))
-        (if (= (:exit cl) :error) :pass-class :skip)
-        (= (:stdout oracle-out) (:stdout cl))
-        :pass
-        (and (not= (:oracle oracle-out) :both) (not= (:oracle oracle-out) :spitbol) (not= (:oracle oracle-out) :csnobol4) (= (:exit cl) :error))
-        :pass-class
-        (and (= :both-error (:oracle oracle-out)) (= (:exit cl) :error))
-        :pass-class :else :fail))
+        (#{:timeout :step-limit} (:exit cl)) :timeout
+        (= :both-error (:oracle oracle-out)) (if (= (:exit cl) :error) :pass-class :skip)
+        (= (:stdout oracle-out) (:stdout cl)) :pass
+        (and (not= (:oracle oracle-out) :both) (not= (:oracle oracle-out) :spitbol) (not= (:oracle oracle-out) :csnobol4) (= (:exit cl) :error)) :pass-class
+        (and (= :both-error (:oracle oracle-out)) (= (:exit cl) :error)) :pass-class
+        :else :fail))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn diff-run
     ([src] (diff-run src nil))
     ([src depth]
-        (let
-            [sp (run-spitbol src) cs (run-csnobol4 src) cl (run-clojure src) oracle (oracle-stdout sp cs) status (classify oracle cl)]
+        (let [sp (run-spitbol src) cs (run-csnobol4 src) cl (run-clojure src) oracle (oracle-stdout sp cs) status (classify oracle cl)]
             {:src src :spitbol sp :csnobol4 cs :clojure cl :oracle (:oracle oracle) :status status :length (count src) :depth depth})))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn save-corpus!
     [records]
-    (let
-        [path "resources/golden-corpus.edn"]
+    (let [path "resources/golden-corpus.edn"]
         (clojure.java.io/make-parents path)
         (with-open [w (clojure.java.io/writer path :append true)] (doseq [r records] (.write w (pr-str r)) (.newLine w)))
         (count records)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn load-corpus
     []
-    (let
-        [path "resources/golden-corpus.edn"]
+    (let [path "resources/golden-corpus.edn"]
         (when
             (.exists (clojure.java.io/file path))
-            (with-open
-                [r (java.io.PushbackReader. (clojure.java.io/reader path))]
+            (with-open [r (java.io.PushbackReader. (clojure.java.io/reader path))]
                 (loop [acc []] (let [form (try (read r false ::eof) (catch Exception _ ::eof))] (if (= form ::eof) acc (recur (conj acc form)))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn run-csnobol4-to-step [src n] (run-csnobol4 (str "        &STLIMIT = " n "\n" src)))
@@ -105,8 +87,7 @@
     (reset-runtime!)
     (reset! env/&STLIMIT n)
     (try
-        (let
-            [stdout (with-out-str (try (sno/RUN (sno/CODE src)) (catch clojure.lang.ExceptionInfo e (when-not (#{:end :step-limit} (get (ex-data e) :snobol/signal)) (throw e)))))]
+        (let [stdout (with-out-str (try (sno/RUN (sno/CODE src)) (catch clojure.lang.ExceptionInfo e (when-not (#{:end :step-limit} (get (ex-data e) :snobol/signal)) (throw e)))))]
             {:exit (if (> @env/&STCOUNT n) :step-limit :ok) :steps @env/&STCOUNT :stdout (normalise stdout) :vars (env/snapshot!)})
         (catch Exception e {:exit :error :thrown (.getMessage e) :vars (env/snapshot!)})
         (finally (reset! env/&STLIMIT 2147483647))))
@@ -137,21 +118,20 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- move-arith
     [st rng]
-    (let
-        [op (rand-nth arith-ops) lhs (if (and (live? st :live-int) (< (rand) 0.6)) (str (rand-nth (vec (:live-int st)))) (str (rand-nth int-lits))) rhs (str (rand-nth int-lits)) v (rand-nth int-vars)]
+    (let [
+          op (rand-nth arith-ops)
+          lhs (if (and (live? st :live-int) (< (rand) 0.6)) (str (rand-nth (vec (:live-int st)))) (str (rand-nth int-lits)))
+          rhs (str (rand-nth int-lits))
+          v (rand-nth int-vars)]
         (-> st (emit (indent (str v " = " lhs " " op " " rhs))) (update :live-int conj v))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- move-concat
     [st rng]
-    (let
-        [live
-            (vec (:live-str st))
-            lhs
-            (if (and (seq live) (< (rand) 0.6)) (str (rand-nth live)) (rand-nth str-lits))
-            rhs
-            (if (and (seq live) (< (rand) 0.5)) (str (rand-nth live)) (rand-nth str-lits))
-            v
-            (rand-nth str-vars)]
+    (let [
+          live (vec (:live-str st))
+          lhs (if (and (seq live) (< (rand) 0.6)) (str (rand-nth live)) (rand-nth str-lits))
+          rhs (if (and (seq live) (< (rand) 0.5)) (str (rand-nth live)) (rand-nth str-lits))
+          v (rand-nth str-vars)]
         (-> st (emit (indent (str v " = " lhs " " rhs))) (update :live-str conj v))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- move-output-int [st rng] (when (live? st :live-int) (let [v (rand-nth (vec (:live-int st)))] (emit st (indent (str "OUTPUT = " v))))))
@@ -162,8 +142,7 @@
     [st rng]
     (when
         (live? st :live-int)
-        (let
-            [v (rand-nth (vec (:live-int st))) op (rand-nth cmp-ops-int) lit (rand-nth int-lits) [ls st] (next-label st) [lf st] (next-label st) [lskip st] (next-label st)]
+        (let [v (rand-nth (vec (:live-int st))) op (rand-nth cmp-ops-int) lit (rand-nth int-lits) [ls st] (next-label st) [lf st] (next-label st) [lskip st] (next-label st)]
             (-> st
                 (emit (indent (str op "(" v "," lit ")" (goto-sf ls lf))))
                 (emit (labelled ls (str "OUTPUT = '" (name ls) " branch'")))
@@ -176,17 +155,12 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- move-pat-match
     [st rng]
-    (let
-        [subj
-            (if (and (live? st :live-str) (< (rand) 0.7)) (str (rand-nth (vec (:live-str st)))) (rand-nth str-lits))
-            pat
-            (if (and (live? st :live-pat) (< (rand) 0.6)) (str (rand-nth (vec (:live-pat st)))) (rand-nth pat-lits))
-            [ls st]
-            (next-label st)
-            [lf st]
-            (next-label st)
-            [lskip st]
-            (next-label st)]
+    (let [
+          subj (if (and (live? st :live-str) (< (rand) 0.7)) (str (rand-nth (vec (:live-str st)))) (rand-nth str-lits))
+          pat (if (and (live? st :live-pat) (< (rand) 0.6)) (str (rand-nth (vec (:live-pat st)))) (rand-nth pat-lits))
+          [ls st] (next-label st)
+          [lf st] (next-label st)
+          [lskip st] (next-label st)]
         (-> st
             (emit (indent (str subj " " pat (goto-sf ls lf))))
             (emit (labelled ls "OUTPUT = 'matched'"))
@@ -199,16 +173,14 @@
     [st rng]
     (when
         (live? st :live-str)
-        (let
-            [v (rand-nth (vec (:live-str st))) pat (if (and (live? st :live-pat) (< (rand) 0.5)) (str (rand-nth (vec (:live-pat st)))) (rand-nth pat-lits)) repl (rand-nth str-lits)]
+        (let [v (rand-nth (vec (:live-str st))) pat (if (and (live? st :live-pat) (< (rand) 0.5)) (str (rand-nth (vec (:live-pat st)))) (rand-nth pat-lits)) repl (rand-nth str-lits)]
             (-> st (emit (indent (str v " " pat " = " repl))) (emit (indent (str "OUTPUT = " v)))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- move-size [st rng] (when (live? st :live-str) (let [v (rand-nth (vec (:live-str st)))] (emit st (indent (str "OUTPUT = SIZE(" v ")"))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- move-loop
     [st rng]
-    (let
-        [limit (rand-nth [3 4 5]) counter 'I [lloop st] (next-label st) [lend st] (next-label st)]
+    (let [limit (rand-nth [3 4 5]) counter 'I [lloop st] (next-label st) [lend st] (next-label st)]
         (-> st
             (emit (indent (str counter " = 1")))
             (emit (labelled lloop (str "OUTPUT = " counter)))
@@ -237,8 +209,7 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- weighted-rand
     [moves]
-    (let
-        [total (reduce + (map :w moves)) r (* (rand) total)]
+    (let [total (reduce + (map :w moves)) r (* (rand) total)]
         (loop [remaining moves acc 0] (let [{:keys [w fn]} (first remaining) acc (+ acc w)] (if (or (>= acc r) (= 1 (count remaining))) fn (recur (rest remaining) acc))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- finalise [st] (str/join "\n" (conj (:lines st) "end")))
@@ -254,14 +225,12 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn gen-pat-match
     []
-    (for
-        [s str-lits p pat-lits]
+    (for [s str-lits p pat-lits]
         (str (indent (str "S = " s)) "\n" (indent (str "S " p " :S(HIT)F(MISS)")) "\n" "HIT     OUTPUT = 'matched'\n" "        :(DONE)\n" "MISS    OUTPUT = 'no match'\n" "DONE\n" "end")))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn gen-cmp
     []
-    (for
-        [op cmp-ops-int lhs int-lits rhs int-lits :when (not= lhs rhs)]
+    (for [op cmp-ops-int lhs int-lits rhs int-lits :when (not= lhs rhs)]
         (str (indent (str op "(" lhs "," rhs ") :S(YES)F(NO)")) "\n" "YES     OUTPUT = 'yes'\n" "        :(DONE)\n" "NO      OUTPUT = 'no'\n" "DONE\n" "end")))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn rand-batch [n] (repeatedly n rand-program))
@@ -279,8 +248,7 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- band-cmp
     []
-    (for
-        [op cmp-ops-int lhs int-lits rhs int-lits :when (not= lhs rhs)]
+    (for [op cmp-ops-int lhs int-lits rhs int-lits :when (not= lhs rhs)]
         [(indent (str op "(" lhs "," rhs ") :S(YES)F(NO)")) "YES     OUTPUT = 'yes'" "        :(DONE)" "NO      OUTPUT = 'no'" "DONE"]))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- band-concat [] (for [v str-vars s1 str-lits s2 str-lits :when (not= s1 s2)] [(indent (str v " = " s1 " " s2)) (indent (str "OUTPUT = " v))]))
@@ -301,16 +269,14 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- band-span-match
     []
-    (for
-        [cs ["'abcdefghijklmnopqrstuvwxyz'" "'0123456789'" "'helo'"] v str-vars]
+    (for [cs ["'abcdefghijklmnopqrstuvwxyz'" "'0123456789'" "'helo'"] v str-vars]
         [(indent (str v " SPAN(" cs ") :S(HIT)F(MISS)")) "HIT     OUTPUT = 'matched'" "        :(DONE)" "MISS    OUTPUT = 'no match'" "DONE"]))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- band-break-match [] (for [cs ["'o'" "'l'" "'d'"] v str-vars] [(indent (str v " BREAK(" cs ") . T :S(HIT)F(MISS)")) "HIT     OUTPUT = T" "        :(DONE)" "MISS    OUTPUT = 'no match'" "DONE"]))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- band-capture
     []
-    (for
-        [v str-vars p ["LEN(3)" "LEN(2)" "SPAN('abcdefghijklmnopqrstuvwxyz')" "ANY('aeiou')"]]
+    (for [v str-vars p ["LEN(3)" "LEN(2)" "SPAN('abcdefghijklmnopqrstuvwxyz')" "ANY('aeiou')"]]
         [(indent (str v " " p " . T :S(HIT)F(MISS)")) "HIT     OUTPUT = T" "        :(DONE)" "MISS    OUTPUT = 'no match'" "DONE"]))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- band-trim [] (for [v str-vars] [(indent (str "OUTPUT = TRIM(" v ")"))]))
@@ -320,30 +286,27 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn gen-by-length
     []
-    (let
-        [all-bodies
-            (concat
-                (band-assign-int)
-                (band-assign-str)
-                (band-cmp)
-                (band-ident)
-                (band-arith)
-                (band-concat)
-                (band-size)
-                (band-trim)
-                (band-len-match)
-                (band-any-match)
-                (band-span-match)
-                (band-break-match)
-                (band-capture)
-                (band-substr-cap)
-                (band-pat-match)
-                (band-pat-replace)
-                (band-loop))
-            programs
-            (bodies->programs all-bodies)
-            standalone
-            (map first (band-define-simple))]
+    (let [all-bodies
+              (concat
+                  (band-assign-int)
+                  (band-assign-str)
+                  (band-cmp)
+                  (band-ident)
+                  (band-arith)
+                  (band-concat)
+                  (band-size)
+                  (band-trim)
+                  (band-len-match)
+                  (band-any-match)
+                  (band-span-match)
+                  (band-break-match)
+                  (band-capture)
+                  (band-substr-cap)
+                  (band-pat-match)
+                  (band-pat-replace)
+                  (band-loop))
+          programs (bodies->programs all-bodies)
+          standalone (map first (band-define-simple))]
         (->> (concat programs standalone) (sort-by count) (dedupe))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn gen-by-length-annotated
@@ -354,40 +317,34 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn rand-statement
     []
-    (let
-        [forms
-            [(fn [] (indent (str (rand-nth int-vars) " = " (rand-nth int-lits))))
-                (fn [] (indent (str (rand-nth str-vars) " = " (rand-nth str-lits))))
-                (fn [] (let [op (rand-nth arith-ops) lhs (rand-nth int-lits) rhs (rand-nth (filter pos? int-lits))] (indent (str (rand-nth int-vars) " = " lhs " " op " " rhs))))
-                (fn [] (indent (str (rand-nth str-vars) " = " (rand-nth str-lits) " " (rand-nth str-lits))))
-                (fn [] (indent (str "OUTPUT = " (rand-nth str-vars))))
-                (fn [] (indent (str "OUTPUT = " (rand-nth int-vars))))
-                (fn
-                    []
-                    (let
-                        [op (rand-nth cmp-ops-int) a (rand-nth int-lits) b (rand-nth int-lits)]
-                        (str (indent (str op "(" a "," b ") :S(YES)F(NO)")) "\n" "YES     OUTPUT = 'yes'\n" "        :(DONE)\n" "NO      OUTPUT = 'no'\n" "DONE")))
-                (fn
-                    []
-                    (let
-                        [a (rand-nth str-lits) b (rand-nth str-lits)]
-                        (str (indent (str "IDENT(" a "," b ") :S(YES)F(NO)")) "\n" "YES     OUTPUT = 'same'\n" "        :(DONE)\n" "NO      OUTPUT = 'different'\n" "DONE")))
-                (fn [] (indent (str "OUTPUT = SIZE(" (rand-nth str-vars) ")")))
-                (fn
-                    []
-                    (let
-                        [v (rand-nth str-vars) p (rand-nth pat-lits)]
-                        (str (indent (str v " " p " :S(HIT)F(MISS)")) "\n" "HIT     OUTPUT = 'matched'\n" "        :(DONE)\n" "MISS    OUTPUT = 'no match'\n" "DONE")))
-                (fn
-                    []
-                    (let
-                        [v (rand-nth str-vars) p (rand-nth ["LEN(2)" "LEN(3)" "ANY('aeiou')"])]
-                        (str (indent (str v " " p " . T :S(HIT)F(MISS)")) "\n" "HIT     OUTPUT = T\n" "        :(DONE)\n" "MISS    OUTPUT = 'no match'\n" "DONE")))
-                (fn [] (let [v (rand-nth str-vars) p (rand-nth pat-lits) r (rand-nth str-lits)] (str (indent (str v " " p " = " r)) "\n" (indent (str "OUTPUT = " v)))))
-                (fn [] (indent (str "OUTPUT = TRIM(" (rand-nth str-vars) ")")))
-                (fn [] (let [n (rand-nth [3 4 5])] (str "        I = 1\n" "LOOP    OUTPUT = I\n" "        I = I + 1\n" (indent (str "LE(I," n ") :S(LOOP)")))))]
-            body
-            ((rand-nth forms))]
+    (let [forms
+              [(fn [] (indent (str (rand-nth int-vars) " = " (rand-nth int-lits))))
+                  (fn [] (indent (str (rand-nth str-vars) " = " (rand-nth str-lits))))
+                  (fn [] (let [op (rand-nth arith-ops) lhs (rand-nth int-lits) rhs (rand-nth (filter pos? int-lits))] (indent (str (rand-nth int-vars) " = " lhs " " op " " rhs))))
+                  (fn [] (indent (str (rand-nth str-vars) " = " (rand-nth str-lits) " " (rand-nth str-lits))))
+                  (fn [] (indent (str "OUTPUT = " (rand-nth str-vars))))
+                  (fn [] (indent (str "OUTPUT = " (rand-nth int-vars))))
+                  (fn
+                      []
+                      (let [op (rand-nth cmp-ops-int) a (rand-nth int-lits) b (rand-nth int-lits)]
+                          (str (indent (str op "(" a "," b ") :S(YES)F(NO)")) "\n" "YES     OUTPUT = 'yes'\n" "        :(DONE)\n" "NO      OUTPUT = 'no'\n" "DONE")))
+                  (fn
+                      []
+                      (let [a (rand-nth str-lits) b (rand-nth str-lits)]
+                          (str (indent (str "IDENT(" a "," b ") :S(YES)F(NO)")) "\n" "YES     OUTPUT = 'same'\n" "        :(DONE)\n" "NO      OUTPUT = 'different'\n" "DONE")))
+                  (fn [] (indent (str "OUTPUT = SIZE(" (rand-nth str-vars) ")")))
+                  (fn
+                      []
+                      (let [v (rand-nth str-vars) p (rand-nth pat-lits)]
+                          (str (indent (str v " " p " :S(HIT)F(MISS)")) "\n" "HIT     OUTPUT = 'matched'\n" "        :(DONE)\n" "MISS    OUTPUT = 'no match'\n" "DONE")))
+                  (fn
+                      []
+                      (let [v (rand-nth str-vars) p (rand-nth ["LEN(2)" "LEN(3)" "ANY('aeiou')"])]
+                          (str (indent (str v " " p " . T :S(HIT)F(MISS)")) "\n" "HIT     OUTPUT = T\n" "        :(DONE)\n" "MISS    OUTPUT = 'no match'\n" "DONE")))
+                  (fn [] (let [v (rand-nth str-vars) p (rand-nth pat-lits) r (rand-nth str-lits)] (str (indent (str v " " p " = " r)) "\n" (indent (str "OUTPUT = " v)))))
+                  (fn [] (indent (str "OUTPUT = TRIM(" (rand-nth str-vars) ")")))
+                  (fn [] (let [n (rand-nth [3 4 5])] (str "        I = 1\n" "LOOP    OUTPUT = I\n" "        I = I + 1\n" (indent (str "LE(I," n ") :S(LOOP)")))))]
+          body ((rand-nth forms))]
         (str canonical-fixtures "\n" body "\n" "END")))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn gen-error-class-programs
@@ -402,38 +359,30 @@
 (defn run-worm-batch
     [n source-fn]
     (require '[SNOBOL4clojure.harness :as harness])
-    (let
-        [programs
-            (repeatedly n source-fn)
-            records
-            (mapv (fn [src] (try ((resolve 'SNOBOL4clojure.harness/diff-run) src) (catch Exception e {:src src :status :error :thrown (.getMessage e)}))) programs)
-            summary
-            (reduce (fn [acc r] (update acc (get r :status :error) (fnil inc 0))) {} records)
-            failures
-            (filterv #(= :fail (:status %)) records)]
+    (let [
+          programs (repeatedly n source-fn)
+          records (mapv (fn [src] (try ((resolve 'SNOBOL4clojure.harness/diff-run) src) (catch Exception e {:src src :status :error :thrown (.getMessage e)}))) programs)
+          summary (reduce (fn [acc r] (update acc (get r :status :error) (fnil inc 0))) {} records)
+          failures (filterv #(= :fail (:status %)) records)]
         ((resolve 'SNOBOL4clojure.harness/save-corpus!) records)
         {:records records :summary summary :failures failures}))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn run-systematic-batch
     []
     (require '[SNOBOL4clojure.harness :as harness])
-    (let
-        [programs
-            (vec (gen-by-length))
-            _
-            (println (str "Running " (count programs) " systematic programs..."))
-            records
-            (vec
-                (map-indexed
-                    (fn
-                        [i src]
-                        (when (zero? (mod i 50)) (println (str "  " i "/" (count programs) "...")))
-                        (try ((resolve 'SNOBOL4clojure.harness/diff-run) src) (catch Exception e {:src src :status :error :thrown (.getMessage e)})))
-                    programs))
-            summary
-            (reduce (fn [acc r] (update acc (get r :status :error) (fnil inc 0))) {} records)
-            failures
-            (filterv #(= :fail (:status %)) records)]
+    (let [
+          programs (vec (gen-by-length))
+          _ (println (str "Running " (count programs) " systematic programs..."))
+          records
+              (vec
+                  (map-indexed
+                      (fn
+                          [i src]
+                          (when (zero? (mod i 50)) (println (str "  " i "/" (count programs) "...")))
+                          (try ((resolve 'SNOBOL4clojure.harness/diff-run) src) (catch Exception e {:src src :status :error :thrown (.getMessage e)})))
+                      programs))
+          summary (reduce (fn [acc r] (update acc (get r :status :error) (fnil inc 0))) {} records)
+          failures (filterv #(= :fail (:status %)) records)]
         ((resolve 'SNOBOL4clojure.harness/save-corpus!) records)
         {:records records :summary summary :failures failures :total (count programs)}))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -442,21 +391,18 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn corpus-record->deftest
     [record index]
-    (let
-        [{:keys [src status oracle spitbol csnobol4]}
-            record oracle-out
-            (case oracle :both (:stdout spitbol) :spitbol (:stdout spitbol) :csnobol4 (:stdout csnobol4) :disagree (:stdout spitbol) :both-error nil nil)
-            test-name
-            (symbol (str "worm_auto_" (format "%04d" index)))
-            lines
-            (quote-lines src)]
+    (let [
+          {:keys [src status oracle spitbol csnobol4]} record
+          oracle-out (case oracle :both (:stdout spitbol) :spitbol (:stdout spitbol) :csnobol4 (:stdout csnobol4) :disagree (:stdout spitbol) :both-error nil nil)
+          test-name (symbol (str "worm_auto_" (format "%04d" index)))
+          lines (quote-lines src)]
         (case status
             (:pass :fail)
-            (str "(deftest " test-name "\n" "  (let [r (run-with-timeout\n" "           (str/join \"\\n\"\n" "             ["
-                (str/join "\n              " lines)
-                "]))\n" "              2000)]\n" "    (is (= "
-                (pr-str (or oracle-out ""))
-                "\n" "           (str/trim-newline (or (:stdout r) \"\"))))))\n")
+                (str "(deftest " test-name "\n" "  (let [r (run-with-timeout\n" "           (str/join \"\\n\"\n" "             ["
+                    (str/join "\n              " lines)
+                    "]))\n" "              2000)]\n" "    (is (= "
+                    (pr-str (or oracle-out ""))
+                    "\n" "           (str/trim-newline (or (:stdout r) \"\"))))))\n")
             (str ";; " (name status) " — skipped (oracle: " oracle ")\n" ";; (deftest " test-name " ...)\n"))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn emit-regression-tests
@@ -490,12 +436,18 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def PROGRAMS
     [{:id "arith-10k" :label "Arithmetic loop (I=0..10000, LT branch)" :src "        I = 0\nLOOP    I = I + 1\n        LT(I,10000)   :S(LOOP)\n        OUTPUT = I\nEND\n" :reps 30}
-        {:id "strcat-500" :label "String concat (500 iters, S grows to 500 chars)" :src
-            "        S = ''\n        I = 0\nLOOP    S = S 'x'\n        I = I + 1\n        LT(I,500)   :S(LOOP)\n        OUTPUT = SIZE(S)\nEND\n" :reps 30}
-        {:id "pat-span" :label "Pattern: SPAN match loop (1000 iterations)" :src
-            (str "        P = SPAN('aeiou')\n        S = 'hello world foo bar'\n" "        I = 0\nLOOP    S P                  :F(MISS)\n" "        I = I + 1\n        LT(I,1000) :S(LOOP)\n"
-                "MISS    OUTPUT = I\nEND\n")
-            :reps 30}
+        {
+         :id "strcat-500"
+         :label "String concat (500 iters, S grows to 500 chars)"
+         :src "        S = ''\n        I = 0\nLOOP    S = S 'x'\n        I = I + 1\n        LT(I,500)   :S(LOOP)\n        OUTPUT = SIZE(S)\nEND\n"
+         :reps 30}
+        {
+         :id "pat-span"
+         :label "Pattern: SPAN match loop (1000 iterations)"
+         :src
+             (str "        P = SPAN('aeiou')\n        S = 'hello world foo bar'\n" "        I = 0\nLOOP    S P                  :F(MISS)\n" "        I = I + 1\n        LT(I,1000) :S(LOOP)\n"
+                 "MISS    OUTPUT = I\nEND\n")
+         :reps 30}
         {:id "fact45" :label "Factorial 1..45 (big-number string arithmetic)" :src (include-src "testpgms-test3.spt") :reps 5}])
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn time-fn
@@ -508,17 +460,12 @@
 (defn bench-program
     [{:keys [id label src reps]}]
     (println (str "\n── " id ": " label " (n=" reps ")"))
-    (let
-        [sp
-            (time-fn #(run-spitbol src) reps)
-            cs
-            (time-fn #(run-csnobol4 src) reps)
-            i
-            (time-fn #(run-interpreter src) reps)
-            j
-            (time-fn #(run-jvm src) reps)
-            fmt
-            (fn [ms ref] (if ms (str (format "%8.2f ms" ms) (if ref (format "  (%5.1fx)" (/ (double ref) ms)) "           ")) "      N/A           "))]
+    (let [
+          sp (time-fn #(run-spitbol src) reps)
+          cs (time-fn #(run-csnobol4 src) reps)
+          i (time-fn #(run-interpreter src) reps)
+          j (time-fn #(run-jvm src) reps)
+          fmt (fn [ms ref] (if ms (str (format "%8.2f ms" ms) (if ref (format "  (%5.1fx)" (/ (double ref) ms)) "           ")) "      N/A           "))]
         (println (format "   %-30s %s" "SPITBOL v4.0f" (fmt sp nil)))
         (println (format "   %-30s %s" "CSNOBOL4 2.3.3" (fmt cs nil)))
         (println (format "   %-30s %s" "SNOBOL4clj interpreter" (fmt i i)))
@@ -527,8 +474,7 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn print-grid
     [results]
-    (let
-        [f #(if % (format "%8.2f" %) "     N/A")]
+    (let [f #(if % (format "%8.2f" %) "     N/A")]
         (println)
         (println "╔═══════════════════════╦══════════╦══════════╦══════════╦══════════╗")
         (println "║ Program               ║ SPITBOL  ║ CSNOBOL4 ║ Interp   ║ JVM code ║")

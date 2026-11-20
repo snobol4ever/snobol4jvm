@@ -158,81 +158,64 @@
     (reset! env/<WIDTH> 120)
     (reset! dump-switch nil)
     (reset! exit-code nil)
-    (let
-        [argv
-            (into [(System/getProperty "java.class.path")] args)
-            [engine u args]
-            (loop
-                [engine "interp" u nil as args]
-                (cond
-                    (clojure.core/= "--engine" (first as))
-                    (recur (second as) u (nnext as))
-                    (clojure.core/= "-u" (first as))
-                    (recur engine (second as) (nnext as))
-                    (and (first as) (re-matches #"-t\d+" (first as)))
-                    (do (reset! env/<WIDTH> (Long/parseLong (subs (first as) 2))) (recur engine u (next as)))
-                    (and (first as) (re-matches #"-D\d+" (first as)))
-                    (do (reset! dump-switch (Long/parseLong (subs (first as) 2))) (recur engine u (next as)))
-                    (and (first as) (re-matches #"-(?:[bfnelsx]+|[dsimt]\d+[kmgKMG]?)" (first as)))
-                    (recur engine u (next as))
-                    :else
-                    [engine u as]))
-            [file & prog-args]
-            args]
+    (let [
+          argv (into [(System/getProperty "java.class.path")] args)
+          [engine u args]
+              (loop [engine "interp" u nil as args]
+                  (cond
+                      (clojure.core/= "--engine" (first as)) (recur (second as) u (nnext as))
+                      (clojure.core/= "-u" (first as)) (recur engine (second as) (nnext as))
+                      (and (first as) (re-matches #"-t\d+" (first as))) (do (reset! env/<WIDTH> (Long/parseLong (subs (first as) 2))) (recur engine u (next as)))
+                      (and (first as) (re-matches #"-D\d+" (first as))) (do (reset! dump-switch (Long/parseLong (subs (first as) 2))) (recur engine u (next as)))
+                      (and (first as) (re-matches #"-(?:[bfnelsx]+|[dsimt]\d+[kmgKMG]?)" (first as))) (recur engine u (next as))
+                      :else [engine u as]))
+          [file & prog-args] args]
         (when (or (nil? file) (not (#{"interp"} engine))) (binding [*out* *err*] (println "Usage: lein run [--engine interp] <file.sno>")) (System/exit 1))
-        (let
-            [src (slurp file :encoding "ISO-8859-1") dir (or (.getParent (java.io.File. ^String file)) ".")]
-            (let
-                [sink
-                    (some-> (or *list-sink* (System/getenv "SCRIP_SNO_LIST_SINK")) not-empty (java.io.FileWriter. java.nio.charset.StandardCharsets/ISO_8859_1))
-                    listed
-                    (fn [f] (if sink (binding [*out* sink] (f) (flush)) (f)))
-                    rc
-                    (case engine "interp"
-                        (do
-                            (env/GLOBALS)
-                            (when-some [d @dump-switch] (reset! env/&DUMP d))
-                            (reset! env/<HOST0> (or u (clojure.string/join " " (remove #{"--"} prog-args))))
-                            (reset! env/<ARGV> argv)
-                            (reset! env/<ARGI> (clojure.core/- (count argv) (count prog-args)))
-                            (let
-                                [entry (comp/CODE src (include-dirs dir (System/getenv "SNO_LIB")) file)]
-                                (listed #(env/write-listing! file))
-                                (cond
-                                    (and (nil? (@env/<STNO> :END)) (nil? (@env/<STNO> :end)))
-                                    (do (binding [*out* *err*] (println "No END statement found in source file(s).") (flush)) 1)
-                                    (seq @env/<DIAGNOSTICS>)
-                                    231
-                                    (noexecute? src)
-                                    231 :else
-                                    (do
-                                        (let
-                                            [t0 (System/nanoTime)]
-                                            (try
-                                                (rt/RUN entry)
-                                                (catch clojure.lang.ExceptionInfo e
-                                                    (let
-                                                        [{n :snobol/error sig :snobol/signal steps :steps lvl :fnclevel}
-                                                            (ex-data e)
-                                                            _
-                                                            (when lvl (reset! env/&FNCLEVEL lvl))
-                                                            n
-                                                            (if (and n (zero? (long n))) 36 n)
-                                                            code
-                                                            (or n (when (clojure.core/= :step-limit sig) 244))]
-                                                        (when-not (or code (clojure.core/= :exit sig)) (throw e))
-                                                        (if
-                                                            (clojure.core/= :exit sig)
-                                                            (reset! exit-code (long (:snobol/rc (ex-data e) 0)))
-                                                            (let
-                                                                [text (or (env/error-message code) (ex-message e))]
-                                                                (reset! env/&ERRTYPE code)
-                                                                (reset! env/&ERRTEXT text)
-                                                                (listed #(env/report! code text @env/&STCOUNT t0))))))
-                                                (catch StackOverflowError _
-                                                    (let [text (env/error-message 246)] (reset! env/&ERRTYPE 246) (reset! env/&ERRTEXT text) (listed #(env/report! 246 text @env/&STCOUNT t0))))
-                                                (finally (when (and (nil? @exit-code) (pos? (long @env/&DUMP))) (listed #(print (env/dump-text @env/&DUMP)))))))
-                                        (let [c (long (or @exit-code @env/&CODE)) c (if (neg? c) 0 (mod c 256))] (when (pos? c) c)))))))]
+        (let [src (slurp file :encoding "ISO-8859-1") dir (or (.getParent (java.io.File. ^String file)) ".")]
+            (let [
+                  sink (some-> (or *list-sink* (System/getenv "SCRIP_SNO_LIST_SINK")) not-empty (java.io.FileWriter. java.nio.charset.StandardCharsets/ISO_8859_1))
+                  listed (fn [f] (if sink (binding [*out* sink] (f) (flush)) (f)))
+                  rc
+                      (case engine
+                          "interp"
+                              (do
+                                  (env/GLOBALS)
+                                  (when-some [d @dump-switch] (reset! env/&DUMP d))
+                                  (reset! env/<HOST0> (or u (clojure.string/join " " (remove #{"--"} prog-args))))
+                                  (reset! env/<ARGV> argv)
+                                  (reset! env/<ARGI> (clojure.core/- (count argv) (count prog-args)))
+                                  (let [entry (comp/CODE src (include-dirs dir (System/getenv "SNO_LIB")) file)]
+                                      (listed #(env/write-listing! file))
+                                      (cond
+                                          (and (nil? (@env/<STNO> :END)) (nil? (@env/<STNO> :end))) (do (binding [*out* *err*] (println "No END statement found in source file(s).") (flush)) 1)
+                                          (seq @env/<DIAGNOSTICS>) 231
+                                          (noexecute? src) 231
+                                          :else
+                                              (do
+                                                  (let [t0 (System/nanoTime)]
+                                                      (try
+                                                          (rt/RUN entry)
+                                                          (catch clojure.lang.ExceptionInfo e
+                                                              (let [
+                                                                    {n :snobol/error sig :snobol/signal steps :steps lvl :fnclevel} (ex-data e)
+                                                                    _ (when lvl (reset! env/&FNCLEVEL lvl))
+                                                                    n (if (and n (zero? (long n))) 36 n)
+                                                                    code (or n (when (clojure.core/= :step-limit sig) 244))]
+                                                                  (when-not (or code (clojure.core/= :exit sig)) (throw e))
+                                                                  (if
+                                                                      (clojure.core/= :exit sig)
+                                                                      (reset! exit-code (long (:snobol/rc (ex-data e) 0)))
+                                                                      (let [text (or (env/error-message code) (ex-message e))]
+                                                                          (reset! env/&ERRTYPE code)
+                                                                          (reset! env/&ERRTEXT text)
+                                                                          (listed #(env/report! code text @env/&STCOUNT t0))))))
+                                                          (catch StackOverflowError _
+                                                              (let [text (env/error-message 246)]
+                                                                  (reset! env/&ERRTYPE 246)
+                                                                  (reset! env/&ERRTEXT text)
+                                                                  (listed #(env/report! 246 text @env/&STCOUNT t0))))
+                                                          (finally (when (and (nil? @exit-code) (pos? (long @env/&DUMP))) (listed #(print (env/dump-text @env/&DUMP)))))))
+                                                  (let [c (long (or @exit-code @env/&CODE)) c (if (neg? c) 0 (mod c 256))] (when (pos? c) c)))))))]
                 (flush)
                 (when sink (.close ^java.io.Writer sink))
                 (when (integer? rc) rc)))))

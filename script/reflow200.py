@@ -45,6 +45,9 @@ def tokenize(s):
 W = 200
 SEP = ';' + '-' * 199
 CLOSE = {'(': ')', '[': ']', '{': '}'}
+PAIRS_AFTER = {'cond': 1, 'cond->': 2, 'cond->>': 2, 'case': 2, 'condp': 3}          # the child where a form's clause pairs begin
+BINDINGS = {'let', 'loop', 'binding', 'with-open', 'with-redefs', 'when-let', 'if-let', 'when-some', 'if-some', 'when-first', 'doseq', 'for', 'dotimes',
+            'with-local-vars'}                                                    # forms whose second child is a vector of pairs
 
 def parse(toks):
     i, n = 0, len(toks)
@@ -101,7 +104,7 @@ def atomic(x):
 def fits(s, col, reserve):
     return '\n' not in s and col + len(s) + reserve <= W
 
-def render(x, col, reserve):
+def render(x, col, reserve, pairs=False):
     """Lines of x placed at column col with reserve characters after it on its last line; the first line carries no indentation."""
     f = flat(x)
     if fits(f, col, reserve) or x[0] == 'atom':
@@ -112,27 +115,48 @@ def render(x, col, reserve):
         p = '^' + flat(x[1]) + ' '
         ls = render(x[2], col + len(p), reserve); ls[0] = p + ls[0]; return ls
     o, kids = x[1], x[2]; c = CLOSE[o]
-    ind = col + 4                 # one level deeper is four columns, a list, a vector or a map alike
+    head = flat(kids[0]) if kids and kids[0][0] == 'atom' and o == '(' else None
+    ind = col + len(o) if (o == '{' or pairs) else col + 4      # pairs of a map or a binding vector line up under the first; else four columns deeper
+    start = 0 if (o == '{' or pairs) else PAIRS_AFTER.get(head, len(kids)) if head else len(kids)
     lines = [o]                  # the first line has no indentation (it starts at col); later lines carry theirs
     width = lambda k: (col if k == 0 else 0) + len(lines[k])
     joinable = True              # may the next atom go on the last line: after the bracket or an atom, never after a list
-    for j, kid in enumerate(kids):
-        res = (reserve + 1) if j == len(kids) - 1 else 0
-        s = flat(kid)
-        if atomic(kid) and '\n' not in s:
-            first = lines[-1] == o and len(lines) == 1
-            cand = lines[-1] + ('' if first else ' ') + s
-            if joinable and (first or width(len(lines) - 1) + 1 + len(s) + res <= W):
-                lines[-1] = cand
+    def place(kid, j, res, kid_pairs=False):
+        """Puts one child on a line of its own (or on the bracket's line when it is the first thing after it)."""
+        if len(lines) == 1 and lines[0] == o:
+            ls = render(kid, col + len(o), res, kid_pairs); lines[0] = o + ls[0]; lines.extend(ls[1:])
+        else:
+            ls = render(kid, ind, res, kid_pairs); lines.append(' ' * ind + ls[0]); lines.extend(ls[1:])
+    j = 0
+    while j < len(kids):
+        kid = kids[j]; last = j == len(kids) - 1; res = (reserve + 1) if last else 0
+        if head in BINDINGS and j == 1 and kid[0] == 'coll' and kid[1] == '[' and len(lines) == 1:   # (let [a 1 ...: the bindings on the head's line
+            pre = lines[0] + ' '
+            ls = render(kid, col + len(pre), res, True); lines[0] = pre + ls[0]; lines.extend(ls[1:])
+            joinable = False; j += 1; continue
+        if j >= start and j + 1 < len(kids):                    # a clause pair: test and result on one line when they fit
+            a, b = kids[j], kids[j + 1]; res2 = (reserve + 1) if j + 1 == len(kids) - 1 else 0
+            pf = flat(a) + ' ' + flat(b)
+            at = col + len(o) if (len(lines) == 1 and lines[0] == o) else ind
+            if fits(pf, at, res2):
+                if at == ind: lines.append(' ' * ind + pf)
+                else: lines[0] = o + pf
             else:
-                lines.append(' ' * ind + s)
+                place(a, j, 0)
+                ls = render(b, ind + 4, res2); lines.append(' ' * (ind + 4) + ls[0]); lines.extend(ls[1:])
+            joinable = False; j += 2; continue
+        s_ = flat(kid)
+        if atomic(kid) and '\n' not in s_ and j < start:
+            first = lines[-1] == o and len(lines) == 1
+            if joinable and (first or width(len(lines) - 1) + 1 + len(s_) + res <= W):
+                lines[-1] = lines[-1] + ('' if first else ' ') + s_
+            else:
+                lines.append(' ' * ind + s_)
             joinable = True
         else:
-            if len(lines) == 1 and lines[0] == o:          # a bracket led by a list: the list starts on the bracket's line
-                ls = render(kid, col + len(o), res); lines[0] = o + ls[0]; lines.extend(ls[1:])
-            else:
-                ls = render(kid, ind, res); lines.append(' ' * ind + ls[0]); lines.extend(ls[1:])
+            place(kid, j, res, kid_pairs=(head in BINDINGS and j == 1 and kid[0] == 'coll' and kid[1] == '['))
             joinable = False
+        j += 1
     lines[-1] += c
     return lines
 
