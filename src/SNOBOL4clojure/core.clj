@@ -4264,6 +4264,10 @@
         false
         (clojure.string/split-lines src)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- compiled-engine
+    []
+    (try (requiring-resolve 'SNOBOL4clojure.codegen/run-loaded) (catch java.io.FileNotFoundException _ (binding [*out* *err*] (println "The compiled engine is not in this build.")) (System/exit 1))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn -main
     [& args]
     (reset! <WIDTH> 120)
@@ -4281,14 +4285,15 @@
                       (and (first as) (re-matches #"-(?:[bfnelsx]+|[dsimt]\d+[kmgKMG]?)" (first as))) (recur engine u (next as))
                       :else [engine u as]))
           [file & prog-args] args]
-        (when (or (nil? file) (not (#{"interp"} engine))) (binding [*out* *err*] (println "Usage: lein run [--engine interp] <file.sno>")) (System/exit 1))
+        (when (or (nil? file) (not (#{"interp" "compiled"} engine))) (binding [*out* *err*] (println "Usage: lein run [--engine interp|compiled] <file.sno>")) (System/exit 1))
         (let [src (slurp file :encoding "ISO-8859-1") dir (or (.getParent (java.io.File. ^String file)) ".")]
             (let [
                   sink (some-> (or *list-sink* (System/getenv "SCRIP_SNO_LIST_SINK")) not-empty (java.io.FileWriter. java.nio.charset.StandardCharsets/ISO_8859_1))
                   listed (fn [f] (if sink (binding [*out* sink] (f) (flush)) (f)))
+                  run (if (clojure.core/= "compiled" engine) (compiled-engine) RUN)
                   rc
                       (case engine
-                          "interp"
+                          ("interp" "compiled")
                               (do
                                   (GLOBALS)
                                   (when-some [d @dump-switch] (reset! &DUMP d))
@@ -4305,7 +4310,7 @@
                                               (do
                                                   (let [t0 (System/nanoTime)]
                                                       (try
-                                                          (RUN entry)
+                                                          (run entry)
                                                           (catch clojure.lang.ExceptionInfo e
                                                               (let [
                                                                     {n :snobol/error sig :snobol/signal steps :steps lvl :fnclevel} (ex-data e)
