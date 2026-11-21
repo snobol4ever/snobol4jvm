@@ -1231,6 +1231,7 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def ^:private system-labels #{"CONTINUE" "ABORT" "RETURN" "FRETURN" "NRETURN" "END" "end"})
 (def &STCOUNT (atom 0))
+(def <ST-DEAD> (atom nil))
 (def &LASTNO (atom 0))
 (def &LASTFILE (atom ε))
 (def &FILE (atom ε))
@@ -1241,6 +1242,11 @@
 (def &STLIMIT (atom 2147483647))
 (defn stcount-traced? [] (boolean (@registry (reg-key "STCOUNT" :keyword))))
 (def &PROFILE (atom 0))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- stlimit-over?
+    [n step]
+    (let [L (long @&STLIMIT) d @<ST-DEAD>] (and (pos? L) (not= d :never) (if (or (pos? (long step)) (nil? d)) (> (clojure.core/+ (long n) (long step)) L) (>= (long n) (long d))))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn snobol-steplimit! [n] (throw (ex-info (str "Step limit exceeded at step " n) {:snobol/signal :step-limit :steps n})))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- overrun
@@ -1248,6 +1254,7 @@
     (let [lim (long @&STLIMIT)]
         (reset! &STCOUNT lim)
         (swap! &STLIMIT clojure.core/+ 10)
+        (when (number? @<ST-DEAD>) (reset! <ST-DEAD> (clojure.core/+ lim (long @&STLIMIT))))
         (if (and (pos? (long @&ERRLIMIT)) (< (long (swap! <ERRFT> inc)) 3)) (ex-info (error-message 244) {:snobol/error 244}) (snobol-steplimit! n))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn statement-trace-active? [] (and (pos? @&TRACE) (@registry (reg-key "*" :label))))
@@ -1331,7 +1338,7 @@
                             (clojure.core/= ::fail res) (recur false)
                             :else res))))
             (enter [label err current] (if (system-labels (name label)) (follow true {:G label} err current) [(saddr label) err]))]
-        (when (and (nil? k) (zero? (long @&FNCLEVEL))) (reset! &STCOUNT 0))
+        (when (and (nil? k) (zero? (long @&FNCLEVEL))) (reset! &STCOUNT 0) (reset! <ST-DEAD> nil))
         (try
             (loop [[current err] (if k (enter at err0 nil) [(saddr at) err0])]
                 (cond
@@ -1350,7 +1357,7 @@
                                           (let [n (if (neg? (long @&STLIMIT)) @&STCOUNT (swap! &STCOUNT inc))]
                                               (let [
                                                     step (if (or (stcount-traced?) (not (zero? (long @&PROFILE)))) 1 0)
-                                                    over (when (and (pos? (long @&STLIMIT)) (> (clojure.core/+ (long n) step) (long @&STLIMIT))) (overrun n))
+                                                    over (when (stlimit-over? n step) (overrun n))
                                                     _ (when (and (not over) (pos? (long @&TRACE)) (not (neg? (long @&STLIMIT)))) (fire-keyword! "STCOUNT" n))]
                                                   (when (pos? @&TRACE) (when (statement-trace-active?) (binding [*out* *err*] (println (format ">>> stmt %5d  %s" (dec n) (str key))))))
                                                   over))]
@@ -2103,6 +2110,7 @@
                             (throw (ex-info "keyword value assigned is negative or too large" {:snobol/error 210}))
                         (and (clojure.core/= kw "MAXLNGTH") (< n 1024)) (throw (ex-info "value assigned to keyword maxlngth is too small" {:snobol/error 287}))
                         (and (clojure.core/= kw "FULLSCAN") (zero? n)) (throw (ex-info "value assigned to keyword fullscan is zero" {:snobol/error 274}))
+                        (clojure.core/= kw "STLIMIT") (let [a (long @&STCOUNT)] (reset! <ST-DEAD> (cond (neg? n) nil (< n a) :never :else (clojure.core/+ a n))) (reset! &STLIMIT n) n)
                         (or (contains? keyword-defaults vr) (clojure.core/= vr #'&TRACE)) (do (reset! @vr n) n)
                         :else (throw (ex-info "keyword in assignment is protected" {:snobol/error 209}))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -3810,6 +3818,7 @@
         (reset! <GTCEF> 0)
         (reset! <XC> false)
         (reset! <ERRFT> 0)
+        (reset! <ST-DEAD> nil)
         (reset! <ERRSERIAL> 0)
         (reset! <OBJNO> 0)
         (reset! <LASTOUT> nil)
@@ -4185,6 +4194,7 @@
     (reset! <CODE> {})
     (reset! <FUNS> {})
     (reset! &STCOUNT 0)
+    (reset! <ST-DEAD> nil)
     (let [run-fn (load-program src)]
         (try
             (run-fn)

@@ -3,9 +3,9 @@
 (doseq [s
             '[$$ &TRACE fire-access! bare-fence concat-value deref-result <FUNS> opsyn-key op-spelling INVOKE EVAL! gtstg sstr &MAXLNGTH &ANCHOR <POS> <DISPNO> <STMT-LINE> &LASTNO &STNO &LASTFILE
                  &FILE &LASTLINE &LINE &STCOUNT &STLIMIT &FNCLEVEL &PROFILE &ERRTYPE end-statement! dispatch-special! special-targets protected-variables <CODE> <STNO> <LABL> <DIAGNOSTICS> <ERRSERIAL>
-                 block-end compile-error capture-target pattern-argument snobol-set! prim-fns BREAKX$ error-message array? table? trap matching overrun fire-keyword! fire-label!
-                 statement-trace-active? stcount-traced? program-fn fatal-error STNO textless? &ERRLIMIT system-labels failure-point table-get table-subscript array-get array-in-bounds? call-form?
-                 reference indirect-target call-by-name name-string unused-unary-ops unused-binary-ops protected-store! pattern-keywords primitive-pattern]]
+                 block-end compile-error capture-target pattern-argument snobol-set! prim-fns BREAKX$ error-message array? table? trap matching overrun stlimit-over? <ST-DEAD> fire-keyword!
+                 fire-label! statement-trace-active? stcount-traced? program-fn fatal-error STNO textless? &ERRLIMIT system-labels failure-point table-get table-subscript array-get array-in-bounds?
+                 call-form? reference indirect-target call-by-name name-string unused-unary-ops unused-binary-ops protected-store! pattern-keywords primitive-pattern]]
     (intern *ns* (with-meta s {:private true}) (var-get (ns-resolve 'SNOBOL4clojure.core s))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def ^:private core-fence (var-get (ns-resolve 'SNOBOL4clojure.core 'FENCE)))
@@ -262,10 +262,7 @@
     (reset! &LASTLINE @&LINE)
     (when-some [[f l] (get @<POS> n)] (reset! &FILE f) (reset! &LINE l) (reset! <STMT-LINE> l))
     (reset! &STNO (get @<DISPNO> n n))
-    (let [
-          cnt (if (neg? (long @&STLIMIT)) @&STCOUNT (swap! &STCOUNT inc))
-          bump (if (or (stcount-traced?) (not (zero? (long @&PROFILE)))) 1 0)
-          over (when (and (pos? (long @&STLIMIT)) (> (+ (long cnt) bump) (long @&STLIMIT))) (overrun cnt))]
+    (let [cnt (if (neg? (long @&STLIMIT)) @&STCOUNT (swap! &STCOUNT inc)) bump (if (or (stcount-traced?) (not (zero? (long @&PROFILE)))) 1 0) over (when (stlimit-over? cnt bump) (overrun cnt))]
         (when
             (pos? (long @&TRACE))
             (when (and (not over) (not (neg? (long @&STLIMIT)))) (fire-keyword! "STCOUNT" cnt))
@@ -370,7 +367,7 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defmacro stmt ([n] `(stmt ~n true)) ([n e] `(if-some [over# (step! ~n)] (trapped ~n over#) (try ~e true (catch clojure.lang.ExceptionInfo x# (if (identical? x# failure) false (trapped ~n x#)))))))
 (defn landing [^clojure.lang.ExceptionInfo x] (if-some [l (::land (ex-data x))] (when (first l) l) (throw x)))
-(defn- start! [] (when (zero? (long @&FNCLEVEL)) (reset! &STCOUNT 0)))
+(defn- start! [] (when (zero? (long @&FNCLEVEL)) (reset! &STCOUNT 0) (reset! <ST-DEAD> nil)))
 (defn end! [] (if (pos? (long @&FNCLEVEL)) (dispatch-special! :END) (do (end-statement!) nil)))
 (defn closing! [] (throw (ex-info "END" {:snobol/signal :end :snobol/closing true})))
 (def ^:private fallbacks (atom 0))
