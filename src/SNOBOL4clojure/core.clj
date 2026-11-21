@@ -2929,8 +2929,8 @@
                 (if-let [[_ fname] (re-find include-re line)]
                     (let [found (some (fn [dir] (let [f (clojure.java.io/file dir (string/trim fname))] (when (.exists f) f))) search-path)]
                         (cond
-                            (nil? found) (recur (rest lines) (conj out line) seen cards (inc ph))
                             (seen fname) (recur (rest lines) (conj out (str "* -INCLUDE skipped (already included): " fname)) seen cards ph)
+                            (nil? found) (recur (rest lines) (conj out line) (conj seen (string/trim fname)) cards (inc ph))
                             :else
                                 (let [
                                       text (slurp found :encoding "ISO-8859-1")
