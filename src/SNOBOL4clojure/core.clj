@@ -2639,7 +2639,7 @@
     [type-name n]
     (let [n (if (clojure.core/= "" (str n)) 0 (int-arg n 107)) tname (str type-name) fields (get @data-type-registry tname)]
         (when-not fields (throw (ex-info "field first argument is not datatype name" {:snobol/error 108})))
-        (when (and (>= (long n) 1) (<= (long n) (count fields))) (nth fields (dec (long n))))))
+        (when (and (>= (long n) 1) (<= (long n) (count fields))) (NAME. (symbol (str (nth fields (dec (long n)))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- sort-serial [v] (cond (array? v) (:serial v) (table? v) (:serial (meta v)) (instance? DataObj v) (.serial ^DataObj v)))
 (def ^:private sort-type-rank {"INTEGER" 0 "NAME" 1 "PATTERN" 2 "REAL" 3 "CODE" 4 "STRING" 5 "EXPRESSION" 6 "TABLE" 7 "ARRAY" 8})
