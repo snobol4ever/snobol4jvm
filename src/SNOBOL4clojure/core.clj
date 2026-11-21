@@ -1258,7 +1258,7 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- end-statement!
     []
-    (when-let [n (@<STNO> :END)]
+    (when-let [n (or (@<STNO> :END) (@<STNO> :end))]
         (let [counted (when-not (neg? (long @&STLIMIT)) (swap! &STCOUNT inc))]
             (reset! &LASTNO @&STNO)
             (reset! &STNO (get @<DISPNO> n n))
