@@ -2944,7 +2944,7 @@
                                         (into (conj cards line) inner)
                                         ph))))
                     (if
-                        (and (pos? ph) (re-find #"^(END|end)([ \t;]|$)" line))
+                        (and (pos? ph) (re-find #"^(END|end)([ \t;]|$)" line) (empty? (rest lines)) (not (string/ends-with? src "\n\n")))
                         (recur (rest lines) (conj out "-\uE000DEPTH-LEAVE") seen cards (dec ph))
                         (recur (rest lines) (conj out line) seen cards ph)))
                 [(string/join "\n" out) seen cards]))))
