@@ -3610,6 +3610,7 @@
                               (clojure.core/= "" new-name) (fail! 155 "OPSYN first arg is not natural variable name")
                               (clojure.core/= "" old-name) (fail! 154 "OPSYN second arg is not natural variable name")
                               (or (nil? n) (zero? n)) (when (contains? system-functions new-name) (fail! 248 "attempted redefinition of system function"))
+                              (and (> n 2) (not (#{"&" "@" "#" "%" "~"} new-name))) (fail! 156 "OPSYN first arg is not correct operator name")
                               :else nil)
                       n (when n (min n 2))
                       old-fn
