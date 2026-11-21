@@ -3223,6 +3223,7 @@
             (let [
                   src-lines (string/split (str expanded) #"\n")
                   placed (atom {})
+                  skip-line (atom nil)
                   offset
                       (fn
                           [pline ^String stmt]
@@ -3252,90 +3253,97 @@
                                         (position-card fold command pline pos)
                                         (let [now (stuck-card command stuck)] (when (and now (not (re-find #"^-(?:\uE000|[Ii][Nn]\d)" command))) (swap! <DIAGNOSTICS> conj [pline 233 2 NO])) now))
                                 :else
-                                    (let [
-                                          stmt (cond-> command fold fold-case)
-                                          _ (note-names! (source-names stmt))
-                                          [_ e-kw e-sp e-op] (re-find #"^(END|end)([ \t]+)(\S.*?)[ \t]*$" stmt)
-                                          stmt
-                                              (if
-                                                  (and e-op (not (and (re-matches #"[A-Za-z0-9][A-Za-z0-9._]*" e-op) (contains? NOS (keyword e-op)))))
-                                                  (do (swap! <DIAGNOSTICS> conj [pline 215 (inc (count (str e-kw e-sp))) NO]) e-kw)
-                                                  stmt)
-                                          jam (when stuck (stuck-syntax-error stmt (empty? (rest stmts))))
-                                          ast (cond jam ::stuck (and record? (line-end-outside-literals? stmt)) ::line-end :else (parse-statement stmt))
-                                          code
-                                              (cond
-                                                  jam {:reason :stuck :line pline :column 1}
-                                                  (clojure.core/= ast ::line-end) {:reason :line-end :line pline :column 1}
-                                                  :else
-                                                      (try
-                                                          (emitter ast)
-                                                          (catch clojure.lang.ExceptionInfo e
-                                                              (if (:snobol/compile (ex-data e)) {:reason :compile :line pline :column 1 :text (ex-message e)} (throw e)))))
-                                          here [(:file pos) (clojure.core/+ (:bl pos) (clojure.core/- pline (:bp pos)))]
-                                          pos'' (if (:revert pos) (assoc pos :file (:revert pos) :revert nil) pos)]
-                                        (if
-                                            (:crash jam)
-                                            (do (swap! <SOURCE> assoc :crash pline) [CODES NOS LABELS {:before before :total blanks :pos poss}])
+                                    (if
+                                        (clojure.core/= pline @skip-line)
+                                        (do
+                                            (reset! skip-line nil)
+                                            (swap! <SOURCE> update :swallowed (fnil conj #{}) (clojure.core/- (count raw-stmts) (count stmts)))
+                                            (recur (rest stmts) NO CODES NOS LABELS blanks before fold poss pos stuck))
+                                        (let [
+                                              stmt (cond-> command fold fold-case)
+                                              _ (note-names! (source-names stmt))
+                                              [_ e-kw e-sp e-op] (re-find #"^(END|end)([ \t]+)(\S.*?)[ \t]*$" stmt)
+                                              stmt
+                                                  (if
+                                                      (and e-op (not (and (re-matches #"[A-Za-z0-9][A-Za-z0-9._]*" e-op) (contains? NOS (keyword e-op)))))
+                                                      (do (swap! <DIAGNOSTICS> conj [pline 215 (inc (count (str e-kw e-sp))) NO]) e-kw)
+                                                      stmt)
+                                              jam (when stuck (stuck-syntax-error stmt (empty? (rest stmts))))
+                                              ast (cond jam ::stuck (and record? (line-end-outside-literals? stmt)) ::line-end :else (parse-statement stmt))
+                                              code
+                                                  (cond
+                                                      jam {:reason :stuck :line pline :column 1}
+                                                      (clojure.core/= ast ::line-end) {:reason :line-end :line pline :column 1}
+                                                      :else
+                                                          (try
+                                                              (emitter ast)
+                                                              (catch clojure.lang.ExceptionInfo e
+                                                                  (if (:snobol/compile (ex-data e)) {:reason :compile :line pline :column 1 :text (ex-message e)} (throw e)))))
+                                              here [(:file pos) (clojure.core/+ (:bl pos) (clojure.core/- pline (:bp pos)))]
+                                              pos'' (if (:revert pos) (assoc pos :file (:revert pos) :revert nil) pos)]
                                             (if
-                                                (and (map? code) (:reason code))
-                                                (let [{n :error col :column}
-                                                          (or jam
-                                                              (when-not (clojure.core/= :compile (:reason code)) (syntax-error stmt))
-                                                              (when (clojure.core/= :compile (:reason code)) (let [se (syntax-error stmt)] (when (clojure.core/= 231 (:error se)) se)))
-                                                              {:error (case (:reason code) :compile 231 :line-end 230 220)})]
+                                                (:crash jam)
+                                                (do (swap! <SOURCE> assoc :crash pline) [CODES NOS LABELS {:before before :total blanks :pos poss}])
+                                                (if
+                                                    (and (map? code) (:reason code))
+                                                    (let [{n :error col :column}
+                                                              (or jam
+                                                                  (when-not (clojure.core/= :compile (:reason code)) (syntax-error stmt))
+                                                                  (when (clojure.core/= :compile (:reason code)) (let [se (syntax-error stmt)] (when (clojure.core/= 231 (:error se)) se)))
+                                                                  {:error (case (:reason code) :compile 231 :line-end 230 220)})]
+                                                        (let [
+                                                              lbl (when-not (or (#{\+ \.} (first stmt)) (and jam (clojure.core/= 214 n))) (second (re-find #"^([A-Za-z0-9][^ \t;]*)" stmt)))
+                                                              lkey (when lbl (keyword lbl))
+                                                              dup? (and lkey (not code-text?) (or (contains? NOS lkey) (compile-system-labels lkey)))]
+                                                            (when-not
+                                                                (#{\+ \.} (first stmt))
+                                                                (let [char-at
+                                                                          (fn
+                                                                              [c]
+                                                                              (loop [l (long pline) c (long c)]
+                                                                                  (let [len (count (get src-lines (dec l) "")) nxt (get src-lines l)]
+                                                                                      (if (and (> c len) nxt (#{\+ \.} (first nxt))) (recur (inc l) (clojure.core/- c len)) [l c]))))
+                                                                      [dl dc]
+                                                                          (if
+                                                                              (and col (not= 214 n) (not dup?))
+                                                                              (char-at (clojure.core/+ (long (offset pline command)) (min (long col) (max 1 (count stmt)))))
+                                                                              [pline nil])]
+                                                                    (swap! <DIAGNOSTICS> conj (if dup? [pline 217 nil NO] [dl n dc NO]))))
+                                                            (recur
+                                                                (rest stmts)
+                                                                (inc NO)
+                                                                (assoc CODES NO (error-node code))
+                                                                (if (and lkey (not dup?)) (assoc NOS lkey NO) NOS)
+                                                                (if (and lkey (not dup?)) (assoc LABELS NO lkey) LABELS)
+                                                                blanks
+                                                                (conj before blanks)
+                                                                fold
+                                                                (conj poss here)
+                                                                pos'' stuck)))
                                                     (let [
-                                                          lbl (when-not (or (#{\+ \.} (first stmt)) (and jam (clojure.core/= 214 n))) (second (re-find #"^([A-Za-z0-9][^ \t;]*)" stmt)))
-                                                          lkey (when lbl (keyword lbl))
-                                                          dup? (and lkey (not code-text?) (or (contains? NOS lkey) (compile-system-labels lkey)))]
-                                                        (when-not
-                                                            (#{\+ \.} (first stmt))
-                                                            (let [char-at
-                                                                      (fn
-                                                                          [c]
-                                                                          (loop [l (long pline) c (long c)]
-                                                                              (let [len (count (get src-lines (dec l) "")) nxt (get src-lines l)]
-                                                                                  (if (and (> c len) nxt (#{\+ \.} (first nxt))) (recur (inc l) (clojure.core/- c len)) [l c]))))
-                                                                  [dl dc]
-                                                                      (if
-                                                                          (and col (not= 214 n) (not dup?))
-                                                                          (char-at (clojure.core/+ (long (offset pline command)) (min (long col) (max 1 (count stmt)))))
-                                                                          [pline nil])]
-                                                                (swap! <DIAGNOSTICS> conj (if dup? [pline 217 nil NO] [dl n dc NO]))))
-                                                        (recur
-                                                            (rest stmts)
-                                                            (inc NO)
-                                                            (assoc CODES NO (error-node code))
-                                                            (if (and lkey (not dup?)) (assoc NOS lkey NO) NOS)
-                                                            (if (and lkey (not dup?)) (assoc LABELS NO lkey) LABELS)
-                                                            blanks
-                                                            (conj before blanks)
-                                                            fold
-                                                            (conj poss here)
-                                                            pos'' stuck)))
-                                                (let [
-                                                      label (:label code)
-                                                      body (:body code)
-                                                      goto (:goto code)
-                                                      dup? (and (not code-text?) (keyword? label) (or (contains? NOS label) (compile-system-labels label)))
-                                                      ferr (if dup? 217 (fold-error body (when (map? goto) goto)))
-                                                      _
-                                                          (when ferr
-                                                              (let [last-line
-                                                                        (loop [l (long pline) c (clojure.core/+ (long (offset pline command)) (count stmt))]
-                                                                            (let [len (count (get src-lines (dec l) "")) nxt (get src-lines l)]
-                                                                                (if (and (> c len) nxt (#{\+ \.} (first nxt))) (recur (inc l) (clojure.core/- c len)) l)))]
-                                                                  (swap! <DIAGNOSTICS> conj [(if (clojure.core/= 217 ferr) pline last-line) ferr nil NO])))
-                                                      body (if ferr body (freeze body))
-                                                      key (if (and label (not dup?)) label NO)
-                                                      code (reduce #(conj %1 %2) [] [body goto])
-                                                      nos (if (keyword? key) (assoc NOS key NO) NOS)
-                                                      labels (if (keyword? key) (assoc LABELS NO key) LABELS)
-                                                      codes (assoc CODES key code)]
-                                                    (if
-                                                        (#{:END :end} label)
-                                                        [codes nos labels {:before (conj before blanks) :total blanks :pos (conj poss here)}]
-                                                        (recur (rest stmts) (inc NO) codes nos labels blanks (conj before blanks) fold (conj poss here) pos'' stuck))))))))))))))
+                                                          label (:label code)
+                                                          body (:body code)
+                                                          goto (:goto code)
+                                                          dup? (and (not code-text?) (keyword? label) (or (contains? NOS label) (compile-system-labels label)))
+                                                          ferr (if dup? 217 (fold-error body (when (map? goto) goto)))
+                                                          _ (when (and ferr (not dup?)) (reset! skip-line pline))
+                                                          _
+                                                              (when ferr
+                                                                  (let [last-line
+                                                                            (loop [l (long pline) c (clojure.core/+ (long (offset pline command)) (count stmt))]
+                                                                                (let [len (count (get src-lines (dec l) "")) nxt (get src-lines l)]
+                                                                                    (if (and (> c len) nxt (#{\+ \.} (first nxt))) (recur (inc l) (clojure.core/- c len)) l)))]
+                                                                      (swap! <DIAGNOSTICS> conj [(if (clojure.core/= 217 ferr) pline last-line) ferr nil NO])))
+                                                          body (if ferr body (freeze body))
+                                                          key (if (and label (not dup?)) label NO)
+                                                          code (reduce #(conj %1 %2) [] [body goto])
+                                                          nos (if (keyword? key) (assoc NOS key NO) NOS)
+                                                          labels (if (keyword? key) (assoc LABELS NO key) LABELS)
+                                                          codes (assoc CODES key code)]
+                                                        (if
+                                                            (#{:END :end} label)
+                                                            [codes nos labels {:before (conj before blanks) :total blanks :pos (conj poss here)}]
+                                                            (recur (rest stmts) (inc NO) codes nos labels blanks (conj before blanks) fold (conj poss here) pos'' stuck)))))))))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def <CODELINE> (atom ["" 0]))
 (def STNO (atom 0))
@@ -4247,18 +4255,21 @@
 (defn- numbered [n depth line] (let [line (string/replace line #"[ \t]+\z" "")] (if (pos? (long depth)) (format "%-5s%-3s%s" (or n "") depth line) (format "%-8s%s" (or n "") line))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- statement-numbers
-    [stmts]
-    (loop [ss stmts n 0 starts (sorted-map)]
+    [stmts swallowed]
+    (loop [ss stmts i 0 n 0 starts (sorted-map)]
         (if-let [[s l] (first ss)]
-            (if (or (clojure.core/= :blank s) (not (#{\* \-} (first s)))) (recur (rest ss) (inc n) (if (contains? starts l) starts (assoc starts l (inc n)))) (recur (rest ss) n starts))
+            (if
+                (and (not (contains? swallowed i)) (or (clojure.core/= :blank s) (not (#{\* \-} (first s)))))
+                (recur (rest ss) (inc i) (inc n) (if (contains? starts l) starts (assoc starts l (inc n))))
+                (recur (rest ss) (inc i) n starts))
             starts)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn write-listing!
     [file]
     (let [
-          {:keys [text stmts cards crash]} @<SOURCE>
+          {:keys [text stmts cards crash swallowed]} @<SOURCE>
           lines (cond->> (string/split (str text) #"\n") crash (take crash))
-          starts (statement-numbers stmts)
+          starts (statement-numbers stmts (or swallowed #{}))
           errs (group-by first @<DIAGNOSTICS>)
           fold false
           card (fn [^String l nm] (re-find (re-pattern (str (when fold "(?i)") "^-" nm "(?:\\s|,|$)")) l))
