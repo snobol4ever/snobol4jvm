@@ -2654,7 +2654,7 @@
                 (if (clojure.core/= ta tb) (let [sa (sort-serial a) sb (sort-serial b)] (if (and sa sb) (compare sa sb) 0)) (compare (sort-type-rank ta 9) (sort-type-rank tb 9))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- sort-array
-    [arr col descending?]
+    [arr col descending? fresh?]
     (let [
           dims (:dims arr)
           lo1 (first (first dims))
@@ -2671,15 +2671,15 @@
           pick (fn [row] (if two-d? (nth row k) (first row)))
           cmp (if descending? #(sort-key-compare %2 %1) sort-key-compare)
           sorted (sort-by pick cmp rows)
-          out (ARRAY (:proto arr))]
+          out (if fresh? arr (ARRAY (:proto arr)))]
         (doseq [[i row] (map vector (range lo1 (inc hi1)) sorted)] (if two-d? (doseq [[j v] (map vector cols row)] (array-set out [i j] v)) (array-set out [i] (first row))))
         out))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- sort-any
     [A col descending?]
     (cond
-        (table? A) (when-some [arr (table->array A true)] (sort-array arr col descending?))
-        (array? A) (sort-array A col descending?)
+        (table? A) (when-some [arr (table->array A true)] (sort-array arr col descending? true))
+        (array? A) (sort-array A col descending? false)
         :else (throw (ex-info (error-message 256) {:snobol/error 256}))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn SORT ([A] (SORT A nil)) ([A col] (sort-any A col false)))
