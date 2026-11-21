@@ -1,4 +1,4 @@
-(ns SNOBOL4clojure.codegen (:require [SNOBOL4clojure.core :as c] [clojure.pprint :as pp]))
+(ns SNOBOL4clojure.codegen (:require [SNOBOL4clojure.core :as c]))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (doseq [s
             '[$$ &TRACE fire-access! bare-fence concat-value deref-result <FUNS> opsyn-key op-spelling INVOKE EVAL! gtstg sstr &MAXLNGTH &ANCHOR <POS> <DISPNO> <STMT-LINE> &LASTNO &STNO &LASTFILE
@@ -552,8 +552,3 @@
                 (let [t @tally] {:entry entry :code (:code t) :statements (:statements t) :native (:native t) :fallback (- (long (:statements t)) (long (:native t)))})))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn run-compiled [{:keys [entry]}] (run-from entry))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn show
-    [code]
-    (doseq [code (if (and (seq? code) (= 'fn (first code))) [code] code)]
-        (binding [pp/*print-right-margin* 150 pp/*print-miser-width* 60] (pp/with-pprint-dispatch pp/code-dispatch (pp/pprint code)))))

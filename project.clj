@@ -18,8 +18,8 @@
   :target-path "target/%s"
   :profiles {:dev {:source-paths ["dev"]}
              :uberjar {:main SNOBOL4clojure.core
-                       :aot [SNOBOL4clojure.core]
-                       ;; core and every namespace it requires are AOT-compiled, so a
+                       :aot [SNOBOL4clojure.core SNOBOL4clojure.codegen]
+                       ;; core, the compiled engine and every namespace they require are AOT-compiled, so a
                        ;; run starts in about 1.4 s instead of 4-9 s compiling .clj
                        ;; source. Its classes carry no two names that differ
                        ;; only in case (Σ/σ and the like), so the build is safe on a

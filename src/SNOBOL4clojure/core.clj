@@ -4264,19 +4264,20 @@
         false
         (clojure.string/split-lines src)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- compiled-engine
-    []
-    (try (requiring-resolve 'SNOBOL4clojure.codegen/run-loaded) (catch java.io.FileNotFoundException _ (binding [*out* *err*] (println "The compiled engine is not in this build.")) (System/exit 1))))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn -main
     [& args]
     (reset! <WIDTH> 120)
     (reset! dump-switch nil)
     (reset! exit-code nil)
-    (let [
-          argv (into [(System/getProperty "java.class.path")] args)
+    (let [argv
+              (loop [as args v [(System/getProperty "java.class.path")] switches? true]
+                  (cond
+                      (empty? as) v
+                      (and switches? (clojure.core/= "--engine" (first as))) (recur (nnext as) v true)
+                      (and switches? (clojure.core/= "-u" (first as))) (recur (nnext as) (into v (take 2 as)) true)
+                      :else (recur (next as) (conj v (first as)) (and switches? (.startsWith ^String (first as) "-")))))
           [engine u args]
-              (loop [engine "interp" u nil as args]
+              (loop [engine (or (not-empty (System/getenv "SNOBOL4JVM_ENGINE")) "interp") u nil as args]
                   (cond
                       (clojure.core/= "--engine" (first as)) (recur (second as) u (nnext as))
                       (clojure.core/= "-u" (first as)) (recur engine (second as) (nnext as))
@@ -4290,7 +4291,7 @@
             (let [
                   sink (some-> (or *list-sink* (System/getenv "SCRIP_SNO_LIST_SINK")) not-empty (java.io.FileWriter. java.nio.charset.StandardCharsets/ISO_8859_1))
                   listed (fn [f] (if sink (binding [*out* sink] (f) (flush)) (f)))
-                  run (if (clojure.core/= "compiled" engine) (compiled-engine) RUN)
+                  run (if (clojure.core/= "compiled" engine) (requiring-resolve 'SNOBOL4clojure.codegen/run-loaded) RUN)
                   rc
                       (case engine
                           ("interp" "compiled")

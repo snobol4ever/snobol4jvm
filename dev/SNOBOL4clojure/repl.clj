@@ -1,4 +1,4 @@
-(ns SNOBOL4clojure.repl (:refer-clojure :exclude [= + - * / num]) (:require [SNOBOL4clojure.core :refer :all]))
+(ns SNOBOL4clojure.repl (:refer-clojure :exclude [= + - * / num]) (:require [SNOBOL4clojure.core :refer :all] [clojure.pprint :as pp]))
 (defn snapshot! [] (into (sorted-map) @<VARS>))
 (defn empty-set [] (hash-set))
 (defn active? [name type] (boolean (some #(contains? @registry (reg-key name %)) (trace-kinds type))))
@@ -80,3 +80,8 @@
 (defn disable-full-trace! [] (stoptr! "*" "LABEL") (stoptr! "*" "VALUE") (stoptr! "*" "CALL") (stoptr! "*" "RETURN"))
 (def trace-disable-full! disable-full-trace!)
 (def trace-output *trace-output*)
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn show
+    [code]
+    (doseq [code (if (and (seq? code) (clojure.core/= 'fn (first code))) [code] code)]
+        (binding [pp/*print-right-margin* 150 pp/*print-miser-width* 60] (pp/with-pprint-dispatch pp/code-dispatch (pp/pprint code)))))
