@@ -4299,7 +4299,10 @@
                         (string/starts-with? l "-\uE000FILE-ENTER")
                             (let [[_ nm] (re-find #"^-\uE000FILE-ENTER \"([^\"]*)\"" l)] (shown (first cards)) (recur (inc i) (rest ls) (inc depth) (conj places [file (inc fline)]) nm 0 (rest cards)))
                         :else
-                            (let [fline (inc fline)]
+                            (let [
+                                  fline (inc fline)
+                                  [file fline]
+                                      (if-let [[_ ln f1 f2] (when ctl (re-find #"^-LINE\s+(\d+)(?:\s+(?:\"([^\"]*)\"|'([^']*)'))?" l))] [(or f1 f2 file) (dec (Long/parseLong ln))] [file fline])]
                                 (if ctl
                                     (let [segs (if (or (card l "TITLE") (card l "STITL")) [l] (map #(if (string/starts-with? % "-") % (str "-" %)) (string/split l #",-")))]
                                         (doseq [c segs]
