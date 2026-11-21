@@ -1624,6 +1624,11 @@
                               :else (fail! 230 i))]
                     (loop [j j kind kind] (let [k (skip-blanks s j)] (case (char-at s k) \< (recur (element-list s (inc k) \>) :name) \[ (recur (element-list s (inc k) \]) :name) [j kind])))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- sign-mark
+    [s j]
+    (let [nc? (fn [k] (and (>= k 0) (let [c (char-at s k)] (or (letter? c) (digit? c) (#{\. \_} c)))))]
+        (if (nc? (dec j)) (loop [k (loop [k (dec j)] (if (nc? (dec k)) (recur (dec k)) k))] (if (and (< k j) (not (letter? (char-at s k)))) (recur (inc k)) k)) j)))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- expression
     [s i ctx]
     (let [stop? (fn [c] (or (nil? c) (#{\: \;} c) (and (not (:top ctx)) (#{\) \] \> \,} c)))) i (skip-blanks s i) c (char-at s i)]
@@ -1637,7 +1642,7 @@
                             (and (#{\) \] \> \,} c) (:top ctx)) (stray! c j)
                             (stop? c) j
                             (or (letter? c) (digit? c) (#{\' \" \(} c)) (fail! 220 j)
-                            (operator-char? c) (fail! 233 (if (#{\+ \-} c) st j))
+                            (operator-char? c) (fail! 233 (if (#{\+ \-} c) (sign-mark s j) j))
                             (not (blank? c)) (fail! 230 j)
                             :else
                                 (let [k (skip-blanks s j) d (char-at s k) k (if (and (clojure.core/= d \*) (clojure.core/= \* (char-at s (inc k)))) (inc k) k) e (char-at s (inc k))]
@@ -3197,7 +3202,7 @@
                                     (cond
                                         (#{\) \] \> \,} c) (stray! c j)
                                         (not (or (operator-char? c) (letter? c) (digit? c) (#{\' \" \( \< \[ \= \;} c))) (fail! 230 j)
-                                        (operator-char? c) (fail! 233 (if (#{\+ \-} c) i j))
+                                        (operator-char? c) (fail! 233 (if (#{\+ \-} c) (sign-mark s j) j))
                                         :else (fail! 220 j)))
                             :else
                                 (let [k (if (and (clojure.core/= \? (char-at s k)) (or (nil? e) (blank? e))) (inc k) k) m (expression s k {:top true :stop-at-equals true})]
