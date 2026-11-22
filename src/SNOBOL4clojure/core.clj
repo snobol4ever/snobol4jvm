@@ -1492,7 +1492,7 @@
   uop       ::=  ndx | '@' uop | '~' uop | '?' uop | '&' uop | '+' uop
                      | '-' uop | '*' uop | '$' uop | '.' uop | '!' uop
                      | '%' uop | '/' uop | '#' uop | '=' uop | '|' uop | '^' uop
-  ndx       ::=  itm | ndx <'<'> (lst | nul) <'>'> | ndx <'['> (lst | nul) <']'>
+  ndx       ::=  itm | ndx <__> <'<'> (lst | nul) <'>'> | ndx <__> <'['> (lst | nul) <']'>
   <itm>     ::=  I | R | S | N | grp | cnd | inv
   grp       ::=  <'('> (expr | nul) <')'>
   cnd       ::=  <'('> arg (<','> arg)+ <')'>
