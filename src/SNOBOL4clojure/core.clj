@@ -1577,7 +1577,7 @@
           _ (when (and (not (#{\. \e \E \d \D} (char-at s j))) (> (clojure.core/- j i) 18) (try (Long/parseLong (subs s i j)) false (catch NumberFormatException _ true))) (fail! 231 i))
           j (if (clojure.core/= \. (char-at s j)) (digits (inc j)) j)
           j (if (#{\e \E \d \D} (char-at s j)) (let [k (if (#{\+ \-} (char-at s (inc j))) (clojure.core/+ j 2) (inc j))] (if (digit? (char-at s k)) (digits k) (fail! 231 i))) j)]
-        (if (or (name-char? (char-at s j)) (clojure.core/= \- (char-at s j))) (fail! 231 i) j)))
+        (if (or (name-char? (char-at s j)) (#{\- \+} (char-at s j))) (fail! 231 i) j)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- last-token-start
     [^String s i]
