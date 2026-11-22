@@ -1494,9 +1494,9 @@
                      | '%' uop | '/' uop | '#' uop | '=' uop | '|' uop | '^' uop
   ndx       ::=  itm | ndx <'<'> (lst | nul) <'>'> | ndx <'['> (lst | nul) <']'>
   <itm>     ::=  I | R | S | N | grp | cnd | inv
-  grp       ::=  <'('> expr <')'>
-  cnd       ::=  <'('> expr <','> lst <')'>
-  inv       ::=  N <'()'>  |  N <'('> lst <')'>
+  grp       ::=  <'('> (expr | nul) <')'>
+  cnd       ::=  <'('> arg (<','> arg)+ <')'>
+  inv       ::=  N <'()'>  |  N <'('> <_> <')'>  |  N <'('> lst <')'>
   <lst>     ::=  expr | arg (<','> arg)+
   <arg>     ::=  expr | nul
   nul       ::=  <__>
