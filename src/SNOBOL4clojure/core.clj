@@ -2838,6 +2838,7 @@
                                     (let [n (inc k) d (char-at s n)] (when dup? (fail! 218 k)) (when-not (or (nil? d) (blank? d) (#{\S \s \F \f \( \<} d)) (bad-goto! s n)) (recur n (conj seen kind)))
                                 (#{\: \;} (char-at s k)) (fail! (if (clojure.core/= closer \)) 227 228) k)
                                 (nil? (char-at s k)) (fail-eos! (if (clojure.core/= closer \)) 227 228) (loop [b k] (if (and (pos? b) (name-char? (char-at s (dec b)))) (recur (dec b)) b)))
+                                (#{\) \] \> \,} (char-at s k)) (stray! (char-at s k) k)
                                 :else (fail! 212 k)))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn syntax-error
