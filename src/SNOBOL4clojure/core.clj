@@ -1508,8 +1508,8 @@
  <pattern>  ::=  (<'?' _>)? and
  <replace>  ::=  (<_> expr)?
   jmp       ::=  target
-  sjmp      ::=  <'S' | 's'> target
-  fjmp      ::=  <'F' | 'f'> target
+  sjmp      ::=  <'S' | 's'> <__> target
+  fjmp      ::=  <'F' | 'f'> <__> target
  <target>   ::=  <'('> expr <')'> | dgo
   dgo       ::=  <'<'> expr <'>'> | <'['> expr <']'>
   comment   ::=  <'*'> #'.*' <eol>
@@ -3184,7 +3184,7 @@
         (loop [i i0 seen #{}]
             (let [i (skip-blanks s i) c (char-at s i)]
                 (when c
-                    (let [[kind j] (case c (\S \s) [:S (inc i)] (\F \f) [:F (inc i)] [:G i]) o (char-at s j)]
+                    (let [[kind j] (case c (\S \s) [:S (skip-blanks s (inc i))] (\F \f) [:F (skip-blanks s (inc i))] [:G i]) o (char-at s j)]
                         (when-not (#{\( \< \[} o) (bad-goto! s j))
                         (let [
                               dup? (or (seen kind) (and (clojure.core/= kind :G) (seq seen)) (seen :G))
