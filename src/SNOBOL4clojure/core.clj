@@ -1237,6 +1237,7 @@
 (def ^:private system-labels #{"CONTINUE" "ABORT" "RETURN" "FRETURN" "NRETURN" "END" "end"})
 (def &STCOUNT (atom 0))
 (def <ST-DEAD> (atom nil))
+(def dropped [::dropped])
 (def &LASTNO (atom 0))
 (def &LASTFILE (atom ε))
 (def &FILE (atom ε))
@@ -1353,26 +1354,30 @@
                         (when-let [key (skey current)]
                             (when (special-targets key) (dispatch-special! key))
                             (when-let [stmt (@<CODE> key)]
-                                (reset! &LASTNO @&STNO)
-                                (reset! &LASTFILE @&FILE)
-                                (reset! &LASTLINE @&LINE)
-                                (when-some [[f l] (get @<POS> (first current))] (reset! &FILE f) (reset! &LINE l) (reset! <STMT-LINE> l))
-                                (reset! &STNO (get @<DISPNO> (first current) (first current)))
-                                (let [over
-                                          (let [n (if (neg? (long @&STLIMIT)) @&STCOUNT (swap! &STCOUNT inc))]
-                                              (let [
-                                                    step (if (or (stcount-traced?) (not (zero? (long @&PROFILE)))) 1 0)
-                                                    over (when (stlimit-over? n step) (overrun n))
-                                                    _ (when (and (not over) (pos? (long @&TRACE)) (not (neg? (long @&STLIMIT)))) (fire-keyword! "STCOUNT" n))]
-                                                  (when (pos? @&TRACE) (when (statement-trace-active?) (binding [*out* *err*] (println (format ">>> stmt %5d  %s" (dec n) (str key))))))
-                                                  over))]
-                                    (when (identical? stmt block-end) (throw (ex-info "END" {:snobol/signal :end :snobol/closing true})))
-                                    (let [ferst (first stmt) seqond (second stmt) body (if (map? ferst) seqond ferst) goto (if (map? ferst) ferst seqond)]
-                                        (let [r (cond over (trap over) (identical? stmt compile-error) (trap (ex-info (error-message 7) {:snobol/error 7})) :else (exec-body body))]
-                                            (cond
-                                                (instance? Transfer r) (recur [(:at r) (:err r)])
-                                                (instance? Trapped r) (recur (enter (:label r) {:at current :goto goto :ex (:ex r)} current))
-                                                :else (recur (follow r goto err current))))))))))
+                                (if
+                                    (identical? stmt dropped)
+                                    (recur (follow true nil err current))
+                                    (do
+                                        (reset! &LASTNO @&STNO)
+                                        (reset! &LASTFILE @&FILE)
+                                        (reset! &LASTLINE @&LINE)
+                                        (when-some [[f l] (get @<POS> (first current))] (reset! &FILE f) (reset! &LINE l) (reset! <STMT-LINE> l))
+                                        (reset! &STNO (get @<DISPNO> (first current) (first current)))
+                                        (let [over
+                                                  (let [n (if (neg? (long @&STLIMIT)) @&STCOUNT (swap! &STCOUNT inc))]
+                                                      (let [
+                                                            step (if (or (stcount-traced?) (not (zero? (long @&PROFILE)))) 1 0)
+                                                            over (when (stlimit-over? n step) (overrun n))
+                                                            _ (when (and (not over) (pos? (long @&TRACE)) (not (neg? (long @&STLIMIT)))) (fire-keyword! "STCOUNT" n))]
+                                                          (when (pos? @&TRACE) (when (statement-trace-active?) (binding [*out* *err*] (println (format ">>> stmt %5d  %s" (dec n) (str key))))))
+                                                          over))]
+                                            (when (identical? stmt block-end) (throw (ex-info "END" {:snobol/signal :end :snobol/closing true})))
+                                            (let [ferst (first stmt) seqond (second stmt) body (if (map? ferst) seqond ferst) goto (if (map? ferst) ferst seqond)]
+                                                (let [r (cond over (trap over) (identical? stmt compile-error) (trap (ex-info (error-message 7) {:snobol/error 7})) :else (exec-body body))]
+                                                    (cond
+                                                        (instance? Transfer r) (recur [(:at r) (:err r)])
+                                                        (instance? Trapped r) (recur (enter (:label r) {:at current :goto goto :ex (:ex r)} current))
+                                                        :else (recur (follow r goto err current))))))))))))
             (catch clojure.lang.ExceptionInfo e
                 (if k
                     (throw e)
@@ -3346,6 +3351,7 @@
                                                           goto (:goto code)
                                                           dup? (and (not code-text?) (keyword? label) (or (contains? NOS label) (compile-system-labels label)))
                                                           ferr (if dup? 217 (fold-error body (when (map? goto) goto)))
+                                                          bare? (and (nil? label) (not ferr) (or (nil? goto) (and (map? goto) (empty? goto))) (or (number? body) (string? body)))
                                                           _ (when (and ferr (not dup?)) (reset! skip-line pline))
                                                           _
                                                               (when ferr
@@ -3356,7 +3362,7 @@
                                                                       (swap! <DIAGNOSTICS> conj [(if (clojure.core/= 217 ferr) pline last-line) ferr nil NO])))
                                                           body (if ferr body (freeze body))
                                                           key (if (and label (not dup?)) label NO)
-                                                          code (reduce #(conj %1 %2) [] [body goto])
+                                                          code (if bare? dropped (reduce #(conj %1 %2) [] [body goto]))
                                                           nos (if (keyword? key) (assoc NOS key NO) NOS)
                                                           labels (if (keyword? key) (assoc LABELS NO key) LABELS)
                                                           codes (assoc CODES key code)]

@@ -3,7 +3,7 @@
 (doseq [s
             '[$$ &TRACE fire-access! bare-fence concat-value deref-result <FUNS> opsyn-key op-spelling INVOKE EVAL! gtstg sstr &MAXLNGTH &ANCHOR <POS> <DISPNO> <STMT-LINE> &LASTNO &STNO &LASTFILE
                  &FILE &LASTLINE &LINE &STCOUNT &STLIMIT &FNCLEVEL &PROFILE &ERRTYPE end-statement! dispatch-special! special-targets protected-variables <CODE> <STNO> <LABL> <DIAGNOSTICS> <ERRSERIAL>
-                 block-end compile-error capture-target pattern-argument snobol-set! prim-fns BREAKX$ error-message array? table? trap matching overrun stlimit-over? <ST-DEAD> fire-keyword!
+                 block-end compile-error dropped capture-target pattern-argument snobol-set! prim-fns BREAKX$ error-message array? table? trap matching overrun stlimit-over? <ST-DEAD> fire-keyword!
                  fire-label! statement-trace-active? stcount-traced? program-fn fatal-error STNO textless? &ERRLIMIT system-labels failure-point table-get table-subscript array-get array-in-bounds?
                  call-form? reference indirect-target call-by-name name-string unused-unary-ops unused-binary-ops protected-store! pattern-keywords primitive-pattern]]
     (intern *ns* (with-meta s {:private true}) (var-get (ns-resolve 'SNOBOL4clojure.core s))))
@@ -465,6 +465,7 @@
                                   (= n end) [n '(end!)]
                                   (nil? stmt) [n nil]
                                   (identical? stmt block-end) [n (list 'do (list 'step! n) '(closing!))]
+                                  (identical? stmt dropped) [n (list 'recur (inc n))]
                                   (identical? stmt compile-error) [n (list 'do (list 'stmt n (list 'throw (list 'ex-info (error-message 7) {:snobol/error 7}))) (list 'recur (inc n)))]
                                   :else
                                       (let [
