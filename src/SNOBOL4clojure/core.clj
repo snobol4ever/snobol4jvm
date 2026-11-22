@@ -2906,7 +2906,7 @@
                                             (long (open-parens (let [t (str cur)] (if (and (seq t) (not (Character/isWhitespace (.charAt t 0)))) (subs t (or (string/index-of t " ") (count t))) t))))))
                                     (when-let [c (:column (syntax-error (str cur ";")))] (<= (long c) (.length cur))))
                                 (not (and (pos? (.length cur)) (let [c (.charAt cur 0)] (not (or (Character/isLetterOrDigit c) (#{\space \tab \- \+ \. \( \[ \< \> \: \,} c)))))))
-                                (let [s (trimr (str cur))] (recur (inc i) (StringBuilder.) (conj stmts (if (seq s) [s sl] [:blank sl])) false false ls line line diags))
+                                (let [s (trimr (str cur))] (recur (inc i) (StringBuilder.) (conj stmts (if (seq s) [s sl (.length cur)] [:blank sl])) false false ls line line diags))
                             (and (clojure.core/= ch \newline) (not record?))
                                 (let [
                                       s (trimr (str cur))
@@ -3162,7 +3162,7 @@
                     (if
                         (empty? stmts)
                         [CODES NOS LABELS {:before before :total blanks :pos poss}]
-                        (let [[command pline] (first stmts)]
+                        (let [[command pline semi] (first stmts)]
                             (cond
                                 (clojure.core/= command :blank) (recur (rest stmts) NO CODES NOS LABELS (inc blanks) before fold poss pos stuck)
                                 (comment? command) (recur (rest stmts) NO CODES NOS LABELS blanks before fold poss pos stuck)
@@ -3234,7 +3234,10 @@
                                                                       [dl dc]
                                                                           (if
                                                                               (and col (not= 214 n) (not dup?))
-                                                                              (char-at (clojure.core/+ (long (offset pline command)) (min (long col) (max 1 (count stmt)))))
+                                                                              (char-at
+                                                                                  (clojure.core/+
+                                                                                      (long (offset pline command))
+                                                                                      (if (and semi (> (long col) (count stmt))) (inc (long semi)) (min (long col) (max 1 (count stmt))))))
                                                                               [pline nil])]
                                                                     (swap! <DIAGNOSTICS> conj (if dup? [pline 217 nil NO] [dl n dc NO]))))
                                                             (recur
