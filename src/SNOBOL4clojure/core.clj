@@ -1569,7 +1569,8 @@
     (let [c (char-at s i)]
         (cond
             (nil? c) (fail-eos! 221 i)
-            (and (operator-char? c) (let [d (char-at s (inc i))] (or (nil? d) (blank? d) (#{\) \] \> \, \: \;} d)))) (fail! 221 (if (blank? (char-at s (inc i))) i (inc i)))
+            (and (operator-char? c) (let [d (char-at s (inc i))] (or (nil? d) (blank? d) (#{\) \] \> \, \: \;} d))))
+                (cond (clojure.core/= \, (char-at s (inc i))) (fail! 221 (inc i)) (and (pos? i) (#{\( \[ \< \,} (char-at s (dec i)))) (fail! 233 i) :else (fail! 221 i))
             (#{\. \&} c)
                 (let [d (char-at s (inc i))]
                     (cond
@@ -1635,6 +1636,7 @@
                                                         (:goto ctx) (fail! 212 m)
                                                         :else (recur (parse-operand s m) (inc n) (if (clojure.core/= d \?) (inc q) q) (if (and (clojure.core/= d \?) (zero? q)) n pre) m))))
                                         (:goto ctx) (fail! 212 k)
+                                        (and (operator-char? d) (#{\) \] \> \, \: \;} e)) (fail! 221 (inc k))
                                         :else (recur (parse-operand s k) (inc n) q pre k)))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn expression-end [^String s] (try {:end (expression s 0 {:top true})} (catch clojure.lang.ExceptionInfo e (when-let [n (::error (ex-data e))] {:error n}))))
