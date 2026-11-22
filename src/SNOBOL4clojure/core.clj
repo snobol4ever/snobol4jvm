@@ -1178,7 +1178,12 @@
 (defn- dispatch-special!
     [target]
     (when (#{"RETURN" "FRETURN" "NRETURN"} (clojure.string/upper-case (name target))) (level-zero-return!))
-    (case (clojure.string/upper-case (name target)) "RETURN" (snobol-return!) "FRETURN" (snobol-freturn!) "NRETURN" (snobol-nreturn!) "END" (snobol-end!)))
+    (case
+        (clojure.string/upper-case (name target))
+        "RETURN" (snobol-return!)
+        "FRETURN" (snobol-freturn!)
+        "NRETURN" (snobol-nreturn!)
+        "END" (if (@<STNO> (keyword (name target))) (snobol-end!) (throw (ex-info "END" {:snobol/signal :end :snobol/closing true})))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- label-name [tgt] (when (or (keyword? tgt) (string? tgt) (symbol? tgt)) (name tgt)))
 (def <ERRSERIAL> (atom 0))

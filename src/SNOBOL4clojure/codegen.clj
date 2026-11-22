@@ -330,7 +330,7 @@
                         (throw (ex-info (ex-message e) (-> (ex-data e) (dissoc :snobol/label :snobol/serial :snobol/fp :snobol/resume) (assoc :snobol/abort true)))))
                     (let [k (long @&ERRTYPE)] (throw (if (zero? k) (ex-info (error-message 36) {:snobol/error 36}) (ex-info (error-message k) {:snobol/error k :snobol/abort true})))))
             (= nm "SCONTINUE") (throw (fatal-error (if (and err (or (and (:resume err) (= (:resume err) @<ERRSERIAL>)) (current-error? err))) 331 321)))
-            (#{"END" "end"} nm) [(end-pc) err]
+            (#{"END" "end"} nm) (if (@<STNO> (keyword nm)) [(end-pc) err] (throw (ex-info "END" {:snobol/signal :end :snobol/closing true})))
             (special-targets tgt) (dispatch-special! tgt)
             :else (let [pc (or (pc-of tgt) (throw (ex-info "goto undefined label" {:snobol/error 38})))] [(goto tgt pc) err]))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -449,7 +449,7 @@
     [a b plain?]
     (let [
           end (end-pc)
-          ending? #{:END :end}
+          ending? (fn [t] (and (#{:END :end} t) (some? (@<STNO> t))))
           system? (fn [t] (and (keyword? t) (or (special-targets t) (#{"CONTINUE" "ABORT" "SCONTINUE"} (name t)))))
           static? (fn [t] (or (nil? t) (ending? t) (and (keyword? t) (not (system? t)) (some? (@<STNO> t)))))
           jump (fn [t n] (cond (nil? t) (list 'recur (inc n)) (ending? t) (list 'recur end) :else (list 'recur (list 'goto t))))
