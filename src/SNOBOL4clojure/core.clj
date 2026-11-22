@@ -410,7 +410,8 @@
      327 "Calling external function – not found"
      328 "LOAD function – insufficient memory"
      329 "Requested MAXLNGTH too large"
-     331 "Goto SCONTINUE with no user interrupt"})
+     331 "Goto SCONTINUE with no user interrupt"
+     332 "Goto continue with error in failure goto"})
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def ^:private error-text (merge (into {} (for [[n m] error-messages :when (not (#{274 276 278} n))] [n (clojure.string/lower-case m)])) {274 "value assigned to keyword fullscan is zero"}))
 (defn error-message [n] (error-text n))
@@ -1360,16 +1361,28 @@
                                     (if (and err (or (and (:resume err) (clojure.core/= (:resume err) @<ERRSERIAL>)) (clojure.core/= (:snobol/serial (ex-data (:ex err))) @<ERRSERIAL>))) 331 321)))
                         tgt (do (goto! tgt) (let [a (label-addr tgt)] (when (pos? (long @&TRACE)) (fire-label! (or (second a) tgt))) [a err]))
                         :else [(saddr (inc (current 0))) err])))
+            (failure-goto-error!
+                []
+                (when (pos? (long @&ERRLIMIT)) (swap! &ERRLIMIT dec))
+                (reset! &ERRTYPE 332)
+                (reset! &ERRTEXT (error-message 332))
+                (throw (ex-info (error-message 332) {:snobol/error 332 :snobol/abort true})))
             (follow
                 [r goto err current]
-                (loop [r r]
-                    (let [res (try (step r goto err current) (catch clojure.lang.ExceptionInfo e (let [t (trap e)] (if t t ::fail))))]
-                        (cond
-                            (instance? Transfer res) [(:at res) (:err res)]
-                            (instance? Trapped res)
-                                (enter (:label res) (if-let [e0 (::continued (ex-data (:ex res)))] (assoc e0 :ex (:ex res)) {:at current :goto goto :ex (:ex res) :in-goto true}) current)
-                            (clojure.core/= ::fail res) (recur false)
-                            :else res))))
+                (let [g (when (map? goto) goto) computed-failure? (seq? (or (:G g) (:F g)))]
+                    (loop [r r prior false]
+                        (let [res
+                                  (try
+                                      (step r goto err current)
+                                      (catch clojure.lang.ExceptionInfo e
+                                          (let [failure? (and (not r) computed-failure? (:snobol/error (ex-data e)) (not (contains? (ex-data e) :snobol/to)))]
+                                              (if (and failure? prior) (do (when (pos? (long @&ERRLIMIT)) (swap! &ERRLIMIT dec)) (failure-goto-error!)) (let [t (trap e)] (if t t ::fail))))))]
+                            (cond
+                                (instance? Transfer res) [(:at res) (:err res)]
+                                (instance? Trapped res)
+                                    (enter (:label res) (if-let [e0 (::continued (ex-data (:ex res)))] (assoc e0 :ex (:ex res)) {:at current :goto goto :ex (:ex res) :in-goto true}) current)
+                                (clojure.core/= ::fail res) (recur false true)
+                                :else res)))))
             (enter [label err current] (if (system-labels (name label)) (follow true {:G label} err current) [(saddr label) err]))]
         (when (and (nil? k) (zero? (long @&FNCLEVEL))) (reset! &STCOUNT 0) (reset! <ST-DEAD> nil))
         (try
