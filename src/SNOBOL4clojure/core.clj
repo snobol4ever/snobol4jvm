@@ -1518,6 +1518,7 @@
 (defn- skip-blanks [s i] (if (blank? (char-at s i)) (recur s (inc i)) i))
 (defn- fail! [n i] (throw (ex-info "syntax" {::error n ::at i})))
 (defn- stray! [c i] (fail! (case c \) 224 \, 223 225) i))
+(defn- fail-eos! [n i] (throw (ex-info "syntax" {::error n ::at i ::eos true})))
 (def ^:private operator-char? #{\+ \- \* \/ \! \^ \$ \. \& \@ \~ \? \% \# \| \=})
 (defn- letter? [c] (and c (or (<= (int \A) (int c) (int \Z)) (<= (int \a) (int c) (int \z)))))
 (declare parse-operand)
@@ -1557,7 +1558,7 @@
             (cond
                 (clojure.core/= c \,) (recur (inc i))
                 (clojure.core/= c closer) (inc i)
-                (nil? c) (fail! (if (clojure.core/= closer \)) 226 229) (last-token-start s i))
+                (nil? c) (fail-eos! (if (clojure.core/= closer \)) 226 229) (last-token-start s i))
                 (#{\: \;} c) (fail! (if (clojure.core/= closer \)) 226 229) i)
                 (clojure.core/= c \)) (fail! 224 i)
                 (#{\] \>} c) (fail! 225 i)
@@ -1567,7 +1568,7 @@
     [s i]
     (let [c (char-at s i)]
         (cond
-            (nil? c) (fail! 221 i)
+            (nil? c) (fail-eos! 221 i)
             (and (operator-char? c) (let [d (char-at s (inc i))] (or (nil? d) (blank? d) (#{\) \] \> \, \: \;} d)))) (fail! 221 (if (blank? (char-at s (inc i))) i (inc i)))
             (#{\. \&} c)
                 (let [d (char-at s (inc i))]
@@ -1629,7 +1630,8 @@
                                                     :else (let [m (skip-blanks s (inc k))] (if (char-at s m) (expression s m (dissoc ctx :stop-at-equals)) m)))
                                                 (let [m (skip-blanks s (inc k))]
                                                     (cond
-                                                        (or (nil? (char-at s m)) (#{\) \] \> \, \: \;} (char-at s m))) (fail! 221 m)
+                                                        (nil? (char-at s m)) (fail-eos! 221 m)
+                                                        (#{\) \] \> \, \: \;} (char-at s m)) (fail! 221 m)
                                                         (:goto ctx) (fail! 212 m)
                                                         :else (recur (parse-operand s m) (inc n) (if (clojure.core/= d \?) (inc q) q) (if (and (clojure.core/= d \?) (zero? q)) n pre) m))))
                                         (:goto ctx) (fail! 212 k)
@@ -2812,7 +2814,7 @@
 (defn- goto-field
     [s i]
     (let [i0 (skip-blanks s i)]
-        (when (nil? (char-at s i0)) (fail! 219 i0))
+        (when (nil? (char-at s i0)) (fail-eos! 219 i0))
         (loop [i i0 seen #{}]
             (let [i (skip-blanks s i) c (char-at s i)]
                 (when c
@@ -2826,40 +2828,51 @@
                               k
                                   (try
                                       (expression s k {:closer closer :goto true})
-                                      (catch clojure.lang.ExceptionInfo e (if (and (clojure.core/= 226 (::error (ex-data e))) (clojure.core/= closer \))) (fail! 227 (::at (ex-data e))) (throw e))))]
+                                      (catch clojure.lang.ExceptionInfo e
+                                          (if
+                                              (and (clojure.core/= 226 (::error (ex-data e))) (clojure.core/= closer \)))
+                                              ((if (::eos (ex-data e)) fail-eos! fail!) 227 (::at (ex-data e)))
+                                              (throw e))))]
                             (cond
                                 (clojure.core/= (char-at s k) closer)
                                     (let [n (inc k) d (char-at s n)] (when dup? (fail! 218 k)) (when-not (or (nil? d) (blank? d) (#{\S \s \F \f \( \<} d)) (bad-goto! s n)) (recur n (conj seen kind)))
                                 (#{\: \;} (char-at s k)) (fail! (if (clojure.core/= closer \)) 227 228) k)
-                                (nil? (char-at s k)) (fail! (if (clojure.core/= closer \)) 227 228) (loop [b k] (if (and (pos? b) (name-char? (char-at s (dec b)))) (recur (dec b)) b)))
+                                (nil? (char-at s k)) (fail-eos! (if (clojure.core/= closer \)) 227 228) (loop [b k] (if (and (pos? b) (name-char? (char-at s (dec b)))) (recur (dec b)) b)))
                                 :else (fail! 212 k)))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn syntax-error
-    [^String s]
-    (try
-        (when (and (char-at s 0) (not (blank? (char-at s 0))) (not (letter? (char-at s 0))) (not (digit? (char-at s 0)))) (fail! 214 0))
-        (let [
-              i (if (and (seq s) (not (blank? (char-at s 0)))) (loop [i 0] (if (and (char-at s i) (not (blank? (char-at s i)))) (recur (inc i)) i)) 0)
-              i (skip-blanks s i)
-              replacement (fn [k] (let [m (expression s (inc k) {:top true})] (when (char-at s m) (goto-field s (inc m)))))]
-            (cond
-                (nil? (char-at s i)) nil
-                (clojure.core/= \: (char-at s i)) (goto-field s (inc i))
-                :else
-                    (let [[j kind] (parse-operand s i) k (skip-blanks s j) e (char-at s (inc k))]
-                        (cond
-                            (and (clojure.core/= \= (char-at s k)) (or (nil? e) (blank? e))) (do (when (clojure.core/= kind :literal) (fail! 212 k)) (replacement k))
-                            (and (clojure.core/= j k) (char-at s j) (not= \: (char-at s j)))
-                                (let [c (char-at s j)]
-                                    (cond
-                                        (#{\) \] \> \,} c) (stray! c j)
-                                        (not (or (operator-char? c) (letter? c) (digit? c) (#{\' \" \( \< \[ \= \;} c))) (fail! 230 j)
-                                        (operator-char? c) (fail! 233 (if (#{\+ \-} c) (sign-mark s j) j))
-                                        :else (fail! (if (unclosed-quote? s j) 232 220) j)))
-                            :else
-                                (let [k (if (and (clojure.core/= \? (char-at s k)) (or (nil? e) (blank? e))) (inc k) k) m (expression s k {:top true :stop-at-equals true})]
-                                    (cond (nil? (char-at s m)) nil (clojure.core/= \: (char-at s m)) (goto-field s (inc m)) (clojure.core/= \= (char-at s m)) (replacement m) :else (fail! 220 m)))))))
-        (catch clojure.lang.ExceptionInfo e (when-let [n (::error (ex-data e))] (if (clojure.core/= :none (::at (ex-data e))) {:error n} {:error n :column (inc (or (::at (ex-data e)) 0))})))))
+    ([^String s] (syntax-error s false))
+    ([^String s last?]
+        (try
+            (when (and (char-at s 0) (not (blank? (char-at s 0))) (not (letter? (char-at s 0))) (not (digit? (char-at s 0)))) (fail! 214 0))
+            (let [
+                  i (if (and (seq s) (not (blank? (char-at s 0)))) (loop [i 0] (if (and (char-at s i) (not (blank? (char-at s i)))) (recur (inc i)) i)) 0)
+                  i (skip-blanks s i)
+                  replacement (fn [k] (let [m (expression s (inc k) {:top true})] (when (char-at s m) (goto-field s (inc m)))))]
+                (cond
+                    (nil? (char-at s i)) nil
+                    (clojure.core/= \: (char-at s i)) (goto-field s (inc i))
+                    :else
+                        (let [[j kind] (parse-operand s i) k (skip-blanks s j) e (char-at s (inc k))]
+                            (cond
+                                (and (clojure.core/= \= (char-at s k)) (or (nil? e) (blank? e))) (do (when (clojure.core/= kind :literal) (fail! 212 k)) (replacement k))
+                                (and (clojure.core/= j k) (char-at s j) (not= \: (char-at s j)))
+                                    (let [c (char-at s j)]
+                                        (cond
+                                            (#{\) \] \> \,} c) (stray! c j)
+                                            (not (or (operator-char? c) (letter? c) (digit? c) (#{\' \" \( \< \[ \= \;} c))) (fail! 230 j)
+                                            (operator-char? c) (fail! 233 (if (#{\+ \-} c) (sign-mark s j) j))
+                                            :else (fail! (if (unclosed-quote? s j) 232 220) j)))
+                                :else
+                                    (let [k (if (and (clojure.core/= \? (char-at s k)) (or (nil? e) (blank? e))) (inc k) k) m (expression s k {:top true :stop-at-equals true})]
+                                        (cond
+                                            (nil? (char-at s m)) nil
+                                            (clojure.core/= \: (char-at s m)) (goto-field s (inc m))
+                                            (clojure.core/= \= (char-at s m)) (replacement m)
+                                            :else (fail! 220 m)))))))
+            (catch clojure.lang.ExceptionInfo e
+                (when-let [n (::error (ex-data e))]
+                    (cond (and last? (::eos (ex-data e))) {:error n :eos true} (clojure.core/= :none (::at (ex-data e))) {:error n} :else {:error n :column (inc (or (::at (ex-data e)) 0))}))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- split-source
     ([src] (split-source src false))
@@ -3179,6 +3192,7 @@
                                                       (and e-op (not (and (re-matches #"[A-Za-z0-9][A-Za-z0-9._]*" e-op) (contains? NOS (keyword e-op)))))
                                                       (do (swap! <DIAGNOSTICS> conj [pline 215 (inc (count (str e-kw e-sp))) NO]) e-kw)
                                                       stmt)
+                                              last? (and (not code-text?) (empty? (rest stmts)) (not (re-find #"\n[ \t]*\z" (string/replace (str S) #"\n\z" ""))))
                                               jam (when stuck (stuck-syntax-error stmt (empty? (rest stmts))))
                                               ast (cond jam ::stuck (and record? (line-end-outside-literals? stmt)) ::line-end :else (parse-statement stmt))
                                               code
@@ -3197,17 +3211,17 @@
                                                 (do (swap! <SOURCE> assoc :crash pline) [CODES NOS LABELS {:before before :total blanks :pos poss}])
                                                 (if
                                                     (and (map? code) (:reason code))
-                                                    (let [{n :error col :column}
+                                                    (let [{n :error col :column eos :eos}
                                                               (or jam
-                                                                  (when-not (clojure.core/= :compile (:reason code)) (syntax-error stmt))
-                                                                  (when (clojure.core/= :compile (:reason code)) (let [se (syntax-error stmt)] (when (clojure.core/= 231 (:error se)) se)))
+                                                                  (when-not (clojure.core/= :compile (:reason code)) (syntax-error stmt last?))
+                                                                  (when (clojure.core/= :compile (:reason code)) (let [se (syntax-error stmt last?)] (when (clojure.core/= 231 (:error se)) se)))
                                                                   {:error (case (:reason code) :compile 231 :line-end 230 220)})]
                                                         (let [
                                                               lbl (when-not (or (#{\+ \.} (first stmt)) (and jam (clojure.core/= 214 n))) (second (re-find #"^([A-Za-z0-9][^ \t;]*)" stmt)))
                                                               lkey (when lbl (keyword lbl))
                                                               dup? (and lkey (not code-text?) (or (contains? NOS lkey) (compile-system-labels lkey)))]
                                                             (when-not
-                                                                (#{\+ \.} (first stmt))
+                                                                (or (#{\+ \.} (first stmt)) eos (and last? (clojure.core/= :compile (:reason code)) (nil? col)))
                                                                 (let [char-at
                                                                           (fn
                                                                               [c]
@@ -3240,7 +3254,8 @@
                                                           bare? (and (nil? label) (not ferr) (or (nil? goto) (and (map? goto) (empty? goto))) (or (number? body) (string? body)))
                                                           _ (when (and ferr (not dup?)) (reset! skip-line pline))
                                                           _
-                                                              (when ferr
+                                                              (when
+                                                                  (and ferr (not (and last? (not= 217 ferr))))
                                                                   (let [last-line
                                                                             (loop [l (long pline) c (clojure.core/+ (long (offset pline command)) (count stmt))]
                                                                                 (let [len (count (get src-lines (dec l) "")) nxt (get src-lines l)]
