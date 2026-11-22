@@ -3088,9 +3088,60 @@
                             :else (recur (inc i) (.append cur ch) stmts in-sq in-dq ls line sl diags))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def <DIAGNOSTICS> (atom []))
+(def <CARD-LISTING> (atom false))
 (def <SOURCE> (atom nil))
 (defn- comment? [cmd] (re-find #"^\*" cmd))
 (defn- control? [cmd] (re-find #"^\-" cmd))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- card-token
+    [^String s i]
+    (let [i (skip-blanks s i) c (char-at s i)]
+        (cond
+            (or (nil? c) (clojure.core/= c \;)) [:end i i]
+            (letter? c) (let [j (loop [j i] (if (name-char? (char-at s j)) (recur (inc j)) j))] [(if (clojure.core/= \( (char-at s j)) :fnc :name) i j])
+            (digit? c) (let [j (number-end s i)] [(if (re-find #"[.eEdD]" (subs s i j)) :real :int) i j])
+            (#{\' \"} c) (let [k (.indexOf s (str c) (int (inc (long i))))] (if (neg? k) (fail! 232 i) [:str i (inc k)]))
+            (clojure.core/= c \,) [:comma i (inc i)]
+            :else [:other i (inc i)])))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- card-error
+    [^String s]
+    (when-not
+        (re-find #"^-" s)
+        (try
+            (let [
+                  at (fn [[t a] prev] (if (clojure.core/= t :end) prev a))
+                  more (fn [i] (let [[t _ e] (card-token s i)] (when (clojure.core/= t :comma) e)))
+                  arg (fn [i prev ok?] (let [[t a e :as tk] (card-token s i)] (if (ok? tk) [t a e] (fail! 247 (at tk prev)))))]
+                (loop [i 1]
+                    (when
+                        (< (long i) (count s))
+                        (if
+                            (and (clojure.core/= i 1) (re-find #"^-IN\d" s))
+                            (do (arg 3 1 (fn [[t]] (#{:int :real} t))) (when-let [j (more (nth (card-token s 3) 2))] (recur j)))
+                            (let [[t a e :as tk] (card-token s i)]
+                                (if
+                                    (clojure.core/= t :other)
+                                    (when-let [j (more e)] (recur j))
+                                    (do
+                                        (when-not (clojure.core/= t :name) (fail! 247 (at tk (dec (long i)))))
+                                        (let [nm (subs s a e) k (when (>= (count nm) 4) (subs nm 0 4))]
+                                            (case k
+                                                ("CASE" "COMP")
+                                                    (arg e a
+                                                        (fn
+                                                            [[t2 a2 e2]]
+                                                            (or (#{:end :int :real} t2) (and (clojure.core/= t2 :str) (re-matches #"\s*(?:[+-]?\d+)?\s*" (subs s (inc (long a2)) (dec (long e2))))))))
+                                                ("DUMP" "EJEC" "STIT" "TITL") nil
+                                                "SPAC" (when @<CARD-LISTING> (arg e a (fn [[t2]] (#{:end :int :real} t2))))
+                                                ("COPY" "INCL") (arg e a (fn [[t2]] (clojure.core/= t2 :str)))
+                                                "LINE"
+                                                    (let [[_ a2 e2] (arg e a (fn [[t2 a2 e2]] (and (clojure.core/= t2 :int) (pos? (Long/parseLong (subs s a2 e2))))))]
+                                                        (arg e2 a2 (fn [[t3]] (#{:end :str} t3))))
+                                                (do (case k "LIST" (reset! <CARD-LISTING> true) "NOLI" (reset! <CARD-LISTING> false) nil) (when-let [j (more e)] (recur j)))))))))))
+                nil)
+            (catch clojure.lang.ExceptionInfo x (when-let [n (::error (ex-data x))] [n (inc (long (::at (ex-data x))))])))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- case-card [fold command] (when-let [[_ n] (re-find (if fold #"(?i)^-CASE(?:\s+(\d+))?\s*$" #"^-CASE(?:\s+(\d+))?\s*$") command)] (boolean (and n (not (zero? (Long/parseLong n)))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- position-card
@@ -3248,6 +3299,7 @@
               [expanded _ cards] (if record? [(str S) #{} []] (preprocess-includes* (str S) include-path #{}))
               raw-stmts (split-source expanded record?)
               _ (reset! <DIAGNOSTICS> (:diagnostics (meta raw-stmts)))
+              _ (reset! <CARD-LISTING> false)
               _ (reset! <SOURCE> {:text expanded :stmts raw-stmts :cards cards})]
             (let [
                   src-lines (string/split (str expanded) #"\n")
@@ -3274,12 +3326,13 @@
                                         (rest stmts)
                                         NO CODES NOS LABELS blanks before
                                         (do
+                                            (when-let [[n c] (card-error command)] (swap! <DIAGNOSTICS> conj [pline n c NO]))
                                             (case-card fold command)
                                             (when-let [q (and (re-find #"^-INCLUDE\s+['\"]" command) (re-find #"['\"]" command))]
                                                 (swap! <DIAGNOSTICS> conj [pline 285 (inc (long (string/index-of command q))) NO]))
                                             fold)
                                         poss
-                                        (position-card fold command pline pos)
+                                        (if (some #(and (clojure.core/= pline (first %)) (#{247 231 232} (second %))) @<DIAGNOSTICS>) pos (position-card fold command pline pos))
                                         (let [now (stuck-card command stuck)] (when (and now (not (re-find #"^-(?:\uE000|[Ii][Nn]\d)" command))) (swap! <DIAGNOSTICS> conj [pline 233 2 NO])) now))
                                 :else
                                     (if
@@ -4319,7 +4372,9 @@
                             (let [
                                   fline (inc fline)
                                   [file fline]
-                                      (if-let [[_ ln f1 f2] (when ctl (re-find #"^-LINE\s+(\d+)(?:\s+(?:\"([^\"]*)\"|'([^']*)'))?" l))] [(or f1 f2 file) (dec (Long/parseLong ln))] [file fline])]
+                                      (if-let [[_ ln f1 f2] (when (and ctl (not-any? #(#{247 231 232} (second %)) (get errs i))) (re-find #"^-LINE\s+(\d+)(?:\s+(?:\"([^\"]*)\"|'([^']*)'))?" l))]
+                                          [(or f1 f2 file) (dec (Long/parseLong ln))]
+                                          [file fline])]
                                 (if ctl
                                     (let [segs (if (or (card l "TITLE") (card l "STITL")) [l] (map #(if (string/starts-with? % "-") % (str "-" %)) (string/split l #",-")))]
                                         (doseq [c segs]
