@@ -2866,6 +2866,13 @@
                                             (not (or (operator-char? c) (letter? c) (digit? c) (#{\' \" \( \< \[ \= \;} c))) (fail! 230 j)
                                             (operator-char? c) (fail! 233 (if (#{\+ \-} c) (sign-mark s j) j))
                                             :else (fail! (if (unclosed-quote? s j) 232 220) j)))
+                                (let [x (char-at s (inc k)) m (skip-blanks s (inc k)) d (char-at s m)]
+                                    (and
+                                        (operator-char? (char-at s k))
+                                        (not (#{\? \=} (char-at s k)))
+                                        (or (nil? x) (blank? x))
+                                        (or (nil? d) (#{\) \] \> \, \: \;} d) (and (clojure.core/= d \=) (let [y (char-at s (inc m))] (or (nil? y) (blank? y)))))))
+                                    (let [m (skip-blanks s (inc k))] (if (char-at s m) (fail! 221 m) (fail-eos! 221 m)))
                                 :else
                                     (let [k (if (and (clojure.core/= \? (char-at s k)) (or (nil? e) (blank? e))) (inc k) k) m (expression s k {:top true :stop-at-equals true})]
                                         (cond
