@@ -2923,6 +2923,7 @@
     ([] (EXIT nil nil))
     ([a] (EXIT a nil))
     ([a b & _]
+        (when (some? b) (gtstg b 288))
         (let [n (when-not (string? a) (num a))]
             (cond
                 (and (string? a) (seq a))
