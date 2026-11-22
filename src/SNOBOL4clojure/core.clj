@@ -459,76 +459,6 @@
 (defn NSPAN [S] (if (deferred-arg? S) (deferred-pattern (fn [] (NSPAN (str ((second S)))))) (list 'NSPAN$ (charset S))))
 (def BOL (list 'BOL#))
 (def EOL (list 'EOL#))
-(def ^:dynamic *pending-cond* nil)
-(def ^:dynamic *matching* false)
-(def &ERRLIMIT (atom 0))
-(def &ERRTYPE (atom 0))
-(def &TRACE (atom 0))
-(def <TRACES> (atom {}))
-(def registry <TRACES>)
-(defn reg-key [name kind] [(str name) kind])
-(def <FUNS> (atom {}))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(def system-functions
-    #{
-      "ANY" "APPLY"
-      "ARBNO" "ARG"
-      "ARRAY" "ATAN"
-      "BACKSPACE" "BREAK"
-      "BREAKX" "CHAR"
-      "CHOP" "CLEAR"
-      "CODE" "COLLECT"
-      "CONVERT" "COPY"
-      "COS" "DATA"
-      "DATATYPE" "DATE"
-      "DEFINE" "DETACH"
-      "DIFFER" "DUMP"
-      "DUPL" "EJECT"
-      "ENDFILE" "EQ"
-      "EVAL" "EXIT"
-      "EXP" "FENCE"
-      "FIELD" "GE"
-      "GT" "HOST"
-      "IDENT" "INPUT"
-      "INTEGER" "ITEM"
-      "LE" "LEN"
-      "LEQ" "LGE"
-      "LGT" "LLE"
-      "LLT" "LN"
-      "LNE" "LOAD"
-      "LOCAL" "LPAD"
-      "LT" "NE"
-      "NOTANY" "OPSYN"
-      "OUTPUT" "POS"
-      "PROTOTYPE" "REMDR"
-      "REPLACE" "REVERSE"
-      "REWIND" "RPAD"
-      "RPOS" "RSORT"
-      "RTAB" "SET"
-      "SETEXIT" "SIN"
-      "SIZE" "SORT"
-      "SPAN" "SQRT"
-      "STOPTR" "SUBSTR"
-      "TAB" "TABLE"
-      "TAN" "TIME"
-      "TRACE" "TRIM"
-      "UNLOAD"})
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(def η ##NaN)
-(defn & ([_n] nil) ([_x _y] η))
-(def <VARS> (atom {}))
-(defn reference [N] (get @<VARS> (symbol (name N))))
-(defn- program-fn [op] (when (and (symbol? op) (Character/isLetter (.charAt (name op) 0))) (let [v (reference op)] (if (fn? v) v (get @<FUNS> (name op))))))
-(defn x-2 [op x y] (list op x y))
-(defn x-n [op x y Ω] (apply list (conj Ω y x op)))
-(defn | ([_x] η) ([x y] (x-2 'ALT x y)) ([x y & zs] (x-n 'ALT x y zs)))
-(defrecord SnobolArray [dims dflt data])
-(defn array? [x] (instance? SnobolArray x))
-(defn table? [x] (and (instance? clojure.lang.IDeref x) (map? @x)))
-(deftype CodeBlock [entry])
-(defn- textless? [v] (or (and (instance? NAME v) (not (symbol? (.n ^NAME v)))) (array? v) (table? v) (instance? DataObj v) (instance? CodeBlock v)))
-(defn- pattern-argument [p err] (if (textless? p) (throw (ex-info (error-message err) {:snobol/error err})) p))
-(defn- pattern-operands! [args] (let [v (vec args) n (count v)] (pattern-argument (v (dec n)) 5) (doseq [i (range (clojure.core/- n 2) -1 -1)] (pattern-argument (v i) 6))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- read-raw
     [^java.io.Reader rdr n]
@@ -577,6 +507,7 @@
             r
             (let [r (try (java.io.BufferedReader. (java.io.InputStreamReader. (java.io.FileInputStream. ^String dev) "ISO-8859-1")) (catch Exception _ nil))] (reset! terminal-cache [dev r]) r))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(def <VARS> (atom {}))
 (def protected-variables '#{ABORT ARB BAL FAIL FENCE REM SUCCEED})
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def ^:private builtin-names
@@ -644,6 +575,71 @@
             (or (clojure.core/= sym 'OUTPUT) (clojure.core/= :output (:type (get @<CHANNELS> sym)))) (get @<ASSOC-LAST> sym ε)
             :else (if-let [v (find @<VARS> sym)] (val v) (if (protected-variables sym) (primitive-pattern sym) ε)))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(def &TRACE (atom 0))
+(def <TRACES> (atom {}))
+(def registry <TRACES>)
+(defn reg-key [name kind] [(str name) kind])
+(def <FUNS> (atom {}))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(def system-functions
+    #{
+      "ANY" "APPLY"
+      "ARBNO" "ARG"
+      "ARRAY" "ATAN"
+      "BACKSPACE" "BREAK"
+      "BREAKX" "CHAR"
+      "CHOP" "CLEAR"
+      "CODE" "COLLECT"
+      "CONVERT" "COPY"
+      "COS" "DATA"
+      "DATATYPE" "DATE"
+      "DEFINE" "DETACH"
+      "DIFFER" "DUMP"
+      "DUPL" "EJECT"
+      "ENDFILE" "EQ"
+      "EVAL" "EXIT"
+      "EXP" "FENCE"
+      "FIELD" "GE"
+      "GT" "HOST"
+      "IDENT" "INPUT"
+      "INTEGER" "ITEM"
+      "LE" "LEN"
+      "LEQ" "LGE"
+      "LGT" "LLE"
+      "LLT" "LN"
+      "LNE" "LOAD"
+      "LOCAL" "LPAD"
+      "LT" "NE"
+      "NOTANY" "OPSYN"
+      "OUTPUT" "POS"
+      "PROTOTYPE" "REMDR"
+      "REPLACE" "REVERSE"
+      "REWIND" "RPAD"
+      "RPOS" "RSORT"
+      "RTAB" "SET"
+      "SETEXIT" "SIN"
+      "SIZE" "SORT"
+      "SPAN" "SQRT"
+      "STOPTR" "SUBSTR"
+      "TAB" "TABLE"
+      "TAN" "TIME"
+      "TRACE" "TRIM"
+      "UNLOAD"})
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(def η ##NaN)
+(defn & ([_n] nil) ([_x _y] η))
+(defn reference [N] (get @<VARS> (symbol (name N))))
+(defn- program-fn [op] (when (and (symbol? op) (Character/isLetter (.charAt (name op) 0))) (let [v (reference op)] (if (fn? v) v (get @<FUNS> (name op))))))
+(defn x-2 [op x y] (list op x y))
+(defn x-n [op x y Ω] (apply list (conj Ω y x op)))
+(defn | ([_x] η) ([x y] (x-2 'ALT x y)) ([x y & zs] (x-n 'ALT x y zs)))
+(defrecord SnobolArray [dims dflt data])
+(defn array? [x] (instance? SnobolArray x))
+(defn table? [x] (and (instance? clojure.lang.IDeref x) (map? @x)))
+(deftype CodeBlock [entry])
+(defn- textless? [v] (or (and (instance? NAME v) (not (symbol? (.n ^NAME v)))) (array? v) (table? v) (instance? DataObj v) (instance? CodeBlock v)))
+(defn- pattern-argument [p err] (if (textless? p) (throw (ex-info (error-message err) {:snobol/error err})) p))
+(defn- pattern-operands! [args] (let [v (vec args) n (count v)] (pattern-argument (v (dec n)) 5) (doseq [i (range (clojure.core/- n 2) -1 -1)] (pattern-argument (v i) 6))))
 (defn $ ([n] ($$ n)) ([x y] (x-2 'CAPTURE-IMM x y)) ([x y & zs] (x-n 'CAPTURE-IMM x y zs)))
 (defn . ([x] (NAME. x)) ([x y] (x-2 'CAPTURE-COND x y)) ([x y & zs] (x-n 'CAPTURE-COND x y zs)))
 (defn- real->integer [x] (let [lo (double Long/MIN_VALUE)] (if (and (<= lo x) (< x (clojure.core/- lo))) (let [i (long x)] (when-not (clojure.core/= i 2147483648) i)) Long/MIN_VALUE)))
@@ -826,6 +822,69 @@
 (defn annihilate [_x] nil)
 (def ^:dynamic *trace* false)
 (defn pattern-trace-active? [subject-var] (and (pos? @&TRACE) (or (@registry (reg-key subject-var :pattern)) (@registry (reg-key "*" :pattern)))))
+(def ^:dynamic *pending-cond* nil)
+(def ^:dynamic *matching* false)
+(def &ERRLIMIT (atom 0))
+(def &ERRTYPE (atom 0))
+(def &LINE (atom 0))
+(defn- call-trace-fn! [f item-name entry] (swap! &TRACE dec) (let [tr @&TRACE] (reset! &TRACE 0) (let [r (f (NAME. (symbol (str item-name))) (:label entry))] (reset! &TRACE tr) (reset! &LINE 2) r)))
+(def ^:dynamic *trace-output* nil)
+(defn- trace-println [& args] (let [w (or *trace-output* *out*) l (apply str args)] (binding [*out* w] (if (<= (count l) 120) (println l) (doseq [p (partition-all 120 l)] (println (apply str p)))))))
+(def &STNO (atom 0))
+(defn- star-field [] (let [s (str "****" @&STNO)] (str s (apply str (repeat (max 0 (clojure.core/- 12 (count s))) \*)))))
+(def &FNCLEVEL (atom 0))
+(defn- subscript-text [ks] (string/join "," (map (fn [k] (if (string? k) (str "'" k "'") (sstr k))) ks)))
+(defn- name-text [^NAME v] (let [n (.n v)] (if (and (seq? n) (next n)) (str "." (first n) "<" (subscript-text (rest n)) ">") (str "." n))))
+(defn- dims-text [dims] (string/join "," (map (fn [[lo hi]] (if (clojure.core/= lo 1) (str hi) (str lo ":" hi))) dims)))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn value-text
+    [v]
+    (cond
+        (string? v) (str "'" v "'")
+        (integer? v) (str v)
+        (double? v) (sstr v)
+        (instance? NAME v) (name-text v)
+        (array? v) (str "ARRAY(" (or (:proto v) (dims-text (:dims v))) ") #" (:serial v))
+        (table? v) (str "TABLE(" (:size (meta v) 11) ") #" (:serial (meta v)))
+        (instance? DataObj v) (str (.type-name ^DataObj v) " #" (.serial ^DataObj v))
+        (symbol? (:defer-var (meta v))) (str "*" (:defer-var (meta v)))
+        :else (DATATYPE v)))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- trace-val
+    [v]
+    (cond
+        (or (array? v) (table? v) (instance? DataObj v)) (value-text v)
+        (nil? v) "''"
+        (string? v) (str "'" v "'")
+        (instance? NAME v) (str "." (.n ^NAME v))
+        (integer? v) (str v)
+        (double? v) (real-str v)
+        (and (or (list? v) (vector? v)) (clojure.core/= "PATTERN" (DATATYPE v))) "PATTERN"
+        :else (str v)))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(declare trace-fn)
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn fire-keyword!
+    [kw new-val]
+    (when
+        (pos? @&TRACE)
+        (when-let [entry (@registry (reg-key kw :keyword))]
+            (if-let [f (trace-fn entry)] (call-trace-fn! f kw entry) (do (swap! &TRACE dec) (trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " &" kw " = " (trace-val new-val)))))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(def &ERRTEXT (atom ε))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- matching
+    [f]
+    (binding [*matching* true]
+        (try
+            (f)
+            (catch clojure.lang.ExceptionInfo e
+                (let [{n :snobol/error abort :snobol/abort :as data} (ex-data e)]
+                    (if
+                        (and n (not abort) (zero? (long @&ERRLIMIT)) (not (contains? data :snobol/to)) (not (contains? data :snobol/label)) (not (<= 43 (long n) 58)))
+                        (do (reset! &ERRTYPE n) (fire-keyword! "ERRTYPE" n) (reset! &ERRTEXT (ex-message e)) nil)
+                        (throw e)))))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def &ANCHOR (atom 0))
 (defn ζΠ [ζ] (if ζ (ζ 4)))
 (defn out [item] (binding [pp/*print-right-margin* 2048 pp/*print-miser-width* 2000] (pp/pprint item)) item)
@@ -1080,7 +1139,6 @@
                         (:fail :recede) (recur :recede (🡡 Ω) (🡧 Ω)))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- commit-pending! [] (every? (fn [[var-sym text]] (assign! var-sym text)) @*pending-cond*))
-(declare matching)
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn SEARCH
     [S P]
@@ -1109,51 +1167,25 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn = ([_x] η) ([n x] (list '= n x)))
 (deftype ExprVar [ir])
-(def &LINE (atom 0))
-(defn- call-trace-fn! [f item-name entry] (swap! &TRACE dec) (let [tr @&TRACE] (reset! &TRACE 0) (let [r (f (NAME. (symbol (str item-name))) (:label entry))] (reset! &TRACE tr) (reset! &LINE 2) r)))
-(def ^:dynamic *trace-output* nil)
-(defn- trace-println [& args] (let [w (or *trace-output* *out*) l (apply str args)] (binding [*out* w] (if (<= (count l) 120) (println l) (doseq [p (partition-all 120 l)] (println (apply str p)))))))
-(def &STNO (atom 0))
-(defn- star-field [] (let [s (str "****" @&STNO)] (str s (apply str (repeat (max 0 (clojure.core/- 12 (count s))) \*)))))
-(def &FNCLEVEL (atom 0))
-(defn- subscript-text [ks] (string/join "," (map (fn [k] (if (string? k) (str "'" k "'") (sstr k))) ks)))
-(defn- name-text [^NAME v] (let [n (.n v)] (if (and (seq? n) (next n)) (str "." (first n) "<" (subscript-text (rest n)) ">") (str "." n))))
-(defn- dims-text [dims] (string/join "," (map (fn [[lo hi]] (if (clojure.core/= lo 1) (str hi) (str lo ":" hi))) dims)))
+(defn name-string [x] (if (instance? NAME x) (str (.n ^NAME x)) (str x)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn value-text
+(defn- indirect-target
     [v]
     (cond
-        (string? v) (str "'" v "'")
-        (integer? v) (str v)
-        (double? v) (sstr v)
-        (instance? NAME v) (name-text v)
-        (array? v) (str "ARRAY(" (or (:proto v) (dims-text (:dims v))) ") #" (:serial v))
-        (table? v) (str "TABLE(" (:size (meta v) 11) ") #" (:serial (meta v)))
-        (instance? DataObj v) (str (.type-name ^DataObj v) " #" (.serial ^DataObj v))
-        (symbol? (:defer-var (meta v))) (str "*" (:defer-var (meta v)))
-        :else (DATATYPE v)))
+        (and (instance? NAME v) (list? (.n ^NAME v))) (.n ^NAME v)
+        (and (instance? NAME v) (instance? ExprVar (.n ^NAME v))) (.n ^NAME v)
+        (instance? NAME v) (symbol (name-string v))
+        (or (and (string? v) (not= "" v)) (number? v)) (symbol (sstr v))
+        :else (throw (ex-info "indirection operand is not name" {:snobol/error 239}))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- trace-val
-    [v]
-    (cond
-        (or (array? v) (table? v) (instance? DataObj v)) (value-text v)
-        (nil? v) "''"
-        (string? v) (str "'" v "'")
-        (instance? NAME v) (str "." (.n ^NAME v))
-        (integer? v) (str v)
-        (double? v) (real-str v)
-        (and (or (list? v) (vector? v)) (clojure.core/= "PATTERN" (DATATYPE v))) "PATTERN"
-        :else (str v)))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(declare trace-fn)
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn fire-access!
-    [sym v]
-    (when-let [entry (@registry (reg-key sym :access))]
-        (if-let [f (trace-fn entry)] (call-trace-fn! f sym entry) (do (swap! &TRACE dec) (trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " " sym " = " (trace-val v))))))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(def ^:private bare-fence (FENCE))
+(declare EVAL! eval-operands)
+(defn- element-target [N] (when-some [c (if (seq? (first N)) (EVAL! (first N)) (first N))] (when-some [ks (eval-operands (rest N))] (with-meta (apply list c ks) (meta N)))))
+(def ^:private value-operators '#{= ?= ? | at-op + - sharp-op / * % ** ^! . tilde-op & SEQ})
+(defn- applied-function [fname] (let [s (gtstg fname 60)] (when (clojure.core/= "" s) (throw (ex-info (error-message 60) {:snobol/error 60}))) (symbol s)))
+(defn- deferred? [x] (and (seq? x) (clojure.core/= 'DEFER! (first x)) (fn? (second x))))
 (def ^:dynamic *fp* 0)
+(def <STAGE> (atom :xt))
+(def <GTCEF> (atom 0))
 (def ^:dynamic *handlers* 0)
 (def <STNO> (atom {}))
 (def <LABL> (atom {}))
@@ -1199,12 +1231,8 @@
                 (if-let [f (trace-fn entry)] (call-trace-fn! f lname entry) (do (swap! &TRACE dec) (trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " :(" lname ")")))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defrecord Transfer [at err])
-(def <STAGE> (atom :xt))
 (def ^:dynamic *flprt* -1)
-(def <GTCEF> (atom 0))
 (def <XC> (atom false))
-(def &ERRTEXT (atom ε))
-(declare fire-keyword!)
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn error-decided
     [^clojure.lang.ExceptionInfo e d]
@@ -1266,7 +1294,6 @@
 (defn statement-trace-active? [] (and (pos? @&TRACE) (@registry (reg-key "*" :label))))
 (def block-end [::block-end])
 (def compile-error [::compile-error])
-(declare EVAL!)
 (defn- exec-body [body] (try (or (nil? body) (EVAL! body)) (catch clojure.lang.ExceptionInfo e (trap e))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- end-statement!
@@ -1401,82 +1428,6 @@
                 (binding [*handlers* (inc (long *handlers*))] ((var-get (ns-resolve 'SNOBOL4clojure.core 'RUN-AT-ERROR)) h k e))
                 (ex-info (ex-message e) (-> data (dissoc :snobol/label :snobol/serial :snobol/fp :snobol/resume) (assoc :snobol/to to)) e))
             e)))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- failure-point
-    [f]
-    (let [d (inc (long *fp*))]
-        (binding [*fp* d] (try (f) (catch clojure.lang.ExceptionInfo e (let [e (at-error (error-decided e d) d) to (:snobol/to (ex-data e))] (if (and to (>= (long to) d)) nil (throw e))))))))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- eval-operands [operands] (loop [ops (seq operands) vals []] (if ops (let [v (EVAL! (first ops))] (when-not (nil? v) (recur (next ops) (conj vals v)))) vals)))
-(def &MAXLNGTH (atom 16777216))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- concat-value
-    [r]
-    (if
-        (and (list? r) (clojure.core/= (first r) 'SEQ))
-        (let [
-              parts (remove #(clojure.core/= ε %) (rest r))
-              _
-                  (when
-                      (next parts)
-                      (let [v (vec parts) n (count v) e8 #(throw (ex-info "concatenation left operand is not a string or pattern" {:snobol/error 8}))]
-                          (cond
-                              (textless? (v (clojure.core/- n 2))) (e8)
-                              (textless? (v (dec n))) (throw (ex-info "concatenation right operand is not a string or pattern" {:snobol/error 9}))
-                              (some textless? (subvec v 0 (clojure.core/- n 2))) (e8))))]
-            (cond
-                (every? #(or (string? %) (number? %) (instance? NAME %)) parts)
-                    (if
-                        (and (clojure.core/= 1 (count parts)) (< 1 (count (rest r))))
-                        (first parts)
-                        (let [t (apply str (map sstr parts))] (if (> (count t) (long @&MAXLNGTH)) (throw (ex-info "string length exceeds value of maxlngth keyword" {:snobol/error 205})) t)))
-                (clojure.core/= (count parts) (count (rest r))) r
-                (empty? (rest parts)) (first parts)
-                :else (apply list 'SEQ parts)))
-        r))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(deftype ObjKey [v] Object (equals [_ o] (and (instance? ObjKey o) (identical? v (.v ^ObjKey o)))) (hashCode [_] (System/identityHashCode v)))
-(defn- table-key [k] (if (object-identity? k) (ObjKey. k) k))
-(defn table-get [t k] (get @t (table-key k) (:dflt (meta t) ε)))
-(defn table-subscript [ks] (if (next ks) (throw (ex-info (error-message 237) {:snobol/error 237})) (first ks)))
-(defn- array-subscript [i] (if (integer? i) i (let [n (num i)] (if (and (double? n) (Double/isNaN n)) (throw (ex-info "array subscript is not integer" {:snobol/error 238})) (long n)))))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- array-check-bounds
-    [^SnobolArray arr idx-vec]
-    (let [dims (:dims arr) _ (when-not (clojure.core/= (count idx-vec) (count dims)) (throw (ex-info (error-message 236) {:snobol/error 236}))) idx-vec (mapv array-subscript idx-vec)]
-        (when (clojure.core/= (count idx-vec) (count dims)) (when (every? true? (map (fn [[lo hi] i] (and (integer? i) (>= i lo) (<= i hi))) dims idx-vec)) idx-vec))))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn array-get [^SnobolArray arr idx-vec] (when-let [k (array-check-bounds arr idx-vec)] (get @(:data arr) k (:dflt arr))))
-(def ^:private unused-unary-ops {'! "!" '% "%" '/ "/" 'sharp-op "#" '= "=" '| "|" (symbol "^") "^"})
-(defn- opsyn-key [spelling arity] (str spelling "/" arity))
-(def ^:private unused-binary-ops {'& "&" 'at-op "@" 'sharp-op "#" '% "%" 'tilde-op "~"})
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- name-value
-    [target]
-    (cond
-        (symbol? target) ($$ target)
-        (and (list? target) (equal (first target) '&) (clojure.core/= 2 (count target))) (EVAL! target)
-        :else (apply INVOKE (or (:container (meta target)) (first target)) (rest target))))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- deref-result [r] (if (instance? NameResult r) (name-value (:target r)) r))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- call-form?
-    [X]
-    (and (list? X) (symbol? (first X)) (contains? @<FUNS> (name (first X))) (not (:data (meta (get @<FUNS> (name (first X)))))) (let [v (reference (first X))] (not (or (table? v) (array? v))))))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn name-string [x] (if (instance? NAME x) (str (.n ^NAME x)) (str x)))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- indirect-target
-    [v]
-    (cond
-        (and (instance? NAME v) (list? (.n ^NAME v))) (.n ^NAME v)
-        (and (instance? NAME v) (instance? ExprVar (.n ^NAME v))) (.n ^NAME v)
-        (instance? NAME v) (symbol (name-string v))
-        (or (and (string? v) (not= "" v)) (number? v)) (symbol (sstr v))
-        :else (throw (ex-info "indirection operand is not name" {:snobol/error 239}))))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- applied-function [fname] (let [s (gtstg fname 60)] (when (clojure.core/= "" s) (throw (ex-info (error-message 60) {:snobol/error 60}))) (symbol s)))
-(defn- deferred? [x] (and (seq? x) (clojure.core/= 'DEFER! (first x)) (fn? (second x))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- evaluated-or-fail
     [f]
@@ -1897,168 +1848,6 @@
                         :else (returned-value!)))
             :else (let [r (apply INVOKE fsym args)] (cond (nil? r) nil (instance? NameResult r) (:target r) :else (throw (ex-info "function called by name returned a value" {:snobol/error 21})))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- assign-to [target v] (INVOKE '= target v))
-(def ^:private value-operators '#{= ?= ? | at-op + - sharp-op / * % ** ^! . tilde-op & SEQ})
-(defn- element-target [N] (when-some [c (if (seq? (first N)) (EVAL! (first N)) (first N))] (when-some [ks (eval-operands (rest N))] (with-meta (apply list c ks) (meta N)))))
-(defn array-in-bounds? [arr idx-vec] (some? (array-check-bounds arr idx-vec)))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- capture-target
-    [N]
-    (cond
-        (symbol? N) (fn [x] (assign-to N x))
-        (and (list? N) (equal (first N) '$) (clojure.core/= 2 (count N))) (when-some [v (EVAL! (second N))] (let [t (indirect-target v)] (fn [x] (assign-to t x))))
-        (and (list? N) (equal (first N) '&) (clojure.core/= 2 (count N))) (fn [x] (assign-to N x))
-        (and (list? N) (equal (first N) '*) (clojure.core/= 2 (count N))) (let [X (second N)] (fn [x] (when-some [t (name-of X)] (assign-to t x))))
-        (and (list? N) (symbol? (first N)) (not (:subscript (meta N))) (not (contains? value-operators (first N))) (let [v (reference (first N))] (not (or (table? v) (array? v)))))
-            (when-some [args (eval-operands (rest N))] (when-some [t (call-by-name (first N) args)] (fn [x] (assign-to t x))))
-        (list? N) (let [t (element-target N) c (when (symbol? (first t)) ($$ (first t)))] (when-not (and (array? c) (not (array-in-bounds? c (vec (rest t))))) (fn [x] (assign-to t x))))
-        true N))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- name-of-call [X] (when-some [args (eval-operands (rest X))] (let [r (apply INVOKE (first X) args)] (when (instance? NameResult r) r))))
-(defn protected-store! [sym val] (when (protected-variables (symbol (name sym))) (throw (ex-info (error-message 42) {:snobol/error 42}))) (snobol-set! sym val))
-(def ABORT (list 'ABORT!))
-(def ARB (list 'ARB!))
-(def BAL (list 'BAL!))
-(def FAIL (list 'FAIL!))
-(def REM (list 'REM!))
-(def SUCCEED (list 'SUCCEED!))
-(def ^:private pattern-keywords {"ABORT" (fn [] ABORT) "ARB" (fn [] ARB) "BAL" (fn [] BAL) "FAIL" (fn [] FAIL) "FENCE" (fn [] bare-fence) "REM" (fn [] REM) "SUCCEED" (fn [] SUCCEED)})
-(def ^:private op-spelling {'at-op "@" 'sharp-op "#" 'tilde-op "~"})
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn EVAL!
-    [E]
-    (when E
-        (cond
-            (nil? E) E
-            (char? E) E
-            (float? E) E
-            (string? E) E
-            (integer? E) E
-            (symbol? E) (let [v ($$ E)] (when (pos? (long @&TRACE)) (fire-access! E v)) (if (identical? v FENCE) bare-fence v))
-            (instance? ExprVar E) (EVAL! (.ir ^ExprVar E))
-            (and (vector? E) (clojure.core/= :comma (first E))) (loop [[a & more] (rest E)] (if more (if-some [v (failure-point #(EVAL! a))] v (recur more)) (EVAL! a)))
-            (vector? E) (let [evaled (eval-operands E)] (when evaled (concat-value (apply list 'SEQ evaled))))
-            (list? E)
-                (let [[op & parms] E]
-                    (cond
-                        (equal op 'pattern-constant) (let [v (primitive-pattern (first parms))] (if (identical? v FENCE) bare-fence v))
-                        (:subscript (meta E))
-                            (let [c (if (symbol? op) ($$ op) (EVAL! op)) c (if (instance? NAME c) ($$ (symbol (str (.n ^NAME c)))) c)]
-                                (when-some [ks (eval-operands parms)]
-                                    (cond
-                                        (table? c) (table-get c (table-subscript ks))
-                                        (array? c) (array-get c (vec ks))
-                                        :else (throw (ex-info "subscripted operand is not table or array" {:snobol/error 235})))))
-                        (or
-                            (and (clojure.core/= 1 (count parms)) (contains? unused-unary-ops op) (nil? (get @<FUNS> (opsyn-key (unused-unary-ops op) 1))))
-                            (and (clojure.core/= 2 (count parms)) (contains? unused-binary-ops op) (nil? (get @<FUNS> (opsyn-key (unused-binary-ops op) 2)))))
-                            (throw (ex-info "undefined operator referenced" {:snobol/error 29}))
-                        (and (equal op '?) (clojure.core/= 1 (count parms)) (nil? (get @<FUNS> (opsyn-key "?" 1)))) (when-not (nil? (EVAL! (first parms))) ε)
-                        (and
-                            (or (and (clojure.core/= 2 (count parms)) (or (equal op '.) (equal op '$))) (and (clojure.core/= 1 (count parms)) (or (equal op '*) (equal op '?))))
-                            (get @<FUNS> (opsyn-key (str op) (count parms))))
-                            (when-some [args (eval-operands parms)] (deref-result (apply (get @<FUNS> (opsyn-key (str op) (count parms))) args)))
-                        (equal op '.)
-                            (let [n (count parms)]
-                                (if
-                                    (clojure.core/= n 1)
-                                    (let [x (first parms)]
-                                        (cond
-                                            (call-form? x)
-                                                (when-some [args (eval-operands (rest x))]
-                                                    (let [r (apply INVOKE (first x) args)]
-                                                        (cond
-                                                            (instance? NameResult r) (NAME. (:target r))
-                                                            (nil? r) nil
-                                                            :else (throw (ex-info "function called by name returned a value" {:snobol/error 21})))))
-                                            (and (list? x) (equal (first x) '&) (clojure.core/= 2 (count x))) (NAME. x)
-                                            (and (list? x) (equal (first x) '$) (clojure.core/= 2 (count x))) (when-some [v (EVAL! (second x))] (NAME. (indirect-target v)))
-                                            (and (list? x) (equal (first x) '*) (clojure.core/= 2 (count x))) (let [E (second x)] (NAME. (if (symbol? E) E (->ExprVar E))))
-                                            (and (list? x) (>= (count x) 2))
-                                                (when-some [ks (eval-operands (rest x))]
-                                                    (let [v (when (symbol? (first x)) (reference (first x)))]
-                                                        (if
-                                                            (or (table? v) (array? v) (:subscript (meta x)) (not (symbol? (first x))))
-                                                            (NAME. (cond-> (apply list (first x) ks) (or (table? v) (array? v)) (with-meta {:container v})))
-                                                            (when-some [t (call-by-name (first x) ks)] (NAME. t)))))
-                                            :else (NAME. x)))
-                                    (let [[P N] parms] (when-some [p (EVAL! P)] (when-some [t (capture-target N)] (INVOKE '. p t))))))
-                        (and (equal op 'at-op) (clojure.core/= 1 (count parms))) (when-some [t (capture-target (first parms))] (list 'CURSOR-IMM! t))
-                        (equal op '$)
-                            (if
-                                (clojure.core/= 1 (count parms))
-                                (when-some [v (EVAL! (first parms))] (EVAL! (indirect-target v)))
-                                (let [[P N] parms] (when-some [p (EVAL! P)] (when-some [t (capture-target N)] (INVOKE '$ p t)))))
-                        (and (equal op '=) (list? (first parms)) (clojure.core/= 2 (count (first parms))) (equal (first (first parms)) '$))
-                            (let [[[_ X] R] parms] (when-some [v (EVAL! X)] (INVOKE '= (indirect-target v) (EVAL! R))))
-                        (and (equal op '=) (list? (first parms)) (equal (first (first parms)) 'ITEM) (<= 3 (count (first parms))))
-                            (let [[_ container-expr & key-exprs] (first parms)]
-                                (when-some [c (EVAL! container-expr)] (when-some [ks (eval-operands key-exprs)] (when-some [v (EVAL! (second parms))] (INVOKE '= (apply list c ks) v)))))
-                        (and (equal op '=) (list? (first parms)) (equal (first (first parms)) 'APPLY) (<= 2 (count (first parms))))
-                            (when-some [[f & as] (eval-operands (rest (first parms)))]
-                                (let [fsym (symbol (name-string f)) df (get @<FUNS> (name fsym))]
-                                    (if
-                                        (and df (not (:data (meta df))))
-                                        (let [r (apply INVOKE fsym as)] (when (instance? NameResult r) (when-some [v (EVAL! (second parms))] (INVOKE '= (:target r) v))))
-                                        (when-some [v (EVAL! (second parms))] (INVOKE '= (apply list fsym as) v)))))
-                        (and
-                            (equal op '=)
-                            (list? (first parms))
-                            (or
-                                (and (clojure.core/= 2 (count (first parms))) (contains? unused-unary-ops (first (first parms))) (get @<FUNS> (opsyn-key (unused-unary-ops (first (first parms))) 1)))
-                                (and
-                                    (clojure.core/= 3 (count (first parms)))
-                                    (contains? unused-binary-ops (first (first parms)))
-                                    (get @<FUNS> (opsyn-key (unused-binary-ops (first (first parms))) 2)))))
-                            (let [
-                                  N (first parms)
-                                  f (if (clojure.core/= 2 (count N)) (get @<FUNS> (opsyn-key (unused-unary-ops (first N)) 1)) (get @<FUNS> (opsyn-key (unused-binary-ops (first N)) 2)))]
-                                (when-some [args (eval-operands (rest N))] (let [r (apply f args)] (when (instance? NameResult r) (when-some [v (EVAL! (second parms))] (INVOKE '= (:target r) v))))))
-                        (and (equal op '=) (call-form? (first parms))) (when-some [r (name-of-call (first parms))] (when-some [v (EVAL! (second parms))] (INVOKE '= (:target r) v)))
-                        (equal op '=)
-                            (let [
-                                  [N R] parms
-                                  N'
-                                      (if
-                                          (and (list? N) (>= (count N) 2) (not (clojure.core/= (first N) '&)))
-                                          (let [container-sym (first N) container-val (if (list? container-sym) (EVAL! container-sym) ($$ container-sym))]
-                                              (cond
-                                                  (nil? container-val) nil
-                                                  :else (when-some [ks (eval-operands (rest N))] (with-meta (apply list (if (list? container-sym) container-val container-sym) ks) (meta N)))))
-                                          N)]
-                                (let [
-                                      c (when (list? N') (if (symbol? (first N')) ($$ (first N')) (first N')))
-                                      field? (and (list? N') (symbol? (first N')) (not (:subscript (meta N'))) (:data (meta (get @<FUNS> (name (first N'))))))]
-                                    (when
-                                        (and N' (not (and (array? c) (not field?) (not (array-in-bounds? c (vec (rest N')))))))
-                                        (let [r (EVAL! R)] (when (and (some? r) (symbol? N') (protected-variables N')) (protected-store! N' r)) (INVOKE '= N' r)))))
-                        (equal op '?=)
-                            (let [
-                                  [N P R] parms
-                                  N'
-                                      (cond
-                                          (and (list? N) (equal (first N) '$) (clojure.core/= 2 (count N))) (when-some [v (EVAL! (second N))] (indirect-target v))
-                                          (and (list? N) (not (equal (first N) '&))) (when-some [ks (eval-operands (rest N))] (with-meta (apply list (first N) ks) (meta N)))
-                                          :else N)]
-                                (when N' (when-some [p (EVAL! P)] (INVOKE '?= N' p R))))
-                        (and (equal op '&) (clojure.core/= 1 (count parms)) (pattern-keywords (str (first parms)))) ((pattern-keywords (str (first parms))))
-                        (and (equal op '&) (clojure.core/= 1 (count parms)))
-                            (let [
-                                  [N] parms
-                                  kw-sym (symbol (str "&" N))
-                                  vr (when-not (clojure.core/= kw-sym '&) (ns-resolve (find-ns 'SNOBOL4clojure.core) kw-sym))
-                                  v (if vr (var-get vr) (throw (ex-info "keyword operand is not name of defined keyword" {:snobol/error 251})))]
-                                (if (instance? clojure.lang.IDeref v) @v v))
-                        (and (equal op 'SEQ) (not (program-fn op))) (apply str (map #(sstr (EVAL! %)) parms))
-                        (and (equal op '*) (clojure.core/= (count parms) 1)) (let [sym (first parms)] (with-meta (list 'DEFER! (fn [] (EVAL! sym))) {:defer-var sym}))
-                        (list? op) (when-some [container (EVAL! op)] (when-some [args (eval-operands parms)] (apply INVOKE container args)))
-                        true
-                            (let [
-                                  args (if (and (equal op 'tilde-op) (clojure.core/= 1 (count parms))) [(failure-point #(EVAL! (first parms)))] (eval-operands parms))
-                                  opsyn-fn (get @<FUNS> (opsyn-key (get op-spelling op (str op)) (count parms)))]
-                                (when args (deref-result (if opsyn-fn (apply opsyn-fn args) (apply INVOKE op args)))))))
-            true E)))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- name-of
     [X]
     (cond
@@ -2078,6 +1867,7 @@
 (def &DUMP (atom 0))
 (def &FTRACE (atom 0))
 (def &FULLSCAN (atom 1))
+(def &MAXLNGTH (atom 16777216))
 (def &OUTPUT (atom 1))
 (def &IOCOMPAT (atom :catspaw))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -2126,7 +1916,35 @@
                         (or (contains? keyword-defaults vr) (clojure.core/= vr #'&TRACE)) (do (reset! @vr n) n)
                         :else (throw (ex-info "keyword in assignment is protected" {:snobol/error 209}))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- concat-value
+    [r]
+    (if
+        (and (list? r) (clojure.core/= (first r) 'SEQ))
+        (let [
+              parts (remove #(clojure.core/= ε %) (rest r))
+              _
+                  (when
+                      (next parts)
+                      (let [v (vec parts) n (count v) e8 #(throw (ex-info "concatenation left operand is not a string or pattern" {:snobol/error 8}))]
+                          (cond
+                              (textless? (v (clojure.core/- n 2))) (e8)
+                              (textless? (v (dec n))) (throw (ex-info "concatenation right operand is not a string or pattern" {:snobol/error 9}))
+                              (some textless? (subvec v 0 (clojure.core/- n 2))) (e8))))]
+            (cond
+                (every? #(or (string? %) (number? %) (instance? NAME %)) parts)
+                    (if
+                        (and (clojure.core/= 1 (count parts)) (< 1 (count (rest r))))
+                        (first parts)
+                        (let [t (apply str (map sstr parts))] (if (> (count t) (long @&MAXLNGTH)) (throw (ex-info "string length exceeds value of maxlngth keyword" {:snobol/error 205})) t)))
+                (clojure.core/= (count parts) (count (rest r))) r
+                (empty? (rest parts)) (first parts)
+                :else (apply list 'SEQ parts)))
+        r))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(deftype ObjKey [v] Object (equals [_ o] (and (instance? ObjKey o) (identical? v (.v ^ObjKey o)))) (hashCode [_] (System/identityHashCode v)))
+(defn- table-key [k] (if (object-identity? k) (ObjKey. k) k))
 (defn table-set [t k v] (let [k (table-key k)] (when-let [o (:order (meta t))] (swap! o (fn [m] (if (contains? m k) m (assoc m k (count m)))))) (swap! t assoc k v)) v)
+(defn table-subscript [ks] (if (next ks) (throw (ex-info (error-message 237) {:snobol/error 237})) (first ks)))
 (def <ETRACES> (atom []))
 (def elements <ETRACES>)
 (defn- emit-line! [text] (when (pos? @&TRACE) (swap! &TRACE dec) (trace-println (star-field) " " text)))
@@ -2166,6 +1984,13 @@
             (emit-line! (str (apply str (repeat @&FNCLEVEL \i)) " " (if-let [h (holder-name c)] (str h (subs (:text e) (.indexOf ^String (:text e) "<"))) (:text e)) " = " (trace-val new-val))))
         (:label e)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- array-subscript [i] (if (integer? i) i (let [n (num i)] (if (and (double? n) (Double/isNaN n)) (throw (ex-info "array subscript is not integer" {:snobol/error 238})) (long n)))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- array-check-bounds
+    [^SnobolArray arr idx-vec]
+    (let [dims (:dims arr) _ (when-not (clojure.core/= (count idx-vec) (count dims)) (throw (ex-info (error-message 236) {:snobol/error 236}))) idx-vec (mapv array-subscript idx-vec)]
+        (when (clojure.core/= (count idx-vec) (count dims)) (when (every? true? (map (fn [[lo hi] i] (and (integer? i) (>= i lo) (<= i hi))) dims idx-vec)) idx-vec))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn array-set [^SnobolArray arr idx-vec v] (when-let [k (array-check-bounds arr idx-vec)] (swap! (:data arr) assoc k v) v))
 (defn- output-text [v] (if (or (and (or (list? v) (vector? v)) (#{"PATTERN" "EXPRESSION"} (DATATYPE v))) (textless? v)) (DATATYPE v) (sstr v)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -2204,6 +2029,7 @@
 (def <NAMES> (atom #{}))
 (defn note-names! [names] (when (seq names) (swap! <NAMES> into names)))
 (def <FDEFS> (atom {}))
+(defn- opsyn-key [spelling arity] (str spelling "/" arity))
 (defn APPLY [fname & fargs] (apply INVOKE (applied-function fname) fargs))
 (defn- str-arg ^String [x n] (gtstg x n))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -2450,6 +2276,7 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn DUMP [] ε)
 (def ^:private pattern-variables '#{ABORT ARB BAL FAIL FENCE REM SUCCEED})
+(def ^:private bare-fence (FENCE))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- named-patterns
     []
@@ -2575,6 +2402,8 @@
                         :else (apply str (repeat n s))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn REVERSE [s] (apply str (clojure.string/reverse (str-arg s 177))))
+(defn table-get [t k] (get @t (table-key k) (:dflt (meta t) ε)))
+(defn array-get [^SnobolArray arr idx-vec] (when-let [k (array-check-bounds arr idx-vec)] (get @(:data arr) k (:dflt arr))))
 (defn ITEM [c & ks] (cond (table? c) (table-get c (table-subscript ks)) (array? c) (array-get c (vec ks)) :else nil))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn array-prototype
@@ -3484,6 +3313,8 @@
             (let [resolved (when (and (re-matches #"[A-Z][A-Z0-9]*" (name sym)) (not (no-function sym))) (when (builtin-names sym) (ns-resolve (find-ns 'SNOBOL4clojure.core) sym)))]
                 (if (instance? clojure.lang.Var resolved) (var-get resolved) ($$ N))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(declare fire-access!)
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn INVOKE
     [op & args]
     (if-let [pf (program-fn op)]
@@ -3807,24 +3638,200 @@
         (let [n (if (instance? NAME f) (str (.n ^NAME f)) (str f))]
             (or (get @<FUNS> n) (when (contains? system-functions n) (let [invoke (ns-resolve (the-ns 'SNOBOL4clojure.core) 'INVOKE)] (fn [& args] (apply @invoke (symbol n) args))))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn fire-keyword!
-    [kw new-val]
-    (when
-        (pos? @&TRACE)
-        (when-let [entry (@registry (reg-key kw :keyword))]
-            (if-let [f (trace-fn entry)] (call-trace-fn! f kw entry) (do (swap! &TRACE dec) (trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " &" kw " = " (trace-val new-val)))))))
+(defn fire-access!
+    [sym v]
+    (when-let [entry (@registry (reg-key sym :access))]
+        (if-let [f (trace-fn entry)] (call-trace-fn! f sym entry) (do (swap! &TRACE dec) (trace-println (star-field) " " (apply str (repeat @&FNCLEVEL \i)) " " sym " = " (trace-val v))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- matching
+(defn- failure-point
     [f]
-    (binding [*matching* true]
-        (try
-            (f)
-            (catch clojure.lang.ExceptionInfo e
-                (let [{n :snobol/error abort :snobol/abort :as data} (ex-data e)]
-                    (if
-                        (and n (not abort) (zero? (long @&ERRLIMIT)) (not (contains? data :snobol/to)) (not (contains? data :snobol/label)) (not (<= 43 (long n) 58)))
-                        (do (reset! &ERRTYPE n) (fire-keyword! "ERRTYPE" n) (reset! &ERRTEXT (ex-message e)) nil)
-                        (throw e)))))))
+    (let [d (inc (long *fp*))]
+        (binding [*fp* d] (try (f) (catch clojure.lang.ExceptionInfo e (let [e (at-error (error-decided e d) d) to (:snobol/to (ex-data e))] (if (and to (>= (long to) d)) nil (throw e))))))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(def ^:private unused-unary-ops {'! "!" '% "%" '/ "/" 'sharp-op "#" '= "=" '| "|" (symbol "^") "^"})
+(def ^:private unused-binary-ops {'& "&" 'at-op "@" 'sharp-op "#" '% "%" 'tilde-op "~"})
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- name-value
+    [target]
+    (cond
+        (symbol? target) ($$ target)
+        (and (list? target) (equal (first target) '&) (clojure.core/= 2 (count target))) (EVAL! target)
+        :else (apply INVOKE (or (:container (meta target)) (first target)) (rest target))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- deref-result [r] (if (instance? NameResult r) (name-value (:target r)) r))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- call-form?
+    [X]
+    (and (list? X) (symbol? (first X)) (contains? @<FUNS> (name (first X))) (not (:data (meta (get @<FUNS> (name (first X)))))) (let [v (reference (first X))] (not (or (table? v) (array? v))))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- assign-to [target v] (INVOKE '= target v))
+(defn array-in-bounds? [arr idx-vec] (some? (array-check-bounds arr idx-vec)))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- capture-target
+    [N]
+    (cond
+        (symbol? N) (fn [x] (assign-to N x))
+        (and (list? N) (equal (first N) '$) (clojure.core/= 2 (count N))) (when-some [v (EVAL! (second N))] (let [t (indirect-target v)] (fn [x] (assign-to t x))))
+        (and (list? N) (equal (first N) '&) (clojure.core/= 2 (count N))) (fn [x] (assign-to N x))
+        (and (list? N) (equal (first N) '*) (clojure.core/= 2 (count N))) (let [X (second N)] (fn [x] (when-some [t (name-of X)] (assign-to t x))))
+        (and (list? N) (symbol? (first N)) (not (:subscript (meta N))) (not (contains? value-operators (first N))) (let [v (reference (first N))] (not (or (table? v) (array? v)))))
+            (when-some [args (eval-operands (rest N))] (when-some [t (call-by-name (first N) args)] (fn [x] (assign-to t x))))
+        (list? N) (let [t (element-target N) c (when (symbol? (first t)) ($$ (first t)))] (when-not (and (array? c) (not (array-in-bounds? c (vec (rest t))))) (fn [x] (assign-to t x))))
+        true N))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn protected-store! [sym val] (when (protected-variables (symbol (name sym))) (throw (ex-info (error-message 42) {:snobol/error 42}))) (snobol-set! sym val))
+(def ABORT (list 'ABORT!))
+(def ARB (list 'ARB!))
+(def BAL (list 'BAL!))
+(def FAIL (list 'FAIL!))
+(def REM (list 'REM!))
+(def SUCCEED (list 'SUCCEED!))
+(def ^:private pattern-keywords {"ABORT" (fn [] ABORT) "ARB" (fn [] ARB) "BAL" (fn [] BAL) "FAIL" (fn [] FAIL) "FENCE" (fn [] bare-fence) "REM" (fn [] REM) "SUCCEED" (fn [] SUCCEED)})
+(def ^:private op-spelling {'at-op "@" 'sharp-op "#" 'tilde-op "~"})
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn EVAL!
+    [E]
+    (when E
+        (cond
+            (nil? E) E
+            (char? E) E
+            (float? E) E
+            (string? E) E
+            (integer? E) E
+            (symbol? E) (let [v ($$ E)] (when (pos? (long @&TRACE)) (fire-access! E v)) (if (identical? v FENCE) bare-fence v))
+            (instance? ExprVar E) (EVAL! (.ir ^ExprVar E))
+            (and (vector? E) (clojure.core/= :comma (first E))) (loop [[a & more] (rest E)] (if more (if-some [v (failure-point #(EVAL! a))] v (recur more)) (EVAL! a)))
+            (vector? E) (let [evaled (eval-operands E)] (when evaled (concat-value (apply list 'SEQ evaled))))
+            (list? E)
+                (let [[op & parms] E]
+                    (cond
+                        (equal op 'pattern-constant) (let [v (primitive-pattern (first parms))] (if (identical? v FENCE) bare-fence v))
+                        (:subscript (meta E))
+                            (let [c (if (symbol? op) ($$ op) (EVAL! op)) c (if (instance? NAME c) ($$ (symbol (str (.n ^NAME c)))) c)]
+                                (when-some [ks (eval-operands parms)]
+                                    (cond
+                                        (table? c) (table-get c (table-subscript ks))
+                                        (array? c) (array-get c (vec ks))
+                                        :else (throw (ex-info "subscripted operand is not table or array" {:snobol/error 235})))))
+                        (or
+                            (and (clojure.core/= 1 (count parms)) (contains? unused-unary-ops op) (nil? (get @<FUNS> (opsyn-key (unused-unary-ops op) 1))))
+                            (and (clojure.core/= 2 (count parms)) (contains? unused-binary-ops op) (nil? (get @<FUNS> (opsyn-key (unused-binary-ops op) 2)))))
+                            (throw (ex-info "undefined operator referenced" {:snobol/error 29}))
+                        (and (equal op '?) (clojure.core/= 1 (count parms)) (nil? (get @<FUNS> (opsyn-key "?" 1)))) (when-not (nil? (EVAL! (first parms))) ε)
+                        (and
+                            (or (and (clojure.core/= 2 (count parms)) (or (equal op '.) (equal op '$))) (and (clojure.core/= 1 (count parms)) (or (equal op '*) (equal op '?))))
+                            (get @<FUNS> (opsyn-key (str op) (count parms))))
+                            (when-some [args (eval-operands parms)] (deref-result (apply (get @<FUNS> (opsyn-key (str op) (count parms))) args)))
+                        (equal op '.)
+                            (let [n (count parms)]
+                                (if
+                                    (clojure.core/= n 1)
+                                    (let [x (first parms)]
+                                        (cond
+                                            (call-form? x)
+                                                (when-some [args (eval-operands (rest x))]
+                                                    (let [r (apply INVOKE (first x) args)]
+                                                        (cond
+                                                            (instance? NameResult r) (NAME. (:target r))
+                                                            (nil? r) nil
+                                                            :else (throw (ex-info "function called by name returned a value" {:snobol/error 21})))))
+                                            (and (list? x) (equal (first x) '&) (clojure.core/= 2 (count x))) (NAME. x)
+                                            (and (list? x) (equal (first x) '$) (clojure.core/= 2 (count x))) (when-some [v (EVAL! (second x))] (NAME. (indirect-target v)))
+                                            (and (list? x) (equal (first x) '*) (clojure.core/= 2 (count x))) (let [E (second x)] (NAME. (if (symbol? E) E (->ExprVar E))))
+                                            (and (list? x) (>= (count x) 2))
+                                                (when-some [ks (eval-operands (rest x))]
+                                                    (let [v (when (symbol? (first x)) (reference (first x)))]
+                                                        (if
+                                                            (or (table? v) (array? v) (:subscript (meta x)) (not (symbol? (first x))))
+                                                            (NAME. (cond-> (apply list (first x) ks) (or (table? v) (array? v)) (with-meta {:container v})))
+                                                            (when-some [t (call-by-name (first x) ks)] (NAME. t)))))
+                                            :else (NAME. x)))
+                                    (let [[P N] parms] (when-some [p (EVAL! P)] (when-some [t (capture-target N)] (INVOKE '. p t))))))
+                        (and (equal op 'at-op) (clojure.core/= 1 (count parms))) (when-some [t (capture-target (first parms))] (list 'CURSOR-IMM! t))
+                        (equal op '$)
+                            (if
+                                (clojure.core/= 1 (count parms))
+                                (when-some [v (EVAL! (first parms))] (EVAL! (indirect-target v)))
+                                (let [[P N] parms] (when-some [p (EVAL! P)] (when-some [t (capture-target N)] (INVOKE '$ p t)))))
+                        (and (equal op '=) (list? (first parms)) (clojure.core/= 2 (count (first parms))) (equal (first (first parms)) '$))
+                            (let [[[_ X] R] parms] (when-some [v (EVAL! X)] (INVOKE '= (indirect-target v) (EVAL! R))))
+                        (and (equal op '=) (list? (first parms)) (equal (first (first parms)) 'ITEM) (<= 3 (count (first parms))))
+                            (let [[_ container-expr & key-exprs] (first parms)]
+                                (when-some [c (EVAL! container-expr)] (when-some [ks (eval-operands key-exprs)] (when-some [v (EVAL! (second parms))] (INVOKE '= (apply list c ks) v)))))
+                        (and (equal op '=) (list? (first parms)) (equal (first (first parms)) 'APPLY) (<= 2 (count (first parms))))
+                            (when-some [[f & as] (eval-operands (rest (first parms)))]
+                                (let [fsym (symbol (name-string f)) df (get @<FUNS> (name fsym))]
+                                    (if
+                                        (and df (not (:data (meta df))))
+                                        (let [r (apply INVOKE fsym as)] (when (instance? NameResult r) (when-some [v (EVAL! (second parms))] (INVOKE '= (:target r) v))))
+                                        (when-some [v (EVAL! (second parms))] (INVOKE '= (apply list fsym as) v)))))
+                        (and
+                            (equal op '=)
+                            (list? (first parms))
+                            (or
+                                (and (clojure.core/= 2 (count (first parms))) (contains? unused-unary-ops (first (first parms))) (get @<FUNS> (opsyn-key (unused-unary-ops (first (first parms))) 1)))
+                                (and
+                                    (clojure.core/= 3 (count (first parms)))
+                                    (contains? unused-binary-ops (first (first parms)))
+                                    (get @<FUNS> (opsyn-key (unused-binary-ops (first (first parms))) 2)))))
+                            (let [
+                                  N (first parms)
+                                  f (if (clojure.core/= 2 (count N)) (get @<FUNS> (opsyn-key (unused-unary-ops (first N)) 1)) (get @<FUNS> (opsyn-key (unused-binary-ops (first N)) 2)))]
+                                (when-some [args (eval-operands (rest N))] (let [r (apply f args)] (when (instance? NameResult r) (when-some [v (EVAL! (second parms))] (INVOKE '= (:target r) v))))))
+                        (and
+                            (equal op '=)
+                            (list? (first parms))
+                            (symbol? (first (first parms)))
+                            (not (:subscript (meta (first parms))))
+                            (not (contains? value-operators (first (first parms))))
+                            (let [v (reference (first (first parms)))] (not (or (table? v) (array? v)))))
+                            (when-some [args (eval-operands (rest (first parms)))] (when-some [t (call-by-name (first (first parms)) args)] (when-some [v (EVAL! (second parms))] (INVOKE '= t v))))
+                        (equal op '=)
+                            (let [
+                                  [N R] parms
+                                  N'
+                                      (if
+                                          (and (list? N) (>= (count N) 2) (not (clojure.core/= (first N) '&)))
+                                          (let [container-sym (first N) container-val (if (list? container-sym) (EVAL! container-sym) ($$ container-sym))]
+                                              (cond
+                                                  (nil? container-val) nil
+                                                  :else (when-some [ks (eval-operands (rest N))] (with-meta (apply list (if (list? container-sym) container-val container-sym) ks) (meta N)))))
+                                          N)]
+                                (let [
+                                      c (when (list? N') (if (symbol? (first N')) ($$ (first N')) (first N')))
+                                      field? (and (list? N') (symbol? (first N')) (not (:subscript (meta N'))) (:data (meta (get @<FUNS> (name (first N'))))))]
+                                    (when
+                                        (and N' (not (and (array? c) (not field?) (not (array-in-bounds? c (vec (rest N')))))))
+                                        (let [r (EVAL! R)] (when (and (some? r) (symbol? N') (protected-variables N')) (protected-store! N' r)) (INVOKE '= N' r)))))
+                        (equal op '?=)
+                            (let [
+                                  [N P R] parms
+                                  N'
+                                      (cond
+                                          (and (list? N) (equal (first N) '$) (clojure.core/= 2 (count N))) (when-some [v (EVAL! (second N))] (indirect-target v))
+                                          (and (list? N) (not (equal (first N) '&))) (when-some [ks (eval-operands (rest N))] (with-meta (apply list (first N) ks) (meta N)))
+                                          :else N)]
+                                (when N' (when-some [p (EVAL! P)] (INVOKE '?= N' p R))))
+                        (and (equal op '&) (clojure.core/= 1 (count parms)) (pattern-keywords (str (first parms)))) ((pattern-keywords (str (first parms))))
+                        (and (equal op '&) (clojure.core/= 1 (count parms)))
+                            (let [
+                                  [N] parms
+                                  kw-sym (symbol (str "&" N))
+                                  vr (when-not (clojure.core/= kw-sym '&) (ns-resolve (find-ns 'SNOBOL4clojure.core) kw-sym))
+                                  v (if vr (var-get vr) (throw (ex-info "keyword operand is not name of defined keyword" {:snobol/error 251})))]
+                                (if (instance? clojure.lang.IDeref v) @v v))
+                        (and (equal op 'SEQ) (not (program-fn op))) (apply str (map #(sstr (EVAL! %)) parms))
+                        (and (equal op '*) (clojure.core/= (count parms) 1)) (let [sym (first parms)] (with-meta (list 'DEFER! (fn [] (EVAL! sym))) {:defer-var sym}))
+                        (list? op) (when-some [container (EVAL! op)] (when-some [args (eval-operands parms)] (apply INVOKE container args)))
+                        true
+                            (let [
+                                  args (if (and (equal op 'tilde-op) (clojure.core/= 1 (count parms))) [(failure-point #(EVAL! (first parms)))] (eval-operands parms))
+                                  opsyn-fn (get @<FUNS> (opsyn-key (get op-spelling op (str op)) (count parms)))]
+                                (when args (deref-result (if opsyn-fn (apply opsyn-fn args) (apply INVOKE op args)))))))
+            true E)))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- eval-operands [operands] (loop [ops (seq operands) vals []] (if ops (let [v (EVAL! (first ops))] (when-not (nil? v) (recur (next ops) (conj vals v)))) vals)))
+(defn- name-of-call [X] (when-some [args (eval-operands (rest X))] (let [r (apply INVOKE (first X) args)] (when (instance? NameResult r) r))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn MATCH
     [S P]

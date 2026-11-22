@@ -79,7 +79,7 @@
     (let [opf (when (symbol? c) (case (count ks) 1 (when-some [s (unused-unary-ops c)] (get @<FUNS> (opsyn-key s 1))) 2 (when-some [s (unused-binary-ops c)] (get @<FUNS> (opsyn-key s 2))) nil))]
         (cond
             opf (by-name (apply opf ks))
-            (and (symbol? c) (call-form? (with-meta (list c) m))) (by-name (apply INVOKE c ks))
+            (and (symbol? c) (not (:subscript m)) (let [v (reference c)] (not (or (table? v) (array? v))))) (let [t (call-by-name c ks)] (if (nil? t) (fail) t))
             :else
                 (let [v (if (symbol? c) ($$ c) c) field? (and (symbol? c) (not (:subscript m)) (:data (meta (get @<FUNS> (name c)))))]
                     (if (and (array? v) (not field?) (not (array-in-bounds? v (vec ks)))) (fail) (with-meta (apply list c ks) m))))))
