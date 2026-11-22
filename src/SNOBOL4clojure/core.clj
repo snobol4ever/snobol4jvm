@@ -1521,7 +1521,7 @@
 (def ^:private operator-char? #{\+ \- \* \/ \! \^ \$ \. \& \@ \~ \? \% \# \| \=})
 (defn- letter? [c] (and c (or (<= (int \A) (int c) (int \Z)) (<= (int \a) (int c) (int \z)))))
 (declare parse-operand)
-(defn- operand-after-unary [s i] (let [c (char-at s i)] (if (and (operator-char? c) (blank? (char-at s (inc i)))) (fail! 233 i) (parse-operand s i))))
+(defn- operand-after-unary [s i] (let [c (char-at s i)] (if (and (operator-char? c) (let [d (char-at s (inc i))] (or (nil? d) (blank? d)))) (fail! 233 i) (parse-operand s i))))
 (defn- digit? [c] (and c (<= (int \0) (int c) (int \9))))
 (defn- name-char? [c] (or (letter? c) (digit? c) (clojure.core/= c \_) (clojure.core/= c \.)))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
