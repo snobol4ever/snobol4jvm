@@ -3557,8 +3557,8 @@
                                       :else (long v))))
                       _
                           (cond
-                              (clojure.core/= "" new-name) (fail! 155 "OPSYN first arg is not natural variable name")
-                              (clojure.core/= "" old-name) (fail! 154 "OPSYN second arg is not natural variable name")
+                              (or (clojure.core/= "" new-name) (not (or (string? new-arg) (number? new-arg) (instance? NAME new-arg)))) (fail! 155 "OPSYN first arg is not natural variable name")
+                              (or (clojure.core/= "" old-name) (not (or (string? old-arg) (number? old-arg) (instance? NAME old-arg)))) (fail! 154 "OPSYN second arg is not natural variable name")
                               (or (nil? n) (zero? n)) (when (contains? system-functions new-name) (fail! 248 "attempted redefinition of system function"))
                               (and (> n 2) (not (#{"&" "@" "#" "%" "~"} new-name))) (fail! 156 "OPSYN first arg is not correct operator name")
                               :else nil)
@@ -3566,7 +3566,10 @@
                       old-fn
                           (or
                               (get @<FUNS> old-name)
-                              (if (and n (pos? n)) (if (clojure.core/= n 1) (fn [a] (INVOKE old-sym a)) (fn [a b] (INVOKE old-sym a b))) (fn [& a] (apply INVOKE old-sym (vec a)))))]
+                              (cond
+                                  (and n (pos? n)) (if (clojure.core/= n 1) (fn [a] (INVOKE old-sym a)) (fn [a b] (INVOKE old-sym a b)))
+                                  (re-matches #"[A-Za-z][A-Za-z0-9_.]*" old-name) (fn [& a] (apply INVOKE old-sym (vec a)))
+                                  :else (fn [& _] (throw (ex-info "undefined function called" {:snobol/error 22})))))]
                     (if (and n (pos? n)) (swap! <FUNS> assoc (opsyn-key (if (and (clojure.core/= 2 n) (#{"^" "!"} new-name)) "**" new-name) n) old-fn) (swap! <FUNS> assoc new-name old-fn))
                     ε)
             LOAD
