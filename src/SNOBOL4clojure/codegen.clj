@@ -284,7 +284,7 @@
 (defn goto ([label] (goto label (@<STNO> label))) ([label pc] (when (pos? (long @&TRACE)) (fire-label! label)) pc))
 (defn- land [pc err] (ex-info "jump" {::land [pc err]}))
 (defn- end-pc [] (or (@<STNO> :END) (@<STNO> :end) (inc (long @STNO))))
-(defn computed [v] (if (integer? v) v (keyword (str v))))
+(defn computed [v] (keyword (str v)))
 (defn direct [v] (if (instance? SNOBOL4clojure.core.CodeBlock v) (.entry ^SNOBOL4clojure.core.CodeBlock v) (throw (ex-info "goto operand in direct goto is not code" {:snobol/error 24}))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- reached

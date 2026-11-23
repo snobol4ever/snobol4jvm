@@ -1324,7 +1324,7 @@
             (computed-target
                 [tgt]
                 (cond
-                    (and (list? tgt) (clojure.core/= '$ (first tgt)) (clojure.core/= 2 (count tgt))) (when-some [v (EVAL! (second tgt))] (if (integer? v) v (keyword (str v))))
+                    (and (list? tgt) (clojure.core/= '$ (first tgt)) (clojure.core/= 2 (count tgt))) (when-some [v (EVAL! (second tgt))] (keyword (str v)))
                     (and (list? tgt) (clojure.core/= 'DIRECT (first tgt)))
                         (when-some [v (EVAL! (second tgt))] (if (instance? CodeBlock v) (.entry ^CodeBlock v) (throw (ex-info "goto operand in direct goto is not code" {:snobol/error 24}))))
                     (and (list? tgt) (symbol? (first tgt)) (not (:subscript (meta tgt))))
