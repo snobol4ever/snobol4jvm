@@ -2954,6 +2954,7 @@
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (def <DIAGNOSTICS> (atom []))
 (def <CARD-LISTING> (atom false))
+(def <CARD-NOEXEC> (atom false))
 (def <SOURCE> (atom nil))
 (defn- comment? [cmd] (re-find #"^\*" cmd))
 (defn- control? [cmd] (re-find #"^\-" cmd))
@@ -3003,7 +3004,14 @@
                                                 "LINE"
                                                     (let [[_ a2 e2] (arg e a (fn [[t2 a2 e2]] (and (clojure.core/= t2 :int) (pos? (Long/parseLong (subs s a2 e2))))))]
                                                         (arg e2 a2 (fn [[t3]] (#{:end :str} t3))))
-                                                (do (case k "LIST" (reset! <CARD-LISTING> true) "NOLI" (reset! <CARD-LISTING> false) nil) (when-let [j (more e)] (recur j)))))))))))
+                                                (do
+                                                    (case k
+                                                        "LIST" (reset! <CARD-LISTING> true)
+                                                        "NOLI" (reset! <CARD-LISTING> false)
+                                                        "NOEX" (reset! <CARD-NOEXEC> true)
+                                                        "EXEC" (reset! <CARD-NOEXEC> false)
+                                                        nil)
+                                                    (when-let [j (more e)] (recur j)))))))))))
                 nil)
             (catch clojure.lang.ExceptionInfo x (when-let [n (::error (ex-data x))] [n (inc (long (::at (ex-data x))))])))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -3165,6 +3173,7 @@
               raw-stmts (split-source expanded record?)
               _ (reset! <DIAGNOSTICS> (:diagnostics (meta raw-stmts)))
               _ (reset! <CARD-LISTING> false)
+              _ (reset! <CARD-NOEXEC> false)
               _ (reset! <SOURCE> {:text expanded :stmts raw-stmts :cards cards})]
             (let [
                   src-lines (string/split (str expanded) #"\n")
@@ -4502,18 +4511,6 @@
 (def ^:private dump-switch (atom nil))
 (def ^:private exit-code (atom nil))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-(defn- noexecute?
-    [^String src]
-    (reduce
-        (fn
-            [no line]
-            (reduce
-                (fn [no c] (cond (re-find #"^-NOEXECUTE(?:\s|$)" c) true (re-find #"^-EXECUTE(?:\s|$)" c) false :else no))
-                no
-                (when (clojure.string/starts-with? line "-") (map #(if (clojure.string/starts-with? % "-") % (str "-" %)) (clojure.string/split line #",-")))))
-        false
-        (clojure.string/split-lines src)))
-;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn -main
     [& args]
     (reset! <WIDTH> 120)
@@ -4557,7 +4554,7 @@
                                           (:crash @<SOURCE>) 139
                                           (and (nil? (@<STNO> :END)) (nil? (@<STNO> :end))) (do (binding [*out* *err*] (println "No END statement found in source file(s).") (flush)) 1)
                                           (seq @<DIAGNOSTICS>) 231
-                                          (noexecute? src) 231
+                                          @<CARD-NOEXEC> 231
                                           :else
                                               (do
                                                   (let [t0 (System/nanoTime)]
