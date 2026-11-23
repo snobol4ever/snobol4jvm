@@ -2928,7 +2928,7 @@
                                 (clojure.core/= ch \;)
                                 (not in-sq)
                                 (not in-dq)
-                                (not (and (pos? (.length cur)) (clojure.core/= \* (.charAt cur 0))))
+                                (not (and (pos? (.length cur)) (#{\* \-} (.charAt cur 0))))
                                 (or
                                     (not
                                         (pos?
