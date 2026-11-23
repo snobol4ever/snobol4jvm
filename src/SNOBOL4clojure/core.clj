@@ -2808,6 +2808,15 @@
                         (recur (rest lines) (conj out line) seen cards ph)))
                 [(string/join "\n" out) seen cards]))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- cut-to-in-width
+    [^String text]
+    (loop [ls (string/split text #"\n" -1) w nil out []]
+        (if
+            (empty? ls)
+            (string/join "\n" out)
+            (let [l (first ls) l (if (and w (> (count l) (long w))) (subs l 0 w) l) m (when (string/starts-with? l "-") (last (re-seq #"(?:^-|,)\s*[Ii][Nn](\d+)" l)))]
+                (recur (rest ls) (if m (Long/parseLong (second m)) w) (conj out l))))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- open-parens
     [^String s]
     (loop [i 0 d 0 q nil]
@@ -3170,6 +3179,7 @@
               record? (and record? (boolean (re-find #"[\r\n]" (str S))))
               S (if (and (not record?) (string/starts-with? (str S) "#!")) (let [k (string/index-of (str S) "\n")] (if k (subs (str S) (inc k)) "")) S)
               [expanded _ cards] (if record? [(str S) #{} []] (preprocess-includes* (str S) include-path #{}))
+              expanded (if record? expanded (cut-to-in-width expanded))
               raw-stmts (split-source expanded record?)
               _ (reset! <DIAGNOSTICS> (:diagnostics (meta raw-stmts)))
               _ (reset! <CARD-LISTING> false)
