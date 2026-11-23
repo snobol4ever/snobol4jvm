@@ -2980,7 +2980,7 @@
             :else [:other i (inc i)])))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- card-error
-    [^String s]
+    [^String s & [starts]]
     (when-not
         (re-find #"^-" s)
         (try
@@ -2993,13 +2993,14 @@
                         (< (long i) (count s))
                         (if
                             (and (clojure.core/= i 1) (re-find #"^-IN\d" s))
-                            (do (arg 3 1 (fn [[t]] (#{:int :real} t))) (when-let [j (more (nth (card-token s 3) 2))] (recur j)))
+                            (do (when starts (swap! starts conj 1)) (arg 3 1 (fn [[t]] (#{:int :real} t))) (when-let [j (more (nth (card-token s 3) 2))] (recur j)))
                             (let [[t a e :as tk] (card-token s i)]
                                 (if
                                     (clojure.core/= t :other)
                                     (when-let [j (more e)] (recur j))
                                     (do
                                         (when-not (clojure.core/= t :name) (fail! 247 (at tk (dec (long i)))))
+                                        (when starts (swap! starts conj a))
                                         (let [nm (subs s a e) k (when (>= (count nm) 4) (subs nm 0 4))]
                                             (case k
                                                 ("CASE" "COMP")
@@ -3014,7 +3015,8 @@
                                                     (let [[_ a2 e2] (arg e a (fn [[t2 a2 e2]] (and (clojure.core/= t2 :int) (pos? (Long/parseLong (subs s a2 e2))))))]
                                                         (arg e2 a2 (fn [[t3]] (#{:end :str} t3))))
                                                 (do
-                                                    (case k
+                                                    (case
+                                                        (when-not starts k)
                                                         "LIST" (reset! <CARD-LISTING> true)
                                                         "NOLI" (reset! <CARD-LISTING> false)
                                                         "NOEX" (reset! <CARD-NOEXEC> true)
@@ -4372,6 +4374,20 @@
     (alter-var-root #'STR_FN (constantly (fn [v] (if (nil? v) nil (str v))))))
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (init-inline-fns!)
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(defn- semicolon-cards
+    [^String l]
+    (loop [i 0 q nil out []]
+        (if
+            (>= i (count l))
+            out
+            (let [c (.charAt l i)]
+                (cond
+                    q (recur (inc i) (when-not (clojure.core/= c q) q) out)
+                    (#{\' \"} c) (recur (inc i) c out)
+                    (and (clojure.core/= c \;) (clojure.core/= \- (char-at l (inc i)))) (recur (inc i) q (conj out (subs l (inc i))))
+                    :else (recur (inc i) q out))))))
+;-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 (defn- name-identity [n] (if-let [c (and (seq? n) (:container (meta n)))] (cons c (rest n)) n))
 (def ^:private page-lines 55)
 (def ^:private identity-line "snobol4jvm version 0.2.0")
@@ -4428,7 +4444,7 @@
           starts (statement-numbers stmts (or swallowed #{}))
           errs (group-by first @<DIAGNOSTICS>)
           fold false
-          card (fn [^String l nm] (re-find (re-pattern (str (when fold "(?i)") "^-" nm "(?:\\s|,|$)")) l))
+          card (fn [^String l nm] (re-find (re-pattern (str (when fold "(?i)") "^-" nm "(?:\\s|,|;|$)")) l))
           st (atom {:page 0 :on-page 0 :title "" :subtitle nil :pending false :on false :print true :double false})]
         (loop [i 1 ls lines depth 0 places [] file (str file) fline 0 cards cards]
             (when-let [raw (first ls)]
@@ -4445,29 +4461,29 @@
                                       (if-let [[_ ln f1 f2] (when (and ctl (not-any? #(#{247 231 232} (second %)) (get errs i))) (re-find #"^-LINE\s+(\d+)(?:\s+(?:\"([^\"]*)\"|'([^']*)'))?" l))]
                                           [(or f1 f2 file) (dec (Long/parseLong ln))]
                                           [file fline])]
-                                (if ctl
-                                    (let [segs (if (or (card l "TITLE") (card l "STITL")) [l] (map #(if (string/starts-with? % "-") % (str "-" %)) (string/split l #",-")))]
-                                        (doseq [c segs]
-                                            (cond
-                                                (card c "LIST") (swap! st assoc :on true)
-                                                (card c "NOLIST") (swap! st assoc :on false)
-                                                (card c "PRINT") (swap! st assoc :print true)
-                                                (card c "NOPRINT") (swap! st assoc :print false)
-                                                (card c "SINGLE") (swap! st assoc :double false)
-                                                (card c "DOUBLE") (swap! st assoc :double true)
-                                                (card c "TITLE") (swap! st assoc :title (string/replace (subs c 6) #"\A[ \t]+|[ \t]+\z" "") :subtitle "" :pending true)
-                                                (card c "STITL") (swap! st assoc :subtitle (string/replace (subs c 6) #"\A[ \t]+|[ \t]+\z" "") :pending true)
-                                                (card c "EJECT") (when (:on @st) (when-not (open! st) (new-page! st)))
-                                                (card c "SPACE")
-                                                    (when
-                                                        (and (:on @st) (not (open! st)))
-                                                        (let [k (if-let [[_ d] (re-find #"^-\S+\s+(\d+)" c)] (Long/parseLong d) 1)]
-                                                            (if
-                                                                (< (clojure.core/+ (long (:on-page @st)) k) page-lines)
-                                                                (do (print (apply str (repeat k \newline))) (swap! st update :on-page clojure.core/+ k))
-                                                                (new-page! st))))
-                                                :else nil))
-                                        (shown l))
+                                (do
+                                    (doseq [cl (if ctl [l] (when-not (string/starts-with? l "*") (semicolon-cards l)))]
+                                        (let [segs (if (or (card cl "TITLE") (card cl "STITL")) [cl] (let [at (atom [])] (card-error cl at) (if (seq @at) (map #(str "-" (subs cl %)) @at) [cl])))]
+                                            (doseq [c segs]
+                                                (cond
+                                                    (card c "LIST") (swap! st assoc :on true)
+                                                    (card c "NOLIST") (swap! st assoc :on false)
+                                                    (card c "PRINT") (swap! st assoc :print true)
+                                                    (card c "NOPRINT") (swap! st assoc :print false)
+                                                    (card c "SINGLE") (swap! st assoc :double false)
+                                                    (card c "DOUBLE") (swap! st assoc :double true)
+                                                    (card c "TITLE") (swap! st assoc :title (string/replace (subs c 6) #"\A[ \t]+|[ \t]+\z" "") :subtitle "" :pending true)
+                                                    (card c "STITL") (swap! st assoc :subtitle (string/replace (subs c 6) #"\A[ \t]+|[ \t]+\z" "") :pending true)
+                                                    (card c "EJECT") (when (:on @st) (when-not (open! st) (new-page! st)))
+                                                    (card c "SPACE")
+                                                        (when
+                                                            (and (:on @st) (not (open! st)))
+                                                            (let [k (if-let [[_ d] (re-find #"^-\S+\s+(\d+)" c)] (Long/parseLong d) 1)]
+                                                                (if
+                                                                    (< (clojure.core/+ (long (:on-page @st)) k) page-lines)
+                                                                    (do (print (apply str (repeat k \newline))) (swap! st update :on-page clojure.core/+ k))
+                                                                    (new-page! st))))
+                                                    :else nil))))
                                     (shown l))
                                 (doseq [[k [_ code col]] (map-indexed vector (get errs i))]
                                     (let [
